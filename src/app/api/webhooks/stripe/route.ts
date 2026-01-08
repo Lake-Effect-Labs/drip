@@ -3,8 +3,10 @@ import { headers } from "next/headers";
 import Stripe from "stripe";
 import { createAdminClient } from "@/lib/supabase/server";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
+// Stripe is optional for local testing (only needed for future SaaS billing)
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+const stripe = stripeSecretKey ? new Stripe(stripeSecretKey) : null;
 
 /**
  * Stripe Webhook Handler
@@ -19,6 +21,14 @@ const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
  * - Update companies.subscription_status
  */
 export async function POST(request: Request) {
+  // Stripe is optional for local testing
+  if (!stripe || !webhookSecret) {
+    return NextResponse.json(
+      { error: "Stripe not configured" },
+      { status: 503 }
+    );
+  }
+
   const body = await request.text();
   const headersList = await headers();
   const signature = headersList.get("stripe-signature");

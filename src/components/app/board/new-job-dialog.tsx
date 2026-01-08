@@ -15,6 +15,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
+import { JobTemplatesDialog } from "@/components/app/jobs/job-templates-dialog";
+import { FileText } from "lucide-react";
 import type { Job, Customer } from "@/types/database";
 
 type JobWithCustomer = Job & { customer: Customer | null };
@@ -54,6 +56,7 @@ export function NewJobDialog({
   const [zip, setZip] = useState("");
   const [notes, setNotes] = useState("");
   const [assignedUserId, setAssignedUserId] = useState("");
+  const [templatesOpen, setTemplatesOpen] = useState(false);
   const { addToast } = useToast();
   const supabase = createClient();
 
@@ -76,12 +79,13 @@ export function NewJobDialog({
     setLoading(true);
 
     try {
-      // Create customer if name provided
+      // Create customer if name provided (via API to bypass RLS)
       let customerId: string | null = null;
       if (customerName.trim()) {
-        const { data: customer, error: customerError } = await supabase
-          .from("customers")
-          .insert({
+        const customerResponse = await fetch("/api/customers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
             company_id: companyId,
             name: customerName.trim(),
             phone: customerPhone || null,
@@ -91,18 +95,23 @@ export function NewJobDialog({
             city: city || null,
             state: state || null,
             zip: zip || null,
-          })
-          .select()
-          .single();
+          }),
+        });
 
-        if (customerError) throw customerError;
+        if (!customerResponse.ok) {
+          const errorData = await customerResponse.json();
+          throw new Error(errorData.error || "Failed to create customer");
+        }
+
+        const customer = await customerResponse.json();
         customerId = customer.id;
       }
 
-      // Create job
-      const { data: job, error: jobError } = await supabase
-        .from("jobs")
-        .insert({
+      // Create job via API (bypasses RLS)
+      const jobResponse = await fetch("/api/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
           company_id: companyId,
           customer_id: customerId,
           title: title.trim(),
@@ -114,11 +123,15 @@ export function NewJobDialog({
           notes: notes || null,
           assigned_user_id: assignedUserId || null,
           status: "new",
-        })
-        .select("*, customer:customers(*)")
-        .single();
+        }),
+      });
 
-      if (jobError) throw jobError;
+      if (!jobResponse.ok) {
+        const errorData = await jobResponse.json();
+        throw new Error(errorData.error || "Failed to create job");
+      }
+
+      const job = await jobResponse.json();
 
       onJobCreated(job);
       resetForm();
@@ -141,6 +154,17 @@ export function NewJobDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 mt-4">
+          {/* Templates */}
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setTemplatesOpen(true)}
+            className="w-full"
+          >
+            <FileText className="mr-2 h-4 w-4" />
+            Use Template
+          </Button>
+
           {/* Job Title */}
           <div className="space-y-2">
             <Label htmlFor="title">Job Title *</Label>
@@ -290,6 +314,18 @@ export function NewJobDialog({
             </Button>
           </div>
         </form>
+
+        <JobTemplatesDialog
+          open={templatesOpen}
+          onOpenChange={setTemplatesOpen}
+          companyId={companyId}
+          onSelectTemplate={(template) => {
+            setTitle(template.name);
+            setNotes(template.default_notes || "");
+            // Materials would be added after job creation
+            addToast("Template applied!", "success");
+          }}
+        />
       </DialogContent>
     </Dialog>
   );

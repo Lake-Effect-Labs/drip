@@ -17,9 +17,9 @@ export const env = {
   supabaseAnonKey: getEnvVar("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
   supabaseServiceRoleKey: getEnvVar("SUPABASE_SERVICE_ROLE_KEY"),
 
-  // Stripe
-  stripeSecretKey: getEnvVar("STRIPE_SECRET_KEY"),
-  stripeWebhookSecret: getEnvVar("STRIPE_WEBHOOK_SECRET"),
+  // Stripe (optional for local testing - only needed for future SaaS billing)
+  stripeSecretKey: getEnvVar("STRIPE_SECRET_KEY", false),
+  stripeWebhookSecret: getEnvVar("STRIPE_WEBHOOK_SECRET", false),
 
   // App
   appUrl: getEnvVar("NEXT_PUBLIC_APP_URL", false) || "http://localhost:3000",

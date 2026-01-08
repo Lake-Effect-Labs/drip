@@ -131,18 +131,50 @@ export const SERVICE_MATERIALS: Record<string, string[]> = {
   touchups: ["Touch-up paint", "Small brushes", "Spackle"],
 };
 
-// Theme options
+// Common materials for quick add
+export const COMMON_MATERIALS = [
+  "Paint (gallons)",
+  "Primer",
+  "Rollers",
+  "Brushes",
+  "Tape",
+  "Drop cloths",
+  "Spackle",
+  "Sandpaper",
+  "Caulk",
+  "Extension pole",
+  "Paint trays",
+  "Stir sticks",
+];
+
+// Theme options - Popular Sherwin-Williams colors (mix of neutrals and vibrant)
 export const THEMES = [
-  { id: "agreeable-gray", name: "Agreeable Gray", color: "#d1ccc4" },
-  { id: "alabaster", name: "Alabaster", color: "#f3ede5" },
-  { id: "pure-white", name: "Pure White", color: "#f8f8f8" },
-  { id: "extra-white", name: "Extra White", color: "#fcfcfc" },
-  { id: "iron-ore", name: "Iron Ore", color: "#434343" },
-  { id: "urbane-bronze", name: "Urbane Bronze", color: "#54504a" },
-  { id: "tricorn-black", name: "Tricorn Black", color: "#2f2f2f" },
-  { id: "drift-of-mist", name: "Drift of Mist", color: "#e8e3db" },
-  { id: "shoji-white", name: "Shoji White", color: "#ebe6dd" },
-  { id: "accessible-beige", name: "Accessible Beige", color: "#d4cfc4" },
+  // Popular Neutrals
+  { id: "agreeable-gray", name: "Agreeable Gray", color: "#d1ccc4", bgColor: "#f5f3f0" },
+  { id: "repose-gray", name: "Repose Gray", color: "#c8c5be", bgColor: "#f0efeb" },
+  { id: "alabaster", name: "Alabaster", color: "#f3ede5", bgColor: "#faf8f4" },
+  
+  // Vibrant Blues
+  { id: "naval", name: "Naval", color: "#1f3a5f", bgColor: "#e8ecf1" },
+  { id: "hale-navy", name: "Hale Navy", color: "#2d3a4b", bgColor: "#e4e8ed" },
+  { id: "watery", name: "Watery", color: "#a4d4d4", bgColor: "#e8f2f2" },
+  { id: "raindrops", name: "Raindrops", color: "#b1c4d4", bgColor: "#e8eff4" },
+  
+  // Vibrant Greens
+  { id: "sea-salt", name: "Sea Salt", color: "#c5d4c5", bgColor: "#eef2ed" },
+  { id: "evergreen-fog", name: "Evergreen Fog", color: "#95978a", bgColor: "#eef0ea" },
+  { id: "jade-dragon", name: "Jade Dragon", color: "#5a7d5a", bgColor: "#e8ede8" },
+  { id: "sage-green", name: "Sage Green", color: "#9caf88", bgColor: "#eef2eb" },
+  
+  // Warm Colors
+  { id: "peppercorn", name: "Peppercorn", color: "#6c6c6c", bgColor: "#e8e8e8" },
+  { id: "colonel-sanders", name: "Colonel Sanders", color: "#8b6f47", bgColor: "#f0ebe4" },
+  { id: "copper-penny", name: "Copper Penny", color: "#ad6f69", bgColor: "#f2e8e7" },
+  { id: "coral-reef", name: "Coral Reef", color: "#d9776b", bgColor: "#f5e8e5" },
+  
+  // Rich Darks
+  { id: "iron-ore", name: "Iron Ore", color: "#434343", bgColor: "#e8e8e8" },
+  { id: "urbane-bronze", name: "Urbane Bronze", color: "#54504a", bgColor: "#eae8e4" },
 ] as const;
 
 export type ThemeId = (typeof THEMES)[number]["id"];

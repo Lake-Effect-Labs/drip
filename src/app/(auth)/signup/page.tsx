@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -20,29 +20,75 @@ export default function SignupPage() {
   const { addToast } = useToast();
   const supabase = createClient();
 
+  // Check if user already has a company and redirect them
+  useEffect(() => {
+    async function checkCompany() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: companyUser } = await supabase
+          .from("company_users")
+          .select("company_id")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        
+        if (companyUser) {
+          router.push("/app");
+        }
+      }
+    }
+    checkCompany();
+  }, [router, supabase]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
 
     try {
-      // Sign up the user
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            full_name: fullName,
+      // Check if user already exists
+      const { data: { user: existingUser } } = await supabase.auth.getUser();
+      
+      let userId: string;
+      
+      if (existingUser) {
+        // User already logged in, use existing user
+        userId = existingUser.id;
+      } else {
+        // Sign up the user
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              full_name: fullName,
+            },
           },
-        },
-      });
+        });
 
-      if (authError) {
-        addToast(authError.message, "error");
-        return;
+        if (authError) {
+          addToast(authError.message, "error");
+          return;
+        }
+
+        if (!authData.user) {
+          addToast("Failed to create account", "error");
+          return;
+        }
+
+        userId = authData.user.id;
       }
 
-      if (!authData.user) {
-        addToast("Failed to create account", "error");
+      // Check if company already exists for this user
+      const { data: existingCompanyUser } = await supabase
+        .from("company_users")
+        .select("company_id")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+      if (existingCompanyUser) {
+        // Already has company, go to app
+        addToast("Account already set up! Redirecting...", "success");
+        router.push("/app");
+        router.refresh();
         return;
       }
 
@@ -52,7 +98,7 @@ export default function SignupPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           company_name: companyName,
-          owner_id: authData.user.id,
+          owner_id: userId,
           owner_email: email,
           owner_name: fullName,
         }),

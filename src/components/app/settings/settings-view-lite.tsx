@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/components/ui/toast";
-import { Building, Calculator } from "lucide-react";
+import { Building, Calculator, Palette, Check } from "lucide-react";
+import { THEMES, type ThemeId } from "@/lib/utils";
 
 interface SettingsViewLiteProps {
   company: Company;
@@ -28,6 +29,9 @@ export function SettingsViewLite({
 
   // Company form
   const [companyName, setCompanyName] = useState(company.name);
+  const [selectedTheme, setSelectedTheme] = useState<ThemeId>(
+    (company.theme_id as ThemeId) || "agreeable-gray"
+  );
   const [savingCompany, setSavingCompany] = useState(false);
 
   // Config form - simplified to just walls rate
@@ -39,17 +43,35 @@ export function SettingsViewLite({
   async function handleSaveCompany() {
     setSavingCompany(true);
     try {
-      const { error } = await supabase
-        .from("companies")
-        .update({ name: companyName.trim() })
-        .eq("id", company.id);
+      const response = await fetch(`/api/companies/${company.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: companyName.trim(),
+          theme_id: selectedTheme,
+        }),
+      });
 
-      if (error) throw error;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to save settings");
+      }
 
-      setCompany((prev) => ({ ...prev, name: companyName.trim() }));
+      const updatedCompany = await response.json();
+
+      setCompany((prev) => ({
+        ...prev,
+        name: updatedCompany.name,
+        theme_id: updatedCompany.theme_id,
+      }));
+
+      // Apply theme immediately
+      document.documentElement.setAttribute("data-theme", selectedTheme);
+
       addToast("Settings saved!", "success");
       router.refresh();
-    } catch {
+    } catch (error) {
+      console.error("Error saving company:", error);
       addToast("Failed to save settings", "error");
     } finally {
       setSavingCompany(false);
@@ -104,8 +126,58 @@ export function SettingsViewLite({
               placeholder="Your company name"
             />
           </div>
+        </div>
+
+        {/* Theme Selection */}
+        <div className="rounded-lg border bg-card p-4 space-y-4">
+          <div className="flex items-center gap-2">
+            <Palette className="h-5 w-5 text-muted-foreground" />
+            <h3 className="font-semibold">Theme</h3>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Choose a Sherwin-Williams inspired color theme.
+          </p>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {THEMES.map((theme) => (
+              <button
+                key={theme.id}
+                type="button"
+                onClick={() => setSelectedTheme(theme.id)}
+                className={`relative rounded-lg border-2 p-3 text-left transition-all overflow-hidden ${
+                  selectedTheme === theme.id
+                    ? "border-primary ring-2 ring-primary"
+                    : "hover:border-muted-foreground border-border"
+                }`}
+              >
+                {/* Background preview */}
+                <div
+                  className="absolute inset-0 opacity-20"
+                  style={{ backgroundColor: theme.bgColor || theme.color }}
+                />
+                {/* Primary color swatch */}
+                <div className="relative">
+                  <div className="flex gap-2 mb-2">
+                    <div
+                      className="h-8 flex-1 rounded"
+                      style={{ backgroundColor: theme.color }}
+                    />
+                    {theme.bgColor && (
+                      <div
+                        className="h-8 w-8 rounded border border-border/50"
+                        style={{ backgroundColor: theme.bgColor }}
+                      />
+                    )}
+                  </div>
+                  <p className="text-xs font-medium truncate relative z-10">{theme.name}</p>
+                </div>
+                {selectedTheme === theme.id && (
+                  <Check className="absolute top-2 right-2 h-4 w-4 text-primary z-10" />
+                )}
+              </button>
+            ))}
+          </div>
           <Button onClick={handleSaveCompany} loading={savingCompany}>
-            Save
+            Save Company Settings
           </Button>
         </div>
 

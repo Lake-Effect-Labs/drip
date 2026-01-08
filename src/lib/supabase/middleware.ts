@@ -52,10 +52,18 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (user && isAuthRoute && !request.nextUrl.pathname.startsWith("/join")) {
-    // Redirect to app if already logged in
-    const url = request.nextUrl.clone();
-    url.pathname = "/app";
-    return NextResponse.redirect(url);
+    // Check if user has a company before redirecting
+    if (request.nextUrl.pathname === "/signup") {
+      // Allow users to stay on signup if they don't have a company yet
+      return supabaseResponse;
+    }
+    
+    // For login page, check if user has company before redirecting
+    if (request.nextUrl.pathname === "/login") {
+      // Try to check if user has a company (using admin client would be better, but we can't in middleware)
+      // For now, allow them to stay on login page - they'll be redirected after successful login check
+      return supabaseResponse;
+    }
   }
 
   return supabaseResponse;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -21,7 +21,8 @@ import { JobCard } from "./job-card";
 import { NewJobDialog } from "./new-job-dialog";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
-import { Plus } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Plus, Search } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 
 type JobWithCustomer = Job & { customer: Customer | null };
@@ -44,9 +45,16 @@ export function BoardView({
   const [jobs, setJobs] = useState<JobWithCustomer[]>(initialJobs);
   const [activeJob, setActiveJob] = useState<JobWithCustomer | null>(null);
   const [filter, setFilter] = useState<FilterType>("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [newJobOpen, setNewJobOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const { addToast } = useToast();
   const supabase = createClient();
+
+  // Prevent hydration mismatch with dnd-kit
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -59,10 +67,34 @@ export function BoardView({
     })
   );
 
-  // Filter jobs
+  // Filter and search jobs
   const filteredJobs = jobs.filter((job) => {
-    if (filter === "mine") return job.assigned_user_id === currentUserId;
-    if (filter === "unassigned") return !job.assigned_user_id;
+    // Apply status filter
+    if (filter === "mine") {
+      if (job.assigned_user_id !== currentUserId) return false;
+    } else if (filter === "unassigned") {
+      if (job.assigned_user_id) return false;
+    }
+
+    // Apply search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      const matchesTitle = job.title.toLowerCase().includes(query);
+      const matchesCustomer = job.customer?.name.toLowerCase().includes(query);
+      const matchesAddress = [
+        job.address1,
+        job.city,
+        job.state,
+        job.zip,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(query);
+      
+      if (!matchesTitle && !matchesCustomer && !matchesAddress) return false;
+    }
+
     return true;
   });
 
@@ -99,13 +131,14 @@ export function BoardView({
         prev.map((j) => (j.id === jobId ? { ...j, status: newStatus } : j))
       );
 
-      // Update in database
-      const { error } = await supabase
-        .from("jobs")
-        .update({ status: newStatus, updated_at: new Date().toISOString() })
-        .eq("id", jobId);
+      // Update in database via API (bypasses RLS)
+      const updateResponse = await fetch(`/api/jobs/${jobId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: newStatus }),
+      });
 
-      if (error) {
+      if (!updateResponse.ok) {
         // Revert on error
         setJobs((prev) =>
           prev.map((j) => (j.id === jobId ? { ...j, status: job.status } : j))
@@ -125,33 +158,53 @@ export function BoardView({
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex flex-col gap-4 border-b bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Board</h1>
-          <p className="text-sm text-muted-foreground">
-            {jobs.length} job{jobs.length !== 1 ? "s" : ""} total
-          </p>
+      <div className="flex flex-col gap-4 border-b bg-card p-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold">Board</h1>
+            <p className="text-sm text-muted-foreground">
+              {filteredJobs.length} of {jobs.length} job{jobs.length !== 1 ? "s" : ""}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <Select
+              value={filter}
+              onChange={(e) => setFilter(e.target.value as FilterType)}
+              className="w-40"
+            >
+              <option value="all">All jobs</option>
+              <option value="mine">Assigned to me</option>
+              <option value="unassigned">Unassigned</option>
+            </Select>
+            <Button onClick={() => setNewJobOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              New Job
+            </Button>
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          <Select
-            value={filter}
-            onChange={(e) => setFilter(e.target.value as FilterType)}
-            className="w-40"
-          >
-            <option value="all">All jobs</option>
-            <option value="mine">Assigned to me</option>
-            <option value="unassigned">Unassigned</option>
-          </Select>
-          <Button onClick={() => setNewJobOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            New Job
-          </Button>
+        {/* Search */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            type="search"
+            placeholder="Search jobs by title, customer, or address..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9 min-h-[44px]"
+          />
         </div>
       </div>
 
       {/* Board */}
       <div className="flex-1 overflow-x-auto p-4">
-        {jobs.length === 0 ? (
+        {!mounted ? (
+          // Show loading state during hydration to prevent mismatch
+          <div className="flex h-full items-center justify-center">
+            <div className="text-center">
+              <p className="text-muted-foreground">Loading...</p>
+            </div>
+          </div>
+        ) : jobs.length === 0 ? (
           <div className="flex h-full items-center justify-center">
             <div className="text-center max-w-md">
               <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
@@ -182,6 +235,47 @@ export function BoardView({
                   title={JOB_STATUS_LABELS[status]}
                   jobs={jobsByStatus[status]}
                   count={jobsByStatus[status].length}
+                  onStatusChange={async (jobId, newStatus) => {
+                    const updateResponse = await fetch(`/api/jobs/${jobId}`, {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ status: newStatus }),
+                    });
+
+                    if (updateResponse.ok) {
+                      setJobs((prev) =>
+                        prev.map((j) => (j.id === jobId ? { ...j, status: newStatus } : j))
+                      );
+                      addToast("Status updated!", "success");
+                    }
+                  }}
+                  onDuplicate={async (jobId) => {
+                    const job = jobs.find((j) => j.id === jobId);
+                    if (!job) return;
+
+                    const response = await fetch("/api/jobs", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        company_id: companyId,
+                        customer_id: job.customer_id,
+                        title: `${job.title} (Copy)`,
+                        address1: job.address1,
+                        address2: job.address2,
+                        city: job.city,
+                        state: job.state,
+                        zip: job.zip,
+                        notes: job.notes,
+                        status: "new",
+                      }),
+                    });
+
+                    if (response.ok) {
+                      const newJob = await response.json();
+                      setJobs((prev) => [newJob, ...prev]);
+                      addToast("Job duplicated!", "success");
+                    }
+                  }}
                 />
               ))}
             </div>

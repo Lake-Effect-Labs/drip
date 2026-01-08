@@ -33,6 +33,9 @@ export default function LoginPage() {
         return;
       }
 
+      // After successful login, just redirect to app
+      // The app layout will handle checking for company and redirecting if needed
+      // This avoids RLS issues with fresh session
       router.push("/app");
       router.refresh();
     } catch {

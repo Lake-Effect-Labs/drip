@@ -36,9 +36,10 @@ interface AppShellProps {
   };
 }
 
-// Drip-lite: Only Board and Settings visible
+// Drip-lite: Only Board, Dashboard, and Settings visible
 // Calendar, Customers, Inventory hidden for simplicity
 const navItems = [
+  { href: "/app/dashboard", label: "Dashboard", icon: LayoutGrid },
   { href: "/app/board", label: "Board", icon: LayoutGrid },
   { href: "/app/settings", label: "Settings", icon: Settings },
 ];
@@ -63,7 +64,7 @@ export function AppShell({ children, user, company }: AppShellProps) {
   return (
     <div className="min-h-screen bg-background">
       {/* Desktop sidebar */}
-      <aside className="fixed left-0 top-0 z-40 hidden h-screen w-64 border-r bg-card lg:block">
+      <aside className="fixed left-0 top-0 z-40 hidden h-screen w-64 border-r bg-muted/50 lg:block">
         <div className="flex h-full flex-col">
           {/* Logo */}
           <div className="flex h-16 items-center gap-2 border-b px-6">
@@ -130,7 +131,7 @@ export function AppShell({ children, user, company }: AppShellProps) {
       </aside>
 
       {/* Mobile header */}
-      <header className="fixed left-0 right-0 top-0 z-40 flex h-16 items-center justify-between border-b bg-card px-4 lg:hidden">
+      <header className="fixed left-0 right-0 top-0 z-40 flex h-16 items-center justify-between border-b bg-muted/50 px-4 lg:hidden">
         <div className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
             <Droplet className="h-5 w-5 text-primary-foreground" />
@@ -160,7 +161,7 @@ export function AppShell({ children, user, company }: AppShellProps) {
       {/* Mobile menu */}
       <div
         className={cn(
-          "fixed right-0 top-16 z-30 h-[calc(100vh-4rem)] w-64 transform border-l bg-card transition-transform lg:hidden",
+          "fixed right-0 top-16 z-30 h-[calc(100vh-4rem)] w-64 transform border-l bg-muted/50 transition-transform lg:hidden",
           mobileMenuOpen ? "translate-x-0" : "translate-x-full"
         )}
       >
@@ -200,7 +201,7 @@ export function AppShell({ children, user, company }: AppShellProps) {
       <main className="min-h-screen pt-16 lg:pl-64 lg:pt-0">{children}</main>
 
       {/* Mobile bottom nav */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 flex h-16 items-center justify-around border-t bg-card lg:hidden">
+      <nav className="fixed bottom-0 left-0 right-0 z-40 flex h-16 items-center justify-around border-t bg-muted/50 lg:hidden">
         {navItems.slice(0, 4).map((item) => {
           const isActive =
             pathname === item.href || pathname.startsWith(item.href + "/");

@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { getTeamMembers } from "@/lib/supabase/queries";
 import { JobDetailView } from "@/components/app/jobs/job-detail-view";
 
@@ -10,6 +10,7 @@ export default async function JobPage({
 }) {
   const { id } = await params;
   const supabase = await createClient();
+  const adminSupabase = createAdminClient();
 
   const {
     data: { user },
@@ -17,51 +18,51 @@ export default async function JobPage({
 
   if (!user) return null;
 
-  // Get company ID
-  const { data: companyUser } = await supabase
+  // Get company ID (use admin client to avoid RLS issues)
+  const { data: companyUser } = await adminSupabase
     .from("company_users")
     .select("company_id")
     .eq("user_id", user.id)
-    .single();
+    .maybeSingle();
 
   if (!companyUser) return null;
 
-  // Fetch job
-  const { data: job } = await supabase
+  // Fetch job (use admin client)
+  const { data: job } = await adminSupabase
     .from("jobs")
     .select("*")
     .eq("id", id)
     .eq("company_id", companyUser.company_id)
-    .single();
+    .maybeSingle();
 
   if (!job) {
     notFound();
   }
 
-  // Fetch customer if exists
+  // Fetch customer if exists (use admin client)
   let customer = null;
   if (job.customer_id) {
-    const { data } = await supabase
+    const { data } = await adminSupabase
       .from("customers")
       .select("*")
       .eq("id", job.customer_id)
-      .single();
+      .maybeSingle();
     customer = data;
   }
 
   const jobWithCustomer = { ...job, customer };
 
-  // Fetch estimates for this job
-  const { data: estimatesData } = await supabase
+  // Fetch estimates for this job (use admin client)
+  const { data: estimatesData } = await adminSupabase
     .from("estimates")
     .select("*")
     .eq("job_id", id)
     .order("created_at", { ascending: false });
 
-  // Fetch line items for estimates
+  // Fetch line items for estimates (use admin client)
   const estimates = await Promise.all(
     (estimatesData || []).map(async (est) => {
-      const { data: lineItems } = await supabase
+      const { data: lineItems } = await adminSupabase
         .from("estimate_line_items")
         .select("*")
         .eq("estimate_id", est.id);
@@ -69,22 +70,29 @@ export default async function JobPage({
     })
   );
 
-  // Fetch invoices for this job
-  const { data: invoices } = await supabase
+  // Fetch invoices for this job (use admin client)
+  const { data: invoices } = await adminSupabase
     .from("invoices")
     .select("*")
     .eq("job_id", id)
     .order("created_at", { ascending: false });
 
-  // Fetch materials for this job
-  const { data: materials } = await supabase
+  // Fetch materials for this job (use admin client)
+  const { data: materials } = await adminSupabase
     .from("job_materials")
     .select("*")
     .eq("job_id", id)
     .order("created_at", { ascending: true });
 
-  // Fetch team members
-  const members = await getTeamMembers(supabase, companyUser.company_id);
+  // Fetch job history (use admin client)
+  const { data: jobHistory } = await adminSupabase
+    .from("job_history")
+    .select("*")
+    .eq("job_id", id)
+    .order("changed_at", { ascending: false });
+
+  // Fetch team members (use admin client)
+  const members = await getTeamMembers(adminSupabase, companyUser.company_id);
 
   return (
     <JobDetailView
@@ -92,6 +100,7 @@ export default async function JobPage({
       estimates={estimates}
       invoices={invoices || []}
       materials={materials || []}
+      jobHistory={jobHistory || []}
       teamMembers={members}
       companyId={companyUser.company_id}
     />

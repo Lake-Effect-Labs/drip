@@ -44,8 +44,7 @@ export default function HomePage() {
             <span className="text-stone-500">without the chaos</span>
           </h1>
           <p className="text-lg md:text-xl text-stone-600 max-w-2xl mx-auto mb-8">
-            Drip is the all-in-one operating system for residential repaint companies.
-            Quotes, scheduling, invoicing, and inventory — all in one place.
+            Track jobs. Send estimates. Get paid. No setup. No training. Built for painters.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link
@@ -68,18 +67,18 @@ export default function HomePage() {
           />
           <FeatureCard
             icon={<Calendar className="w-6 h-6" />}
-            title="Simple Scheduling"
-            description="Drag and drop jobs on your calendar. See your week at a glance."
+            title="Job Board"
+            description="See all your jobs at a glance. Drag cards between stages. Never lose track."
           />
           <FeatureCard
             icon={<CheckCircle className="w-6 h-6" />}
-            title="Get Paid Faster"
-            description="Send payment links. Accept cards. Money in your account."
+            title="Track Payments"
+            description="Mark jobs as paid when you receive payment. Cash, check, Venmo — your choice."
           />
           <FeatureCard
             icon={<Package className="w-6 h-6" />}
-            title="Never Run Out"
-            description="Track your supplies. Know what to buy before you need it."
+            title="Simple Invoices"
+            description="Create invoices from jobs. Send links to customers. Mark as paid when done."
           />
         </div>
 

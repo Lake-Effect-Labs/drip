@@ -269,9 +269,12 @@ CREATE POLICY "Users can view their company" ON companies
 CREATE POLICY "Users can update their company" ON companies
   FOR UPDATE USING (id IN (SELECT company_id FROM company_users WHERE user_id = auth.uid()));
 
--- Company Users: Users can view members of their company
+-- Company Users: Users can view their own membership and members of their company
 CREATE POLICY "Users can view company members" ON company_users
-  FOR SELECT USING (company_id IN (SELECT company_id FROM company_users WHERE user_id = auth.uid()));
+  FOR SELECT USING (
+    user_id = auth.uid() OR 
+    company_id IN (SELECT company_id FROM company_users WHERE user_id = auth.uid())
+  );
 
 CREATE POLICY "Users can add members to their company" ON company_users
   FOR INSERT WITH CHECK (company_id IN (SELECT company_id FROM company_users WHERE user_id = auth.uid()));
@@ -316,6 +319,13 @@ CREATE POLICY "Users can manage company invoices" ON invoices
 -- Invoice Payments: Access through invoice
 CREATE POLICY "Users can view invoice payments" ON invoice_payments
   FOR SELECT USING (invoice_id IN (
+    SELECT id FROM invoices WHERE company_id IN (
+      SELECT company_id FROM company_users WHERE user_id = auth.uid()
+    )
+  ));
+
+CREATE POLICY "Users can insert invoice payments" ON invoice_payments
+  FOR INSERT WITH CHECK (invoice_id IN (
     SELECT id FROM invoices WHERE company_id IN (
       SELECT company_id FROM company_users WHERE user_id = auth.uid()
     )

@@ -1,7 +1,7 @@
 "use client";
 
 import { useDroppable } from "@dnd-kit/core";
-import { cn } from "@/lib/utils";
+import { cn, type JobStatus } from "@/lib/utils";
 import type { Job, Customer } from "@/types/database";
 import { JobCard } from "./job-card";
 
@@ -12,9 +12,11 @@ interface BoardColumnProps {
   title: string;
   jobs: JobWithCustomer[];
   count: number;
+  onStatusChange?: (jobId: string, newStatus: JobStatus) => void;
+  onDuplicate?: (jobId: string) => void;
 }
 
-export function BoardColumn({ id, title, jobs, count }: BoardColumnProps) {
+export function BoardColumn({ id, title, jobs, count, onStatusChange, onDuplicate }: BoardColumnProps) {
   const { setNodeRef, isOver } = useDroppable({
     id,
   });
@@ -42,7 +44,14 @@ export function BoardColumn({ id, title, jobs, count }: BoardColumnProps) {
             No jobs
           </div>
         ) : (
-          jobs.map((job) => <JobCard key={job.id} job={job} />)
+          jobs.map((job) => (
+            <JobCard
+              key={job.id}
+              job={job}
+              onStatusChange={onStatusChange}
+              onDuplicate={onDuplicate}
+            />
+          ))
         )}
       </div>
     </div>

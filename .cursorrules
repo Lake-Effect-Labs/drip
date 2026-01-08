@@ -1,0 +1,17 @@
+# Cursor Rules for Drip
+
+## Documentation Files
+**DO NOT create .md files (README, guides, docs, etc.) unless explicitly requested by the user.**
+- No PRODUCTION_CHECKLIST.md
+- No TESTING_GUIDE.md  
+- No CHANGELOG.md
+- No documentation files of any kind
+- Focus on code changes only
+
+If the user asks "how do I test this?", provide instructions in chat, not a file.
+
+## Code Changes
+- Make code changes directly
+- Fix bugs immediately
+- Don't ask permission for obvious fixes
+- Keep responses concise
