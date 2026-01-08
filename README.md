@@ -1,188 +1,62 @@
-# Drip - Painting Company OS
+# Drip
 
-The all-in-one operating system for US residential repaint painting companies. Quotes, scheduling, invoicing, and inventory — all in one place.
+**Track jobs. Send estimates. Get paid.**
 
-## Features
+A simple job & estimate tracker for painters. No setup. No training.
 
-- **Board View**: Jira-style kanban board with fixed stages (New → Quoted → Scheduled → In Progress → Done → Paid → Archive)
-- **Calendar**: Drag-and-drop scheduling with month view
-- **Estimates**: Square footage-based auto-pricing with customizable rates
-- **Invoices**: Stripe-powered online payments + manual payment recording (cash, check, Venmo, etc.)
-- **Customers**: Full customer management with job history and contact info
-- **Inventory**: Track supplies with low-stock alerts and buy lists
-- **Copy-to-Text**: Generate shareable links and pre-written messages for customers
-- **Data Export**: CSV exports for invoices, payments, and customers
-- **Team Management**: Invite links for team members with expiration and revocation
+## What It Does
 
-## Tech Stack
+- **Board View**: See all your jobs at a glance. Drag them from New → Quoted → Scheduled → Done → Paid.
+- **Estimates**: Enter square footage, get a price. Send it with one tap.
+- **Invoices**: Create an invoice, send the payment link. Done.
+- **Copy-to-Text**: Pre-written messages for estimates, reminders, and payment requests. Just paste and send.
 
-- **Framework**: Next.js 15 (App Router) + TypeScript
-- **Styling**: Tailwind CSS
-- **Database**: Supabase (PostgreSQL + Auth + RLS)
-- **Payments**: Stripe Checkout + Webhooks
-- **Drag & Drop**: @dnd-kit
+## Why Painters Use It
 
-## Getting Started
+You already use notes, texts, and whiteboards. Drip doesn't change how you work — it just keeps everything in one place so you don't lose jobs.
 
-### Prerequisites
+## Quick Start
 
-- Node.js 18+
-- npm
-- Supabase account
-- Stripe account (for payments)
+### 1. Set Up Supabase
 
-### Environment Variables
+1. Create a [Supabase](https://supabase.com) project
+2. Run the schema: `supabase/migrations/001_initial_schema.sql`
+3. Copy your keys to `.env.local`
 
-Create a `.env.local` file with:
+### 2. Set Up Stripe (for payments)
+
+1. Get your Stripe secret key
+2. Set up webhook forwarding: `stripe listen --forward-to localhost:3000/api/webhooks/stripe`
+3. Copy the webhook secret to `.env.local`
+
+### 3. Environment Variables
+
+Create `.env.local`:
 
 ```bash
-# Supabase
 NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
-
-# Stripe
 STRIPE_SECRET_KEY=sk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_...
-
-# App URL (for Stripe redirects)
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
-### Supabase Setup
-
-1. Create a new Supabase project
-2. Go to SQL Editor and run the migration file: `supabase/migrations/001_initial_schema.sql`
-3. Copy your project URL and keys to `.env.local`
-
-### Demo Data (Optional)
-
-After signing up and creating your first company, you can populate demo data:
-
-1. Sign up for an account in the app
-2. Go to Supabase SQL Editor
-3. Run the seed file: `supabase/seed.sql`
-
-This creates sample customers, jobs, estimates, invoices, and inventory items.
-
-### Stripe Setup
-
-1. Create a Stripe account (test mode is fine for development)
-2. Get your secret key from the Stripe Dashboard
-3. For webhooks:
-   - Install Stripe CLI: `brew install stripe/stripe-cli/stripe`
-   - Login: `stripe login`
-   - Forward webhooks: `stripe listen --forward-to localhost:3000/api/webhooks/stripe`
-   - Copy the webhook signing secret to `.env.local`
-
-### Installation
+### 4. Run It
 
 ```bash
-# Install dependencies
 npm install
-
-# Run development server
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to see the app.
+Open [http://localhost:3000](http://localhost:3000)
 
-## Project Structure
+## Tech Stack
 
-```
-src/
-├── app/                    # Next.js App Router pages
-│   ├── (auth)/            # Auth pages (login, signup, join)
-│   ├── app/               # Authenticated app pages
-│   │   ├── board/         # Kanban board
-│   │   ├── calendar/      # Calendar view
-│   │   ├── customers/     # Customer list & details
-│   │   ├── jobs/          # Job details
-│   │   ├── estimates/     # Estimate builder & details
-│   │   ├── invoices/      # Invoice builder & details
-│   │   ├── inventory/     # Inventory management
-│   │   └── settings/      # Company settings
-│   ├── api/               # API routes
-│   │   ├── estimates/     # Estimate acceptance
-│   │   ├── invites/       # Invite link handling
-│   │   ├── invoices/      # Stripe checkout
-│   │   └── webhooks/      # Stripe webhooks
-│   ├── e/[token]/         # Public estimate page
-│   └── i/[token]/         # Public invoice page
-├── components/
-│   ├── app/               # App-specific components
-│   ├── public/            # Public page components
-│   └── ui/                # Reusable UI components
-├── lib/
-│   ├── supabase/          # Supabase client setup
-│   └── utils.ts           # Utility functions
-└── types/
-    └── database.ts        # TypeScript types for database
-
-supabase/
-├── migrations/
-│   └── 001_initial_schema.sql  # Database schema with RLS policies
-└── seed.sql                    # Demo data for testing
-```
-
-## Database Schema
-
-See `supabase/migrations/001_initial_schema.sql` for the complete schema.
-
-Key tables:
-- `companies` - Multi-tenant company data
-- `company_users` - User-company relationships
-- `jobs` - Job cards that move through the board
-- `estimates` - Estimates with line items
-- `invoices` - Invoices with Stripe integration
-- `inventory_items` - Supply tracking
-- `job_materials` - Per-job material checklists
-
-## Themes
-
-Drip includes 10 Sherwin-Williams inspired themes:
-- Agreeable Gray (default)
-- Alabaster
-- Pure White
-- Extra White
-- Iron Ore
-- Urbane Bronze
-- Tricorn Black
-- Drift of Mist
-- Shoji White
-- Accessible Beige
-
-## Workflow
-
-1. **New Job**: Create a job card (starts in "New" column)
-2. **Quote**: Create an estimate → job moves to "Quoted"
-3. **Customer Accepts**: Customer accepts estimate via public link → job moves to "Scheduled"
-4. **Schedule**: Set date/time on job
-5. **Work**: Mark job as started → "In Progress"
-6. **Complete**: Mark job complete → "Done"
-7. **Invoice**: Create and send invoice
-8. **Payment**: Customer pays via Stripe → "Paid"
-
-## Copy-to-Text Messages
-
-Every estimate, invoice, and job includes copy-to-clipboard functionality:
-
-**Estimate Messages:**
-- Copy Link: Shareable public URL
-- Copy Message: Pre-written text with link
-
-**Invoice Messages:**
-- Copy Link: Shareable payment URL
-- Copy Message: Payment request with link
-
-**Job Messages:**
-- Copy Reminder: Appointment reminder with date, time, and address
-- Copy Payment Request: Invoice link with amount
-
-Example messages:
-> Hey Sarah — just a reminder that we're scheduled for Jan 15, 2026 at 9:00 AM at 123 Oak Street. Reply here if anything changes!
-
-> Here's your payment link for 123 Oak Street: https://... — thank you!
+- Next.js 15 + TypeScript
+- Tailwind CSS
+- Supabase (database + auth)
+- Stripe (payments)
 
 ## License
 

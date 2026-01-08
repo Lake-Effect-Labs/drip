@@ -20,12 +20,10 @@ import { useToast } from "@/components/ui/toast";
 import {
   ArrowLeft,
   Copy,
-  ExternalLink,
   Send,
   User,
   MapPin,
   FileText,
-  CreditCard,
   Banknote,
 } from "lucide-react";
 
@@ -52,7 +50,6 @@ export function InvoiceDetailView({ invoice: initialInvoice }: InvoiceDetailView
   const supabase = createClient();
 
   const [invoice, setInvoice] = useState(initialInvoice);
-  const [generatingLink, setGeneratingLink] = useState(false);
   const [markingSent, setMarkingSent] = useState(false);
   const [markPaidDialogOpen, setMarkPaidDialogOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("cash");
@@ -62,34 +59,6 @@ export function InvoiceDetailView({ invoice: initialInvoice }: InvoiceDetailView
   const address = [invoice.job.address1, invoice.job.city, invoice.job.state]
     .filter(Boolean)
     .join(", ");
-
-  async function handleGeneratePaymentLink() {
-    setGeneratingLink(true);
-    try {
-      const response = await fetch(`/api/invoices/${invoice.id}/checkout`, {
-        method: "POST",
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || "Failed to generate payment link");
-      }
-
-      const data = await response.json();
-      setInvoice((prev) => ({
-        ...prev,
-        stripe_checkout_url: data.checkout_url,
-        stripe_checkout_session_id: data.session_id,
-      }));
-
-      addToast("Payment link generated!", "success");
-    } catch (error) {
-      console.error("Error generating payment link:", error);
-      addToast("Failed to generate payment link", "error");
-    } finally {
-      setGeneratingLink(false);
-    }
-  }
 
   async function handleMarkSent() {
     setMarkingSent(true);
@@ -116,7 +85,7 @@ export function InvoiceDetailView({ invoice: initialInvoice }: InvoiceDetailView
   }
 
   function copyInvoiceMessage() {
-    const message = `Here's your payment link for ${address || "your project"}: ${publicUrl} — thank you!`;
+    const message = `Here's your invoice for ${address || "your project"}: ${publicUrl} — thank you!`;
     copyToClipboard(message);
     addToast("Message copied!", "success");
   }
@@ -275,9 +244,9 @@ export function InvoiceDetailView({ invoice: initialInvoice }: InvoiceDetailView
           </div>
         </div>
 
-        {/* Payment Link */}
+        {/* Payment Status */}
         <div className="rounded-lg border bg-card p-4 space-y-4">
-          <h3 className="font-semibold">Payment</h3>
+          <h3 className="font-semibold">Payment Status</h3>
 
           {invoice.status === "paid" ? (
             <div className="bg-success/10 text-success rounded-lg p-4 text-center">
@@ -287,55 +256,17 @@ export function InvoiceDetailView({ invoice: initialInvoice }: InvoiceDetailView
               )}
             </div>
           ) : (
-            <>
-              {invoice.stripe_checkout_url ? (
-                <div className="space-y-3">
-                  <p className="text-sm text-muted-foreground">
-                    Payment link is ready. Share it with your customer.
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <code className="flex-1 bg-muted px-3 py-2 rounded text-sm truncate">
-                      {publicUrl}
-                    </code>
-                    <Button variant="outline" size="sm" onClick={copyInvoiceLink}>
-                      <Copy className="h-4 w-4" />
-                    </Button>
-                    <a href={publicUrl} target="_blank" rel="noopener noreferrer">
-                      <Button variant="outline" size="sm">
-                        <ExternalLink className="h-4 w-4" />
-                      </Button>
-                    </a>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <p className="text-sm text-muted-foreground">
-                    Generate a Stripe payment link so your customer can pay online.
-                  </p>
-                  <Button
-                    onClick={handleGeneratePaymentLink}
-                    loading={generatingLink}
-                  >
-                    <CreditCard className="mr-2 h-4 w-4" />
-                    Generate Payment Link
-                  </Button>
-                </div>
-              )}
-
-              {/* Manual payment option */}
-              <div className="border-t pt-4 mt-4">
-                <p className="text-sm text-muted-foreground mb-3">
-                  Or record a manual payment (cash, check, Venmo, etc.)
-                </p>
-                <Button
-                  variant="outline"
-                  onClick={() => setMarkPaidDialogOpen(true)}
-                >
-                  <Banknote className="mr-2 h-4 w-4" />
-                  Mark as Paid Manually
-                </Button>
-              </div>
-            </>
+            <div className="space-y-3">
+              <p className="text-sm text-muted-foreground">
+                Mark this invoice as paid when you receive payment.
+              </p>
+              <Button
+                onClick={() => setMarkPaidDialogOpen(true)}
+              >
+                <Banknote className="mr-2 h-4 w-4" />
+                Mark as Paid
+              </Button>
+            </div>
           )}
         </div>
       </div>

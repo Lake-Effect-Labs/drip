@@ -4,13 +4,10 @@ import { PublicInvoiceView } from "@/components/public/public-invoice-view";
 
 export default async function PublicInvoicePage({
   params,
-  searchParams,
 }: {
   params: Promise<{ token: string }>;
-  searchParams: Promise<{ success?: string; canceled?: string }>;
 }) {
   const { token } = await params;
-  const search = await searchParams;
   const supabase = createAdminClient();
 
   // Fetch invoice by public token
@@ -51,11 +48,5 @@ export default async function PublicInvoicePage({
     company,
   } as any;
 
-  return (
-    <PublicInvoiceView
-      invoice={invoiceWithDetails}
-      success={search.success === "true"}
-      canceled={search.canceled === "true"}
-    />
-  );
+  return <PublicInvoiceView invoice={invoiceWithDetails} />;
 }

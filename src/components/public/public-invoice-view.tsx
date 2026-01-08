@@ -1,12 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import type { Invoice, Customer, Job, Company } from "@/types/database";
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Droplet, CheckCircle, MapPin, User, CreditCard, XCircle } from "lucide-react";
+import { Droplet, MapPin, User } from "lucide-react";
 
 type InvoiceWithDetails = Invoice & {
   customer: Customer;
@@ -16,87 +14,12 @@ type InvoiceWithDetails = Invoice & {
 
 interface PublicInvoiceViewProps {
   invoice: InvoiceWithDetails;
-  success?: boolean;
-  canceled?: boolean;
 }
 
-export function PublicInvoiceView({
-  invoice,
-  success,
-  canceled,
-}: PublicInvoiceViewProps) {
-  const [paying, setPaying] = useState(false);
-
+export function PublicInvoiceView({ invoice }: PublicInvoiceViewProps) {
   const address = [invoice.job.address1, invoice.job.city, invoice.job.state, invoice.job.zip]
     .filter(Boolean)
     .join(", ");
-
-  // If payment was successful, show success state
-  if (success || invoice.status === "paid") {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-stone-100 via-stone-50 to-white flex items-center justify-center p-4">
-        <Card className="w-full max-w-md text-center">
-          <CardContent className="pt-8 pb-8">
-            <div className="w-16 h-16 rounded-full bg-success/10 flex items-center justify-center mx-auto mb-4">
-              <CheckCircle className="w-8 h-8 text-success" />
-            </div>
-            <h1 className="text-2xl font-bold mb-2">Payment Complete!</h1>
-            <p className="text-muted-foreground mb-4">
-              Thank you for your payment. {invoice.company?.name} has been notified.
-            </p>
-            <div className="bg-muted rounded-lg p-4 text-left">
-              <div className="flex justify-between mb-2">
-                <span className="text-muted-foreground">Amount paid</span>
-                <span className="font-semibold">
-                  {formatCurrency(invoice.amount_total)}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Date</span>
-                <span>
-                  {formatDate(invoice.paid_at || new Date().toISOString())}
-                </span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // If payment was canceled
-  if (canceled) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-stone-100 via-stone-50 to-white flex items-center justify-center p-4">
-        <Card className="w-full max-w-md text-center">
-          <CardContent className="pt-8 pb-8">
-            <div className="w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center mx-auto mb-4">
-              <XCircle className="w-8 h-8 text-destructive" />
-            </div>
-            <h1 className="text-2xl font-bold mb-2">Payment Canceled</h1>
-            <p className="text-muted-foreground mb-6">
-              Your payment was not completed. You can try again below.
-            </p>
-            {invoice.stripe_checkout_url && (
-              <a href={invoice.stripe_checkout_url}>
-                <Button size="lg" className="w-full">
-                  <CreditCard className="mr-2 h-4 w-4" />
-                  Try Again
-                </Button>
-              </a>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  function handlePay() {
-    if (invoice.stripe_checkout_url) {
-      setPaying(true);
-      window.location.href = invoice.stripe_checkout_url;
-    }
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-stone-100 via-stone-50 to-white">
@@ -166,26 +89,19 @@ export function PublicInvoiceView({
           </CardContent>
         </Card>
 
-        {/* Pay Button */}
-        {invoice.stripe_checkout_url ? (
-          <div className="space-y-3">
-            <Button
-              size="lg"
-              className="w-full"
-              onClick={handlePay}
-              loading={paying}
-            >
-              <CreditCard className="mr-2 h-4 w-4" />
-              Pay {formatCurrency(invoice.amount_total)}
-            </Button>
-            <p className="text-xs text-center text-muted-foreground">
-              Secure payment powered by Stripe
-            </p>
-          </div>
-        ) : (
-          <div className="text-center text-muted-foreground">
-            <p>Payment link is being generated. Please refresh the page.</p>
-          </div>
+        {/* Payment Status */}
+        {invoice.status === "paid" && invoice.paid_at && (
+          <Card>
+            <CardContent className="py-6">
+              <div className="text-center">
+                <p className="text-sm text-muted-foreground mb-1">Payment Status</p>
+                <p className="text-lg font-semibold text-success">Paid</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Paid on {formatDate(invoice.paid_at)}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
         )}
       </main>
     </div>

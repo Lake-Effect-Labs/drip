@@ -207,7 +207,7 @@ export function JobDetailView({
       : "[amount]";
     const message = `Hey ${customerName} — thanks again for letting us work on your project! Here's your invoice for ${amount}: ${invoiceUrl}. Let us know if you have any questions!`;
     copyToClipboard(message);
-    addToast("Payment request message copied!", "success");
+    addToast("Invoice message copied!", "success");
   }
 
   return (
@@ -603,7 +603,7 @@ export function JobDetailView({
                   onClick={copyPaymentRequestMessage}
                 >
                   <Copy className="mr-2 h-4 w-4" />
-                  Copy payment request
+                  Copy invoice message
                 </Button>
               )}
               {estimates.length > 0 && estimates[0].public_token && (

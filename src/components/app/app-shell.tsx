@@ -8,14 +8,11 @@ import { cn, getInitials } from "@/lib/utils";
 import {
   Droplet,
   LayoutGrid,
-  Calendar,
-  Package,
   Settings,
   LogOut,
   Menu,
   X,
   ChevronDown,
-  Users,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -39,11 +36,10 @@ interface AppShellProps {
   };
 }
 
+// Drip-lite: Only Board and Settings visible
+// Calendar, Customers, Inventory hidden for simplicity
 const navItems = [
   { href: "/app/board", label: "Board", icon: LayoutGrid },
-  { href: "/app/calendar", label: "Calendar", icon: Calendar },
-  { href: "/app/customers", label: "Customers", icon: Users },
-  { href: "/app/inventory", label: "Inventory", icon: Package },
   { href: "/app/settings", label: "Settings", icon: Settings },
 ];
 
