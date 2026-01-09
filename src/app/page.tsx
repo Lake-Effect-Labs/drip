@@ -11,7 +11,7 @@ export default function HomePage() {
             <div className="w-8 h-8 rounded-lg bg-stone-800 flex items-center justify-center">
               <Droplet className="w-5 h-5 text-white" />
             </div>
-            <span className="text-xl font-bold tracking-tight">Drip</span>
+            <span className="text-xl font-bold tracking-tight">Matte</span>
           </div>
           <div className="flex items-center gap-3">
             <Link
@@ -128,10 +128,10 @@ export default function HomePage() {
             <div className="w-6 h-6 rounded-md bg-stone-800 flex items-center justify-center">
               <Droplet className="w-4 h-4 text-white" />
             </div>
-            <span className="font-semibold">Drip</span>
+            <span className="font-semibold">Matte</span>
           </div>
           <p className="text-sm text-stone-500">
-            © {new Date().getFullYear()} Drip. Built for painters.
+            © {new Date().getFullYear()} Matte. Built for painters.
           </p>
         </div>
       </footer>

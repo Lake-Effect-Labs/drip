@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -18,7 +18,6 @@ import {
 } from "@/lib/utils";
 import type { Job, Customer, Estimate, EstimateLineItem, Invoice, JobMaterial } from "@/types/database";
 import { JobHistoryTimeline } from "./job-history-timeline";
-import { JobTemplatesDialog } from "./job-templates-dialog";
 import { MessageTemplatesDialog } from "./message-templates-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,6 +27,7 @@ import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { SimpleCheckbox } from "@/components/ui/checkbox";
 import { useToast } from "@/components/ui/toast";
+import { DateTimePicker } from "@/components/ui/date-time-picker";
 import {
   Dialog,
   DialogContent,
@@ -50,6 +50,7 @@ import {
   Trash2,
   ExternalLink,
   X,
+  Pencil,
 } from "lucide-react";
 
 type JobWithCustomer = Job & { customer: Customer | null };
@@ -99,9 +100,43 @@ export function JobDetailView({
     setEstimatesList(estimates);
     setInvoicesList(invoices);
   }, [initialJob.id, initialMaterials.length, estimates.length, invoices.length]);
+
+  // Real-time subscription for estimate updates
+  useEffect(() => {
+    const channel = supabase
+      .channel(`job-${job.id}-estimates`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'estimates',
+          filter: `job_id=eq.${job.id}`,
+        },
+        (payload) => {
+          // Update the estimate in the list
+          setEstimatesList((prev) =>
+            prev.map((est) =>
+              est.id === payload.new.id ? { ...est, ...payload.new } : est
+            )
+          );
+          
+          // If estimate was accepted, update job status to quoted
+          if (payload.new.status === 'accepted' && job.status === 'new') {
+            setJob((prev) => ({ ...prev, status: 'quoted' }));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [job.id, job.status, supabase]);
   const [saving, setSaving] = useState(false);
   const [newMaterial, setNewMaterial] = useState("");
   const [showCommonMaterials, setShowCommonMaterials] = useState(false);
+  const notesTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // Inline add forms
   const [showAddEstimate, setShowAddEstimate] = useState(false);
@@ -110,12 +145,22 @@ export function JobDetailView({
   const [newInvoiceAmount, setNewInvoiceAmount] = useState("");
   const [addingEstimate, setAddingEstimate] = useState(false);
   const [addingInvoice, setAddingInvoice] = useState(false);
-  const [templatesOpen, setTemplatesOpen] = useState(false);
   const [messageTemplatesOpen, setMessageTemplatesOpen] = useState(false);
   const [selectedEstimate, setSelectedEstimate] = useState<EstimateWithLineItems | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [showMaterialForm, setShowMaterialForm] = useState(false);
-  const [materialFormData, setMaterialFormData] = useState({ name: "", quantity: "", color: "", notes: "" });
+  const [materialType, setMaterialType] = useState<"paint" | "generic">("generic");
+  const [materialFormData, setMaterialFormData] = useState({ 
+    name: "", 
+    brand: "",
+    color: "", 
+    sheen: "",
+    quantity: "",
+    productLine: "",
+    area: "",
+    notes: "",
+    showAdvanced: false
+  });
 
   // Form state
   const [scheduledDate, setScheduledDate] = useState(job.scheduled_date || "");
@@ -127,45 +172,75 @@ export function JobDetailView({
     .filter(Boolean)
     .join(", ");
 
-  async function handleSave() {
-    setSaving(true);
+  // Auto-save function
+  async function autoSave(fields: {
+    scheduled_date?: string | null;
+    scheduled_time?: string | null;
+    assigned_user_id?: string | null;
+    notes?: string | null;
+  }) {
     try {
-      // Determine new status based on scheduling
-      let newStatus = job.status;
-      if (scheduledDate && job.status === "quoted") {
-        newStatus = "scheduled";
-      }
-
       const { error } = await supabase
         .from("jobs")
         .update({
-          scheduled_date: scheduledDate || null,
-          scheduled_time: scheduledTime || null,
-          assigned_user_id: assignedUserId || null,
-          notes: notes || null,
-          status: newStatus,
+          ...fields,
           updated_at: new Date().toISOString(),
         })
         .eq("id", job.id);
 
-      if (error) throw error;
+      if (error) {
+        console.error("Auto-save error:", error);
+        return;
+      }
 
       setJob((prev) => ({
         ...prev,
-        scheduled_date: scheduledDate || null,
-        scheduled_time: scheduledTime || null,
-        assigned_user_id: assignedUserId || null,
-        notes: notes || null,
-        status: newStatus,
+        ...fields,
       }));
-
-      addToast("Job updated!", "success");
-    } catch {
-      addToast("Failed to save changes", "error");
-    } finally {
-      setSaving(false);
+    } catch (err) {
+      console.error("Auto-save error:", err);
     }
   }
+
+  // Auto-save handlers
+  async function handleDateChange(date: string) {
+    setScheduledDate(date);
+    await autoSave({ scheduled_date: date || null });
+  }
+
+  async function handleTimeChange(time: string) {
+    setScheduledTime(time);
+    await autoSave({ scheduled_time: time || null });
+  }
+
+  async function handleAssignedUserChange(userId: string) {
+    setAssignedUserId(userId);
+    await autoSave({ assigned_user_id: userId || null });
+  }
+
+  // Debounced notes save
+  async function handleNotesChange(newNotes: string) {
+    setNotes(newNotes);
+    
+    // Clear existing timeout
+    if (notesTimeoutRef.current) {
+      clearTimeout(notesTimeoutRef.current);
+    }
+    
+    // Set new timeout for auto-save
+    notesTimeoutRef.current = setTimeout(async () => {
+      await autoSave({ notes: newNotes || null });
+    }, 1000); // Save after 1 second of no typing
+  }
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (notesTimeoutRef.current) {
+        clearTimeout(notesTimeoutRef.current);
+      }
+    };
+  }, []);
 
   async function handleStatusChange(newStatus: JobStatus) {
     const { error } = await supabase
@@ -233,17 +308,36 @@ export function JobDetailView({
       return;
     }
 
-    // Check if material already exists
-    if (materials.some(m => m.name.toLowerCase() === name.toLowerCase())) {
-      addToast("Material already added", "error");
-      return;
+    // Validation for paint
+    if (materialType === "paint") {
+      if (!materialFormData.color.trim()) {
+        addToast("Please enter a color", "error");
+        return;
+      }
+      if (!materialFormData.sheen) {
+        addToast("Please select a sheen", "error");
+        return;
+      }
     }
 
-    // Build notes from quantity, color, and other notes
+    // Build notes based on material type
     const notesParts = [];
-    if (materialFormData.quantity) notesParts.push(`Qty: ${materialFormData.quantity}`);
-    if (materialFormData.color) notesParts.push(`Color: ${materialFormData.color}`);
-    if (materialFormData.notes) notesParts.push(materialFormData.notes);
+    
+    if (materialType === "paint") {
+      // Paint: Brand, Color, Sheen, Quantity, Product Line, Area, Notes
+      if (materialFormData.brand) notesParts.push(materialFormData.brand);
+      notesParts.push(materialFormData.color);
+      notesParts.push(materialFormData.sheen);
+      if (materialFormData.quantity) notesParts.push(materialFormData.quantity);
+      if (materialFormData.productLine) notesParts.push(`(${materialFormData.productLine})`);
+      if (materialFormData.area) notesParts.push(`- ${materialFormData.area}`);
+      if (materialFormData.notes) notesParts.push(`| ${materialFormData.notes}`);
+    } else {
+      // Generic: Quantity, Notes
+      if (materialFormData.quantity) notesParts.push(materialFormData.quantity);
+      if (materialFormData.notes) notesParts.push(materialFormData.notes);
+    }
+    
     const notes = notesParts.length > 0 ? notesParts.join(" • ") : null;
 
     try {
@@ -266,10 +360,20 @@ export function JobDetailView({
       }
 
       setMaterials((prev) => [...prev, data]);
-      setMaterialFormData({ name: "", quantity: "", color: "", notes: "" });
+      setMaterialFormData({ 
+        name: "", 
+        brand: "",
+        quantity: "", 
+        color: "", 
+        sheen: "",
+        productLine: "",
+        area: "",
+        notes: "",
+        showAdvanced: false
+      });
       setShowMaterialForm(false);
       setNewMaterial("");
-      addToast("Material added!", "success");
+      addToast(materialType === "paint" ? "Paint added!" : "Material added!", "success");
     } catch (error: any) {
       console.error("Error adding material:", error);
       const errorMessage = error?.message || error?.details || error?.hint || JSON.stringify(error) || "Failed to add material";
@@ -461,6 +565,16 @@ export function JobDetailView({
     setMaterials((prev) => prev.filter((m) => m.id !== materialId));
   }
 
+  function copyScheduleConfirmationMessage() {
+    const customerName = job.customer?.name || "there";
+    const dateStr = scheduledDate ? formatDate(scheduledDate) : "[date]";
+    const timeStr = scheduledTime ? formatTime(scheduledTime) : "[time]";
+    const confirmUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/s/${job.id}`;
+    const message = `Hey ${customerName} — we'd like to schedule your project for ${dateStr} at ${timeStr}. Please confirm this works for you: ${confirmUrl}`;
+    copyToClipboard(message);
+    addToast("Schedule confirmation message copied!", "success");
+  }
+
   function copyReminderMessage() {
     const customerName = job.customer?.name || "there";
     const dateStr = scheduledDate ? formatDate(scheduledDate) : "[date]";
@@ -470,9 +584,48 @@ export function JobDetailView({
     addToast("Reminder message copied!", "success");
   }
 
+  function copyMaterialsList() {
+    if (materials.length === 0) {
+      addToast("No materials to copy", "error");
+      return;
+    }
+
+    const jobTitle = job.title;
+    const customerName = job.customer?.name || "Customer";
+    
+    let message = `Materials needed for ${jobTitle} (${customerName}):\n\n`;
+    
+    materials.forEach((material, index) => {
+      message += `${index + 1}. ${material.name}`;
+      if (material.notes) {
+        message += ` - ${material.notes}`;
+      }
+      message += `\n`;
+    });
+    
+    message += `\nTotal items: ${materials.length}`;
+    
+    copyToClipboard(message);
+    addToast("Materials list copied!", "success");
+  }
+
+  function copyEstimateMessage() {
+    const customerName = job.customer?.name || "there";
+    const latestEstimate = estimatesList[0];
+    const estimateUrl = latestEstimate
+      ? `${typeof window !== "undefined" ? window.location.origin : ""}/e/${latestEstimate.public_token}`
+      : "[estimate link]";
+    const total = latestEstimate
+      ? formatCurrency(latestEstimate.line_items.reduce((sum, li) => sum + li.price, 0))
+      : "[amount]";
+    const message = `Hey ${customerName} — here's your estimate for ${total}: ${estimateUrl}. Let me know if you have any questions!`;
+    copyToClipboard(message);
+    addToast("Estimate message copied!", "success");
+  }
+
   function copyPaymentRequestMessage() {
     const customerName = job.customer?.name || "there";
-    const latestInvoice = invoices[0];
+    const latestInvoice = invoicesList[0];
     const invoiceUrl = latestInvoice
       ? `${typeof window !== "undefined" ? window.location.origin : ""}/i/${latestInvoice.public_token}`
       : "[invoice link]";
@@ -563,89 +716,78 @@ export function JobDetailView({
             {/* All sections in one view */}
             <div className="space-y-6">
                 <div className="rounded-lg border bg-card p-4 space-y-4">
-                  <h3 className="font-semibold">Scheduling</h3>
-                  <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold">Scheduling</h3>
+                    {scheduledDate && scheduledTime && (
+                      <Badge variant="secondary" className="text-xs">
+                        <Clock className="mr-1 h-3 w-3" />
+                        {formatDate(scheduledDate)} at {formatTime(scheduledTime)}
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="space-y-4">
+                    <DateTimePicker
+                      date={scheduledDate || null}
+                      time={scheduledTime || null}
+                      onDateChange={handleDateChange}
+                      onTimeChange={handleTimeChange}
+                      label="When is this job scheduled?"
+                    />
                     <div className="space-y-2">
-                      <Label htmlFor="scheduledDate">Date</Label>
-                      <Input
-                        id="scheduledDate"
-                        type="date"
-                        value={scheduledDate}
-                        onChange={(e) => setScheduledDate(e.target.value)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="scheduledTime">Start Time</Label>
-                      <Input
-                        id="scheduledTime"
-                        type="time"
-                        value={scheduledTime}
-                        onChange={(e) => setScheduledTime(e.target.value)}
-                      />
+                      <Label htmlFor="assignedUser" className="text-sm font-medium">
+                        Who's working on this?
+                      </Label>
+                      <div className="relative">
+                        <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                        <Select
+                          id="assignedUser"
+                          value={assignedUserId}
+                          onChange={(e) => handleAssignedUserChange(e.target.value)}
+                          className="pl-10 min-h-[44px]"
+                        >
+                          <option value="">Unassigned</option>
+                          {teamMembers.map((member) => (
+                            <option key={member.id} value={member.id}>
+                              {member.fullName}
+                            </option>
+                          ))}
+                        </Select>
+                      </div>
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="assignedUser">Assigned To</Label>
-                    <Select
-                      id="assignedUser"
-                      value={assignedUserId}
-                      onChange={(e) => setAssignedUserId(e.target.value)}
-                    >
-                      <option value="">Unassigned</option>
-                      {teamMembers.map((member) => (
-                        <option key={member.id} value={member.id}>
-                          {member.fullName}
-                        </option>
-                      ))}
-                    </Select>
-                  </div>
-                  {scheduledDate && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={copyReminderMessage}
-                      className="touch-target min-h-[44px]"
-                    >
-                      <Copy className="mr-2 h-4 w-4" />
-                      Copy reminder message
-                    </Button>
-                  )}
                 </div>
 
                 <div className="rounded-lg border bg-card p-4 space-y-4">
                   <h3 className="font-semibold">Notes</h3>
                   <Textarea
                     value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
+                    onChange={(e) => handleNotesChange(e.target.value)}
                     placeholder="Add notes about this job..."
                     rows={4}
                   />
                 </div>
 
-                {/* Job History Timeline */}
-                {jobHistory.length > 0 && (
-                  <div className="rounded-lg border bg-card p-4 space-y-4">
-                    <h3 className="font-semibold">History</h3>
-                    <JobHistoryTimeline history={jobHistory} />
-                  </div>
-                )}
-
-                <Button onClick={handleSave} loading={saving} className="w-full sm:w-auto touch-target min-h-[44px]">
-                  Save Changes
-                </Button>
-
               {/* Estimates Section */}
               <div className="rounded-lg border bg-card p-4 space-y-4">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                  <h3 className="font-semibold">Estimates ({estimatesList.length})</h3>
-                  {!showAddEstimate ? (
+                  <h3 className="font-semibold">Estimate</h3>
+                  {estimatesList.length === 0 && !showAddEstimate ? (
                     <Button 
                       size="sm" 
                       className="w-full sm:w-auto touch-target min-h-[44px]"
                       onClick={() => setShowAddEstimate(true)}
                     >
                       <Plus className="mr-2 h-4 w-4" />
-                      Add Estimate
+                      Create Estimate
+                    </Button>
+                  ) : estimatesList.length > 0 ? (
+                    <Button 
+                      size="sm"
+                      variant="outline"
+                      className="w-full sm:w-auto touch-target min-h-[44px]"
+                      onClick={() => setSelectedEstimate(estimatesList[0])}
+                    >
+                      View Details
                     </Button>
                   ) : null}
                 </div>
@@ -723,11 +865,11 @@ export function JobDetailView({
                 {estimatesList.length === 0 ? (
                   <div className="p-8 text-center text-muted-foreground">
                     <FileText className="mx-auto h-8 w-8 mb-2" />
-                    <p>No estimates yet</p>
+                    <p>No estimate yet</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {estimatesList.map((estimate) => {
+                    {estimatesList.slice(0, 1).map((estimate) => {
                       const total = estimate.line_items.reduce((sum, li) => sum + li.price, 0);
                       return (
                         <button
@@ -766,8 +908,8 @@ export function JobDetailView({
               {/* Invoices Section */}
               <div className="rounded-lg border bg-card p-4 space-y-4">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                  <h3 className="font-semibold">Invoices ({invoicesList.length})</h3>
-                  {!showAddInvoice ? (
+                  <h3 className="font-semibold">Invoice</h3>
+                  {invoicesList.length === 0 && !showAddInvoice ? (
                     <div className="flex gap-2 w-full sm:w-auto">
                       {estimatesList.some(e => e.status === "accepted") && (
                         <Button 
@@ -786,9 +928,18 @@ export function JobDetailView({
                         onClick={() => setShowAddInvoice(true)}
                       >
                         <Plus className="mr-2 h-4 w-4" />
-                        Add Invoice
+                        Create Invoice
                       </Button>
                     </div>
+                  ) : invoicesList.length > 0 ? (
+                    <Button 
+                      size="sm"
+                      variant="outline"
+                      className="w-full sm:w-auto touch-target min-h-[44px]"
+                      onClick={() => setSelectedInvoice(invoicesList[0])}
+                    >
+                      View Details
+                    </Button>
                   ) : null}
                 </div>
 
@@ -838,11 +989,11 @@ export function JobDetailView({
                 {invoicesList.length === 0 ? (
                   <div className="p-8 text-center text-muted-foreground">
                     <Receipt className="mx-auto h-8 w-8 mb-2" />
-                    <p>No invoices yet</p>
+                    <p>No invoice yet</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {invoicesList.map((invoice) => (
+                    {invoicesList.slice(0, 1).map((invoice) => (
                       <button
                         key={invoice.id}
                         onClick={() => setSelectedInvoice(invoice)}
@@ -877,13 +1028,173 @@ export function JobDetailView({
 
               {/* Materials Section */}
               <div className="rounded-lg border bg-card p-4 space-y-4">
-                <h3 className="font-semibold">Materials Checklist ({materials.length})</h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold">Materials Checklist ({materials.length})</h3>
+                  {materials.length > 0 && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={copyMaterialsList}
+                      className="touch-target min-h-[44px]"
+                    >
+                      <Copy className="mr-2 h-4 w-4" />
+                      Copy List
+                    </Button>
+                  )}
+                </div>
 
+                {/* Smart Presets - Quick Add */}
+                <div className="space-y-2">
+                  <Label className="text-sm text-muted-foreground">Quick Add</Label>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setMaterialType("paint");
+                        setMaterialFormData({
+                          name: "Interior Wall Paint",
+                          brand: "",
+                          color: "",
+                          sheen: "Eggshell",
+                          quantity: "",
+                          productLine: "",
+                          area: "Walls",
+                          notes: "",
+                          showAdvanced: false
+                        });
+                        setShowMaterialForm(true);
+                      }}
+                      className="touch-target min-h-[44px] justify-start"
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Wall Paint
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setMaterialType("paint");
+                        setMaterialFormData({
+                          name: "Ceiling Paint",
+                          brand: "",
+                          color: "",
+                          sheen: "Flat",
+                          quantity: "",
+                          productLine: "",
+                          area: "Ceiling",
+                          notes: "",
+                          showAdvanced: false
+                        });
+                        setShowMaterialForm(true);
+                      }}
+                      className="touch-target min-h-[44px] justify-start"
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Ceiling Paint
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setMaterialType("paint");
+                        setMaterialFormData({
+                          name: "Trim Paint",
+                          brand: "",
+                          color: "",
+                          sheen: "Semi-Gloss",
+                          quantity: "",
+                          productLine: "",
+                          area: "Trim",
+                          notes: "",
+                          showAdvanced: false
+                        });
+                        setShowMaterialForm(true);
+                      }}
+                      className="touch-target min-h-[44px] justify-start"
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Trim Paint
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setMaterialType("generic");
+                        setMaterialFormData({
+                          name: "Roller Set",
+                          brand: "",
+                          color: "",
+                          sheen: "",
+                          quantity: "1 set",
+                          productLine: "",
+                          area: "",
+                          notes: "",
+                          showAdvanced: false
+                        });
+                        setShowMaterialForm(true);
+                      }}
+                      className="touch-target min-h-[44px] justify-start"
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Roller Set
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setMaterialType("generic");
+                        setMaterialFormData({
+                          name: "Prep Kit",
+                          brand: "",
+                          color: "",
+                          sheen: "",
+                          quantity: "1 kit",
+                          productLine: "",
+                          area: "",
+                          notes: "Tape, spackle, sandpaper",
+                          showAdvanced: false
+                        });
+                        setShowMaterialForm(true);
+                      }}
+                      className="touch-target min-h-[44px] justify-start"
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Prep Kit
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setMaterialType("generic");
+                        setMaterialFormData({
+                          name: "",
+                          brand: "",
+                          color: "",
+                          sheen: "",
+                          quantity: "",
+                          productLine: "",
+                          area: "",
+                          notes: "",
+                          showAdvanced: false
+                        });
+                        setShowMaterialForm(true);
+                      }}
+                      className="touch-target min-h-[44px] justify-start"
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Custom
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Materials List */}
                 <div className="rounded-lg border bg-muted/30 divide-y">
                   {materials.length === 0 ? (
                     <div className="p-8 text-center text-muted-foreground">
                       <Package className="mx-auto h-8 w-8 mb-2" />
-                      <p>No materials added</p>
+                      <p className="text-sm">No materials yet</p>
+                      <p className="text-xs mt-1">Use Quick Add buttons above</p>
                     </div>
                   ) : (
                     materials.map((material) => (
@@ -900,6 +1211,7 @@ export function JobDetailView({
                         <div className="flex-1">
                           <span
                             className={cn(
+                              "font-medium",
                               material.checked && "line-through text-muted-foreground"
                             )}
                           >
@@ -921,77 +1233,15 @@ export function JobDetailView({
                     ))
                   )}
                 </div>
-
-                {/* Common materials quick add */}
-                {showCommonMaterials && (
-                  <div className="rounded-lg border bg-muted/30 p-3 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label className="text-sm">Quick Add</Label>
-                      <button
-                        onClick={() => setShowCommonMaterials(false)}
-                        className="text-muted-foreground hover:text-foreground"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {COMMON_MATERIALS.filter(
-                        material => !materials.some(m => m.name.toLowerCase() === material.toLowerCase())
-                      ).map((material) => (
-                        <Button
-                          key={material}
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleAddMaterial(material)}
-                          className="touch-target min-h-[36px] text-xs"
-                        >
-                          <Plus className="mr-1 h-3 w-3" />
-                          {material}
-                        </Button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Add material */}
-                <div className="flex gap-2">
-                  <Input
-                    placeholder="Add material..."
-                    value={newMaterial}
-                    onChange={(e) => setNewMaterial(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        if (newMaterial.trim()) {
-                          setMaterialFormData({ ...materialFormData, name: newMaterial });
-                          setShowMaterialForm(true);
-                        }
-                      }
-                    }}
-                    className="min-h-[44px]"
-                  />
-                  <Button 
-                    onClick={() => setShowCommonMaterials(!showCommonMaterials)}
-                    variant="outline"
-                    className="touch-target min-h-[44px]"
-                    title="Quick add common materials"
-                  >
-                    <Package className="h-4 w-4" />
-                  </Button>
-                  <Button 
-                    onClick={() => {
-                      if (newMaterial.trim()) {
-                        setMaterialFormData({ ...materialFormData, name: newMaterial });
-                        setShowMaterialForm(true);
-                      }
-                    }}
-                    disabled={!newMaterial.trim()}
-                    className="touch-target min-h-[44px] min-w-[44px]"
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
               </div>
+
+              {/* Job History Timeline */}
+              {jobHistory.length > 0 && (
+                <div className="rounded-lg border bg-card p-4 space-y-4">
+                  <h3 className="font-semibold">History</h3>
+                  <JobHistoryTimeline history={jobHistory} />
+                </div>
+              )}
             </div>
           </div>
 
@@ -1067,7 +1317,18 @@ export function JobDetailView({
                   Templates
                 </Button>
               </div>
-              {scheduledDate && (
+              {scheduledDate && scheduledTime && job.status === "quoted" && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-start touch-target min-h-[44px]"
+                  onClick={copyScheduleConfirmationMessage}
+                >
+                  <Copy className="mr-2 h-4 w-4" />
+                  Copy schedule confirmation
+                </Button>
+              )}
+              {scheduledDate && scheduledTime && job.status === "scheduled" && (
                 <Button
                   variant="outline"
                   size="sm"
@@ -1094,45 +1355,30 @@ export function JobDetailView({
                   variant="outline"
                   size="sm"
                   className="w-full justify-start touch-target min-h-[44px]"
-                  onClick={() => {
-                    const url = `${window.location.origin}/e/${estimatesList[0].public_token}`;
-                    copyToClipboard(url);
-                    addToast("Estimate link copied!", "success");
-                  }}
+                  onClick={copyEstimateMessage}
                 >
                   <Copy className="mr-2 h-4 w-4" />
-                  Copy estimate link
+                  Copy estimate message
+                </Button>
+              )}
+              {materials.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-start touch-target min-h-[44px]"
+                  onClick={copyMaterialsList}
+                >
+                  <Copy className="mr-2 h-4 w-4" />
+                  Copy materials list
                 </Button>
               )}
             </div>
 
-            {/* Save as Template */}
-            <div className="rounded-lg border bg-card p-4">
-              <Button
-                variant="outline"
-                className="w-full touch-target min-h-[44px]"
-                onClick={() => setTemplatesOpen(true)}
-              >
-                <FileText className="mr-2 h-4 w-4" />
-                Save as Template
-              </Button>
-            </div>
           </div>
         </div>
       </div>
 
-      {/* Templates Dialogs */}
-      <JobTemplatesDialog
-        open={templatesOpen}
-        onOpenChange={setTemplatesOpen}
-        companyId={companyId}
-        job={{
-          ...job,
-          materials: materials.map((m) => ({ name: m.name })),
-        }}
-        onSelectTemplate={() => {}}
-      />
-
+      {/* Message Templates Dialog */}
       <MessageTemplatesDialog
         open={messageTemplatesOpen}
         onOpenChange={setMessageTemplatesOpen}
@@ -1240,67 +1486,201 @@ export function JobDetailView({
 
       {/* Material Form Dialog */}
       <Dialog open={showMaterialForm} onOpenChange={setShowMaterialForm}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Add Material</DialogTitle>
+            <DialogTitle>{materialType === "paint" ? "Add Paint" : "Add Material"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="materialName">Material Name *</Label>
-              <Input
-                id="materialName"
-                value={materialFormData.name}
-                onChange={(e) => setMaterialFormData({ ...materialFormData, name: e.target.value })}
-                placeholder="e.g., Paint, Brushes"
-                className="min-h-[44px]"
-                autoFocus
-              />
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="materialQuantity">Quantity</Label>
-                <Input
-                  id="materialQuantity"
-                  value={materialFormData.quantity}
-                  onChange={(e) => setMaterialFormData({ ...materialFormData, quantity: e.target.value })}
-                  placeholder="e.g., 5 gallons"
-                  className="min-h-[44px]"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="materialColor">Color</Label>
-                <Input
-                  id="materialColor"
-                  value={materialFormData.color}
-                  onChange={(e) => setMaterialFormData({ ...materialFormData, color: e.target.value })}
-                  placeholder="e.g., SW 7029"
-                  className="min-h-[44px]"
-                />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="materialNotes">Additional Notes</Label>
-              <Textarea
-                id="materialNotes"
-                value={materialFormData.notes}
-                onChange={(e) => setMaterialFormData({ ...materialFormData, notes: e.target.value })}
-                placeholder="Any other details..."
-                rows={3}
-              />
-            </div>
+            {materialType === "paint" ? (
+              /* Paint Form */
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="paintName">Paint Type *</Label>
+                  <Input
+                    id="paintName"
+                    value={materialFormData.name}
+                    onChange={(e) => setMaterialFormData({ ...materialFormData, name: e.target.value })}
+                    placeholder="e.g., Interior Wall Paint"
+                    className="min-h-[44px]"
+                    autoFocus
+                  />
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="paintBrand">Brand (Optional)</Label>
+                    <Select
+                      id="paintBrand"
+                      value={materialFormData.brand}
+                      onChange={(e) => setMaterialFormData({ ...materialFormData, brand: e.target.value })}
+                      className="min-h-[44px]"
+                    >
+                      <option value="">Select brand...</option>
+                      <option value="Sherwin-Williams">Sherwin-Williams</option>
+                      <option value="Benjamin Moore">Benjamin Moore</option>
+                      <option value="Behr">Behr</option>
+                      <option value="PPG">PPG</option>
+                      <option value="Other">Other</option>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="paintColor">Color *</Label>
+                    <Input
+                      id="paintColor"
+                      value={materialFormData.color}
+                      onChange={(e) => setMaterialFormData({ ...materialFormData, color: e.target.value })}
+                      placeholder="e.g., SW 7008 Alabaster"
+                      className="min-h-[44px]"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="paintSheen">Sheen *</Label>
+                    <Select
+                      id="paintSheen"
+                      value={materialFormData.sheen}
+                      onChange={(e) => setMaterialFormData({ ...materialFormData, sheen: e.target.value })}
+                      className="min-h-[44px]"
+                    >
+                      <option value="">Select sheen...</option>
+                      <option value="Flat">Flat</option>
+                      <option value="Matte">Matte</option>
+                      <option value="Eggshell">Eggshell</option>
+                      <option value="Satin">Satin</option>
+                      <option value="Semi-Gloss">Semi-Gloss</option>
+                      <option value="Gloss">Gloss</option>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="paintQuantity">Quantity</Label>
+                    <Input
+                      id="paintQuantity"
+                      value={materialFormData.quantity}
+                      onChange={(e) => setMaterialFormData({ ...materialFormData, quantity: e.target.value })}
+                      placeholder="e.g., 3 gal, 1 quart"
+                      className="min-h-[44px]"
+                    />
+                  </div>
+                </div>
+
+                {/* Advanced Options */}
+                <button
+                  type="button"
+                  onClick={() => setMaterialFormData({ ...materialFormData, showAdvanced: !materialFormData.showAdvanced })}
+                  className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
+                >
+                  {materialFormData.showAdvanced ? "Hide" : "Show"} advanced options
+                </button>
+
+                {materialFormData.showAdvanced && (
+                  <div className="rounded-lg border bg-muted/30 p-4 space-y-4">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="paintProductLine">Product Line</Label>
+                        <Input
+                          id="paintProductLine"
+                          value={materialFormData.productLine}
+                          onChange={(e) => setMaterialFormData({ ...materialFormData, productLine: e.target.value })}
+                          placeholder="e.g., Duration, Emerald"
+                          className="min-h-[44px]"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="paintArea">Area / Use</Label>
+                        <Select
+                          id="paintArea"
+                          value={materialFormData.area}
+                          onChange={(e) => setMaterialFormData({ ...materialFormData, area: e.target.value })}
+                          className="min-h-[44px]"
+                        >
+                          <option value="">Select area...</option>
+                          <option value="Walls">Walls</option>
+                          <option value="Ceiling">Ceiling</option>
+                          <option value="Trim">Trim</option>
+                          <option value="Doors">Doors</option>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="paintNotes">Notes</Label>
+                      <Textarea
+                        id="paintNotes"
+                        value={materialFormData.notes}
+                        onChange={(e) => setMaterialFormData({ ...materialFormData, notes: e.target.value })}
+                        placeholder="e.g., Back wall only, Second coat needed"
+                        rows={2}
+                      />
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              /* Generic Material Form */
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="materialName">Material Name *</Label>
+                  <Input
+                    id="materialName"
+                    value={materialFormData.name}
+                    onChange={(e) => setMaterialFormData({ ...materialFormData, name: e.target.value })}
+                    placeholder="e.g., Roller Set, Tape, Drop Cloth"
+                    className="min-h-[44px]"
+                    autoFocus
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="materialQuantity">Quantity</Label>
+                  <Input
+                    id="materialQuantity"
+                    value={materialFormData.quantity}
+                    onChange={(e) => setMaterialFormData({ ...materialFormData, quantity: e.target.value })}
+                    placeholder="e.g., 2 rolls, 1 set, 3 brushes"
+                    className="min-h-[44px]"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="materialNotes">Notes (Optional)</Label>
+                  <Textarea
+                    id="materialNotes"
+                    value={materialFormData.notes}
+                    onChange={(e) => setMaterialFormData({ ...materialFormData, notes: e.target.value })}
+                    placeholder="Any additional details..."
+                    rows={2}
+                  />
+                </div>
+              </>
+            )}
+
             <div className="flex justify-end gap-3 pt-4">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => {
                   setShowMaterialForm(false);
-                  setMaterialFormData({ name: "", quantity: "", color: "", notes: "" });
+                  setMaterialFormData({ 
+                    name: "", 
+                    brand: "",
+                    quantity: "", 
+                    color: "", 
+                    sheen: "",
+                    productLine: "",
+                    area: "",
+                    notes: "",
+                    showAdvanced: false
+                  });
                 }}
               >
                 Cancel
               </Button>
-              <Button onClick={handleSubmitMaterialForm} disabled={!materialFormData.name.trim()}>
-                Add Material
+              <Button 
+                onClick={handleSubmitMaterialForm} 
+                disabled={!materialFormData.name.trim() || (materialType === "paint" && (!materialFormData.color.trim() || !materialFormData.sheen))}
+              >
+                Add {materialType === "paint" ? "Paint" : "Material"}
               </Button>
             </div>
           </div>

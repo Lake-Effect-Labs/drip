@@ -13,7 +13,7 @@ export default function AuthLayout({
           <div className="w-8 h-8 rounded-lg bg-stone-800 flex items-center justify-center">
             <Droplet className="w-5 h-5 text-white" />
           </div>
-          <span className="text-xl font-bold tracking-tight">Drip</span>
+          <span className="text-xl font-bold tracking-tight">Matte</span>
         </Link>
       </header>
       <main className="flex-1 flex items-center justify-center p-4">

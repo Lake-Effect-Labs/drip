@@ -34,6 +34,8 @@ import {
   Trash2,
   Plus,
   Check,
+  LogOut,
+  CreditCard,
 } from "lucide-react";
 
 interface SettingsViewProps {
@@ -482,9 +484,9 @@ export function SettingsView({
               <Calculator className="mr-1.5 h-4 w-4" />
               Estimating
             </TabsTrigger>
-            <TabsTrigger value="users">
+            <TabsTrigger value="crew">
               <Users className="mr-1.5 h-4 w-4" />
-              Users
+              Crew
             </TabsTrigger>
             <TabsTrigger value="locations">
               <MapPin className="mr-1.5 h-4 w-4" />
@@ -494,6 +496,16 @@ export function SettingsView({
               <Download className="mr-1.5 h-4 w-4" />
               Exports
             </TabsTrigger>
+            <TabsTrigger value="account">
+              <Users className="mr-1.5 h-4 w-4" />
+              Account
+            </TabsTrigger>
+            {isOwner && (
+              <TabsTrigger value="billing">
+                <CreditCard className="mr-1.5 h-4 w-4" />
+                Billing
+              </TabsTrigger>
+            )}
           </TabsList>
 
           {/* Company Tab */}
@@ -592,21 +604,78 @@ export function SettingsView({
               </div>
             </div>
 
+            <div className="rounded-lg border bg-card p-4 space-y-4">
+              <h3 className="font-semibold">Material Defaults</h3>
+              <p className="text-sm text-muted-foreground">
+                Set your preferred paint brands and suppliers for quick reference.
+              </p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="preferredBrand">Preferred Paint Brand</Label>
+                  <Input
+                    id="preferredBrand"
+                    placeholder="e.g., Sherwin-Williams"
+                    defaultValue="Sherwin-Williams"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="preferredLine">Preferred Product Line</Label>
+                  <Input
+                    id="preferredLine"
+                    placeholder="e.g., Duration, Emerald"
+                    defaultValue="Duration"
+                  />
+                </div>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="space-y-2">
+                  <Label htmlFor="defaultWallSheen">Default Wall Sheen</Label>
+                  <Input
+                    id="defaultWallSheen"
+                    placeholder="e.g., Eggshell"
+                    defaultValue="Eggshell"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="defaultCeilingSheen">Default Ceiling Sheen</Label>
+                  <Input
+                    id="defaultCeilingSheen"
+                    placeholder="e.g., Flat"
+                    defaultValue="Flat"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="defaultTrimSheen">Default Trim Sheen</Label>
+                  <Input
+                    id="defaultTrimSheen"
+                    placeholder="e.g., Semi-Gloss"
+                    defaultValue="Semi-Gloss"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                These defaults will be suggested when adding materials to jobs. You can always change them per job.
+              </p>
+            </div>
+
             <Button onClick={handleSaveConfig} loading={savingConfig}>
-              Save Estimating Rates
+              Save Settings
             </Button>
           </TabsContent>
 
-          {/* Users Tab */}
-          <TabsContent value="users" className="mt-6 space-y-6">
+          {/* Crew Tab */}
+          <TabsContent value="crew" className="mt-6 space-y-6">
             <div className="rounded-lg border bg-card p-4 space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="font-semibold">Team Members</h3>
+                <h3 className="font-semibold">Crew Members</h3>
                 <Button size="sm" onClick={handleCreateInviteLink}>
                   <Plus className="mr-2 h-4 w-4" />
-                  Create Invite Link
+                  Invite Crew Member
                 </Button>
               </div>
+              <p className="text-sm text-muted-foreground">
+                Invite your crew to access jobs, estimates, and customer info. Everyone sees the same data.
+              </p>
 
               <div className="divide-y">
                 {initialMembers.map((member) => (
@@ -774,6 +843,85 @@ export function SettingsView({
               </div>
             </div>
           </TabsContent>
+
+          {/* Account Tab */}
+          <TabsContent value="account" className="mt-6 space-y-6">
+            <div className="rounded-lg border bg-card p-4 space-y-4">
+              <h3 className="font-semibold">Account</h3>
+              <div className="space-y-3">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-1">Email</p>
+                  <p className="font-medium">{currentUserId}</p>
+                </div>
+                <Button
+                  variant="destructive"
+                  onClick={async () => {
+                    await supabase.auth.signOut();
+                    router.push("/login");
+                    router.refresh();
+                  }}
+                  className="w-full sm:w-auto"
+                >
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Sign Out
+                </Button>
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* Billing Tab - Owner Only */}
+          {isOwner && (
+            <TabsContent value="billing" className="mt-6 space-y-6">
+              <div className="rounded-lg border bg-card p-6 space-y-6">
+                <div>
+                  <h3 className="font-semibold text-lg mb-2">Billing & Subscription</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Manage your subscription and billing information
+                  </p>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="rounded-lg border bg-muted/50 p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-medium">Current Plan</h4>
+                      <span className="text-sm font-semibold text-primary">Free Trial</span>
+                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      You&apos;re currently on the free trial. Upgrade to unlock all features.
+                    </p>
+                  </div>
+
+                  <div className="space-y-3">
+                    <h4 className="font-medium">Payment Method</h4>
+                    <div className="rounded-lg border p-4">
+                      <p className="text-sm text-muted-foreground mb-3">
+                        No payment method on file
+                      </p>
+                      <Button variant="outline" disabled>
+                        <CreditCard className="mr-2 h-4 w-4" />
+                        Add Payment Method
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <h4 className="font-medium">Billing History</h4>
+                    <div className="rounded-lg border p-4">
+                      <p className="text-sm text-muted-foreground text-center py-4">
+                        No billing history available
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 border-t">
+                    <Button variant="outline" disabled className="w-full sm:w-auto">
+                      Upgrade Plan
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </TabsContent>
+          )}
         </Tabs>
       </div>
 

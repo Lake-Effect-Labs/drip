@@ -6,19 +6,9 @@ export async function POST(
   { params }: { params: Promise<{ token: string }> }
 ) {
   const { token } = await params;
-  const supabase = await createClient();
   const adminSupabase = createAdminClient();
 
   try {
-    // Verify the requester is authenticated
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
     const body = await request.json();
     const { user_id, email, full_name } = body;
 
@@ -29,12 +19,13 @@ export async function POST(
       );
     }
 
-    // Security: Verify the authenticated user matches the user_id being added
-    // This prevents an attacker from using a valid token to add arbitrary users
-    if (user.id !== user_id) {
+    // Verify the user exists in auth
+    const { data: authUser, error: authError } = await adminSupabase.auth.admin.getUserById(user_id);
+    
+    if (authError || !authUser) {
       return NextResponse.json(
-        { error: "Forbidden - cannot join on behalf of another user" },
-        { status: 403 }
+        { error: "Invalid user" },
+        { status: 400 }
       );
     }
 

@@ -124,7 +124,7 @@ export default function SignupPage() {
     <Card className="w-full max-w-md">
       <CardHeader className="text-center">
         <CardTitle className="text-2xl">Create your account</CardTitle>
-        <CardDescription>Start your free trial of Drip</CardDescription>
+        <CardDescription>Start your free trial of Matte</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">

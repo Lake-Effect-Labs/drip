@@ -15,8 +15,6 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
-import { JobTemplatesDialog } from "@/components/app/jobs/job-templates-dialog";
-import { FileText } from "lucide-react";
 import type { Job, Customer } from "@/types/database";
 
 type JobWithCustomer = Job & { customer: Customer | null };
@@ -56,8 +54,7 @@ export function NewJobDialog({
   const [zip, setZip] = useState("");
   const [notes, setNotes] = useState("");
   const [assignedUserId, setAssignedUserId] = useState("");
-  const [templatesOpen, setTemplatesOpen] = useState(false);
-  const { addToast } = useToast();
+  const { addToast} = useToast();
   const supabase = createClient();
 
   function resetForm() {
@@ -154,17 +151,6 @@ export function NewJobDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 mt-4">
-          {/* Templates */}
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setTemplatesOpen(true)}
-            className="w-full"
-          >
-            <FileText className="mr-2 h-4 w-4" />
-            Use Template
-          </Button>
-
           {/* Job Title */}
           <div className="space-y-2">
             <Label htmlFor="title">Job Title *</Label>
@@ -314,18 +300,6 @@ export function NewJobDialog({
             </Button>
           </div>
         </form>
-
-        <JobTemplatesDialog
-          open={templatesOpen}
-          onOpenChange={setTemplatesOpen}
-          companyId={companyId}
-          onSelectTemplate={(template) => {
-            setTitle(template.name);
-            setNotes(template.default_notes || "");
-            // Materials would be added after job creation
-            addToast("Template applied!", "success");
-          }}
-        />
       </DialogContent>
     </Dialog>
   );

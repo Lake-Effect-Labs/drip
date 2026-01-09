@@ -31,6 +31,10 @@ import {
   FileText,
   Pencil,
   Trash2,
+  Clock,
+  DollarSign,
+  CheckCircle,
+  Calendar,
 } from "lucide-react";
 
 interface CustomerDetailViewProps {
@@ -71,6 +75,29 @@ export function CustomerDetailView({
   const totalPaid = invoices
     .filter((inv) => inv.status === "paid")
     .reduce((sum, inv) => sum + inv.amount_total, 0);
+
+  const totalInvoiced = invoices.reduce((sum, inv) => sum + inv.amount_total, 0);
+  const pendingAmount = invoices
+    .filter((inv) => inv.status !== "paid")
+    .reduce((sum, inv) => sum + inv.amount_total, 0);
+
+  // Create a combined timeline of jobs and invoices
+  const timeline = [
+    ...jobs.map((job) => ({
+      type: "job" as const,
+      date: job.created_at,
+      title: job.title,
+      status: job.status,
+      id: job.id,
+    })),
+    ...invoices.map((inv) => ({
+      type: "invoice" as const,
+      date: inv.created_at,
+      title: `Invoice - ${formatCurrency(inv.amount_total)}`,
+      status: inv.status,
+      id: inv.id,
+    })),
+  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   async function handleSave() {
     if (!name.trim()) {
@@ -276,8 +303,12 @@ export function CustomerDetailView({
               </div>
             ) : (
               /* Tabs View */
-              <Tabs defaultValue="jobs" className="w-full">
-                <TabsList className="w-full justify-start">
+              <Tabs defaultValue="timeline" className="w-full">
+                <TabsList className="w-full justify-start overflow-x-auto">
+                  <TabsTrigger value="timeline">
+                    <Clock className="mr-1.5 h-4 w-4" />
+                    Timeline
+                  </TabsTrigger>
                   <TabsTrigger value="jobs">
                     <Briefcase className="mr-1.5 h-4 w-4" />
                     Jobs ({jobs.length})
@@ -291,6 +322,56 @@ export function CustomerDetailView({
                     Notes
                   </TabsTrigger>
                 </TabsList>
+
+                {/* Timeline Tab */}
+                <TabsContent value="timeline" className="space-y-4">
+                  {timeline.length === 0 ? (
+                    <div className="rounded-lg border bg-card p-8 text-center text-muted-foreground">
+                      <Clock className="mx-auto h-8 w-8 mb-2" />
+                      <p>No activity yet</p>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border bg-card">
+                      {timeline.map((item, idx) => (
+                        <Link
+                          key={`${item.type}-${item.id}`}
+                          href={`/app/${item.type === "job" ? "jobs" : "invoices"}/${item.id}`}
+                          className="block p-4 hover:bg-muted/50 transition-colors border-b last:border-b-0"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                              {item.type === "job" ? (
+                                <Briefcase className="h-5 w-5 text-primary" />
+                              ) : (
+                                <Receipt className="h-5 w-5 text-success" />
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="font-medium truncate">{item.title}</p>
+                                <Badge
+                                  variant={
+                                    item.status === "paid" || item.status === "done"
+                                      ? "success"
+                                      : item.status === "in_progress" || item.status === "scheduled"
+                                      ? "secondary"
+                                      : "outline"
+                                  }
+                                >
+                                  {item.status}
+                                </Badge>
+                              </div>
+                              <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
+                                <Calendar className="h-3 w-3" />
+                                {formatDate(item.date)}
+                              </div>
+                            </div>
+                          </div>
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </TabsContent>
 
                 {/* Jobs Tab */}
                 <TabsContent value="jobs" className="space-y-4">
@@ -425,21 +506,45 @@ export function CustomerDetailView({
             {/* Stats */}
             <div className="rounded-lg border bg-card p-4 space-y-3">
               <h3 className="font-semibold">Summary</h3>
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Total Jobs</span>
-                  <span className="font-medium">{jobs.length}</span>
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                    <Briefcase className="h-4 w-4 text-primary" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm text-muted-foreground">Total Jobs</p>
+                    <p className="font-semibold">{jobs.length}</p>
+                  </div>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Total Invoices</span>
-                  <span className="font-medium">{invoices.length}</span>
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0">
+                    <Receipt className="h-4 w-4 text-blue-600" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm text-muted-foreground">Total Invoiced</p>
+                    <p className="font-semibold">{formatCurrency(totalInvoiced)}</p>
+                  </div>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Total Paid</span>
-                  <span className="font-medium text-success">
-                    {formatCurrency(totalPaid)}
-                  </span>
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-success/10 flex items-center justify-center shrink-0">
+                    <CheckCircle className="h-4 w-4 text-success" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm text-muted-foreground">Total Paid</p>
+                    <p className="font-semibold text-success">{formatCurrency(totalPaid)}</p>
+                  </div>
                 </div>
+                {pendingAmount > 0 && (
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-warning/10 flex items-center justify-center shrink-0">
+                      <DollarSign className="h-4 w-4 text-warning" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm text-muted-foreground">Pending</p>
+                      <p className="font-semibold text-warning">{formatCurrency(pendingAmount)}</p>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

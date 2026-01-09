@@ -79,7 +79,7 @@ export async function POST(
           title: customer?.name
             ? `${customer.name} Project`
             : "New Project",
-          status: "scheduled",
+          status: "quoted",
           address1: job?.address1 || customer?.address1,
           city: job?.city || customer?.city,
           state: job?.state || customer?.state,
@@ -100,10 +100,10 @@ export async function POST(
 
       jobId = newJob.id;
     } else {
-      // Update existing job status to scheduled
+      // Update existing job status to quoted
       await supabase
         .from("jobs")
-        .update({ status: "scheduled", updated_at: new Date().toISOString() })
+        .update({ status: "quoted", updated_at: new Date().toISOString() })
         .eq("id", jobId);
     }
 

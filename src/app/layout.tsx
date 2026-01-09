@@ -10,7 +10,7 @@ const dmSans = DM_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "Drip - Painting Company OS",
+  title: "Matte - Painting Company OS",
   description: "The all-in-one operating system for residential repaint painting companies",
   icons: {
     icon: "/favicon.ico",

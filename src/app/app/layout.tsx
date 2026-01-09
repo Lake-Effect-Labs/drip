@@ -54,13 +54,16 @@ export default async function AppLayout({
       // Use the linked company
       const { data: company } = await adminSupabase
         .from("companies")
-        .select("id, name, theme_id")
+        .select("id, name, theme_id, owner_user_id")
         .eq("id", linkedCompanyUser.company_id)
         .maybeSingle();
 
       if (!company) {
         redirect("/signup");
       }
+
+      // Check if user is owner
+      const isOwner = company.owner_user_id === user.id;
 
       // Get user profile
       const { data: profile } = await adminSupabase
@@ -81,6 +84,7 @@ export default async function AppLayout({
             name: company.name,
             themeId: company.theme_id,
           }}
+          isOwner={isOwner}
         >
           {children}
         </AppShell>
@@ -94,13 +98,16 @@ export default async function AppLayout({
   // Get company details (use admin client to avoid RLS issues)
   const { data: company } = await adminSupabase
     .from("companies")
-    .select("id, name, theme_id")
+    .select("id, name, theme_id, owner_user_id")
     .eq("id", companyUser.company_id)
     .maybeSingle();
 
   if (!company) {
     redirect("/signup");
   }
+
+  // Check if user is owner
+  const isOwner = company.owner_user_id === user.id;
 
   // Get user profile (use admin client)
   const { data: profile } = await adminSupabase
@@ -121,6 +128,7 @@ export default async function AppLayout({
         name: company.name,
         themeId: company.theme_id,
       }}
+      isOwner={isOwner}
     >
       {children}
     </AppShell>

@@ -25,6 +25,8 @@ import {
   MapPin,
   Briefcase,
   Users,
+  Download,
+  Upload,
 } from "lucide-react";
 
 interface CustomersViewProps {
@@ -41,7 +43,10 @@ export function CustomersView({
   const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
   const [searchQuery, setSearchQuery] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [csvData, setCsvData] = useState("");
   const { addToast } = useToast();
   const supabase = createClient();
 
@@ -112,6 +117,100 @@ export function CustomersView({
     }
   }
 
+  async function handleImportCustomers() {
+    if (!csvData.trim()) {
+      addToast("Please paste CSV data", "error");
+      return;
+    }
+
+    setImporting(true);
+    try {
+      const lines = csvData.trim().split("\n");
+      const headers = lines[0].toLowerCase().split(",");
+      
+      const nameIdx = headers.findIndex(h => h.includes("name"));
+      const phoneIdx = headers.findIndex(h => h.includes("phone"));
+      const emailIdx = headers.findIndex(h => h.includes("email"));
+      const addressIdx = headers.findIndex(h => h.includes("address"));
+      const cityIdx = headers.findIndex(h => h.includes("city"));
+      const stateIdx = headers.findIndex(h => h.includes("state"));
+      const zipIdx = headers.findIndex(h => h.includes("zip"));
+
+      const customersToImport = [];
+      for (let i = 1; i < lines.length; i++) {
+        const values = lines[i].split(",").map(v => v.trim().replace(/^"|"$/g, ""));
+        
+        if (nameIdx >= 0 && values[nameIdx]) {
+          customersToImport.push({
+            company_id: companyId,
+            name: values[nameIdx],
+            phone: phoneIdx >= 0 ? values[phoneIdx] || null : null,
+            email: emailIdx >= 0 ? values[emailIdx] || null : null,
+            address1: addressIdx >= 0 ? values[addressIdx] || null : null,
+            city: cityIdx >= 0 ? values[cityIdx] || null : null,
+            state: stateIdx >= 0 ? values[stateIdx] || null : null,
+            zip: zipIdx >= 0 ? values[zipIdx] || null : null,
+          });
+        }
+      }
+
+      if (customersToImport.length === 0) {
+        addToast("No valid customers found in CSV", "error");
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("customers")
+        .insert(customersToImport)
+        .select();
+
+      if (error) throw error;
+
+      setCustomers((prev) => [...(data || []), ...prev]);
+      setCsvData("");
+      setImportDialogOpen(false);
+      addToast(`Imported ${data?.length || 0} customers!`, "success");
+    } catch (error) {
+      console.error("Import error:", error);
+      addToast("Failed to import customers", "error");
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  async function handleExportCustomers() {
+    try {
+      const csv = [
+        ["Name", "Phone", "Email", "Address", "City", "State", "ZIP", "Total Jobs", "Created At"].join(","),
+        ...customers.map((cust) =>
+          [
+            `"${cust.name.replace(/"/g, '""')}"`,
+            cust.phone || "",
+            cust.email || "",
+            `"${(cust.address1 || "").replace(/"/g, '""')}"`,
+            cust.city || "",
+            cust.state || "",
+            cust.zip || "",
+            customerJobCounts[cust.id] || 0,
+            cust.created_at,
+          ].join(",")
+        ),
+      ].join("\n");
+
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `customers-${new Date().toISOString().split("T")[0]}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      addToast("Customers exported!", "success");
+    } catch {
+      addToast("Failed to export", "error");
+    }
+  }
+
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
@@ -122,20 +221,37 @@ export function CustomersView({
             {customers.length} customer{customers.length !== 1 ? "s" : ""}
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="relative">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+          <div className="relative flex-1 sm:flex-initial">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Search customers..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 w-64"
+              className="pl-9 w-full sm:w-64"
             />
           </div>
-          <Button onClick={() => setDialogOpen(true)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Customer
-          </Button>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setImportDialogOpen(true)}
+            >
+              <Upload className="mr-2 h-4 w-4" />
+              Import
+            </Button>
+            <Button
+              variant="outline"
+              onClick={handleExportCustomers}
+              disabled={customers.length === 0}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Export
+            </Button>
+            <Button onClick={() => setDialogOpen(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Customer
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -306,6 +422,60 @@ export function CustomersView({
               </Button>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Import Dialog */}
+      <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Import Customers</DialogTitle>
+            <DialogDescription>
+              Paste CSV data with columns: Name, Phone, Email, Address, City, State, ZIP
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 mt-4">
+            <div className="space-y-2">
+              <Label htmlFor="csvData">CSV Data</Label>
+              <textarea
+                id="csvData"
+                value={csvData}
+                onChange={(e) => setCsvData(e.target.value)}
+                placeholder="Name,Phone,Email,Address,City,State,ZIP
+John Smith,555-1234,john@email.com,123 Main St,Austin,TX,78701
+Jane Doe,555-5678,jane@email.com,456 Oak Ave,Dallas,TX,75201"
+                className="w-full min-h-[200px] p-3 rounded-lg border bg-background font-mono text-sm"
+              />
+            </div>
+
+            <div className="rounded-lg bg-muted p-3 text-sm">
+              <p className="font-medium mb-1">Tips:</p>
+              <ul className="list-disc list-inside text-muted-foreground space-y-1">
+                <li>First row should be headers (Name, Phone, Email, etc.)</li>
+                <li>Name column is required</li>
+                <li>Other columns are optional</li>
+                <li>You can export from Excel or Google Sheets as CSV</li>
+              </ul>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setImportDialogOpen(false);
+                  setCsvData("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button onClick={handleImportCustomers} loading={importing}>
+                <Upload className="mr-2 h-4 w-4" />
+                Import Customers
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
     </div>

@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
-import { SettingsView } from "@/components/app/settings/settings-view";
+import { CrewView } from "@/components/app/crew/crew-view";
 
-export default async function SettingsPage() {
+export default async function CrewPage() {
   const supabase = await createClient();
   const adminSupabase = createAdminClient();
 
@@ -14,10 +14,10 @@ export default async function SettingsPage() {
     redirect("/login");
   }
 
-  // Get company user (use admin client to avoid RLS issues)
+  // Get company
   const { data: companyUser } = await adminSupabase
     .from("company_users")
-    .select("company_id, companies!inner(id, name, theme_id, owner_user_id)")
+    .select("company_id, companies!inner(id, name, owner_user_id)")
     .eq("user_id", user.id)
     .maybeSingle();
 
@@ -28,25 +28,19 @@ export default async function SettingsPage() {
   const company = (companyUser as any).companies;
   const isOwner = company.owner_user_id === user.id;
 
-  // Redirect non-owners away from settings
+  // Redirect non-owners away from crew page
   if (!isOwner) {
     redirect("/app/board");
   }
 
-  // Get estimating config (use admin client)
-  const { data: config } = await adminSupabase
-    .from("estimating_config")
-    .select("*")
-    .eq("company_id", company.id)
-    .maybeSingle();
-
-  // Get team members
+  // Get all team members
   const { data: companyUsers } = await adminSupabase
     .from("company_users")
     .select("user_id, created_at")
-    .eq("company_id", company.id)
+    .eq("company_id", companyUser.company_id)
     .order("created_at", { ascending: true });
 
+  // Get user details from auth
   const members = [];
   if (companyUsers) {
     for (const cu of companyUsers) {
@@ -62,31 +56,13 @@ export default async function SettingsPage() {
     }
   }
 
-  // Get invite links
-  const { data: inviteLinks } = await adminSupabase
-    .from("invite_links")
-    .select("*")
-    .eq("company_id", company.id)
-    .is("revoked_at", null)
-    .gt("expires_at", new Date().toISOString())
-    .order("created_at", { ascending: false });
-
-  // Get pickup locations
-  const { data: pickupLocations } = await adminSupabase
-    .from("pickup_locations")
-    .select("*")
-    .eq("company_id", company.id)
-    .order("name", { ascending: true });
-
   return (
-    <SettingsView
-      company={company}
-      isOwner={isOwner}
+    <CrewView
+      companyId={companyUser.company_id}
+      companyOwnerId={company.owner_user_id}
       currentUserId={user.id}
-      config={config}
+      isOwner={isOwner}
       teamMembers={members}
-      inviteLinks={inviteLinks || []}
-      pickupLocations={pickupLocations || []}
     />
   );
 }

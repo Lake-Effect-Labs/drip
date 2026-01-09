@@ -1,4 +1,4 @@
-# Drip
+# Matte
 
 **Track jobs. Send estimates. Get paid.**
 

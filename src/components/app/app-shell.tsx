@@ -12,15 +12,13 @@ import {
   LogOut,
   Menu,
   X,
-  ChevronDown,
+  Users,
+  BarChart3,
+  ChevronLeft,
+  ChevronRight,
+  UserCircle,
+  Calendar,
 } from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -34,20 +32,25 @@ interface AppShellProps {
     name: string;
     themeId: string;
   };
+  isOwner: boolean;
 }
 
-// Drip-lite: Only Board, Dashboard, and Settings visible
-// Calendar, Customers, Inventory hidden for simplicity
-const navItems = [
-  { href: "/app/dashboard", label: "Dashboard", icon: LayoutGrid },
-  { href: "/app/board", label: "Board", icon: LayoutGrid },
-  { href: "/app/settings", label: "Settings", icon: Settings },
+// All nav items
+const allNavItems = [
+  { href: "/app/dashboard", label: "Dashboard", icon: BarChart3, ownerOnly: true },
+  { href: "/app/board", label: "Board", icon: LayoutGrid, ownerOnly: false },
+  { href: "/app/schedule", label: "Schedule", icon: Calendar, ownerOnly: false },
+  { href: "/app/customers", label: "Customers", icon: UserCircle, ownerOnly: false },
+  { href: "/app/settings", label: "Settings", icon: Settings, ownerOnly: true },
 ];
 
-export function AppShell({ children, user, company }: AppShellProps) {
+export function AppShell({ children, user, company, isOwner }: AppShellProps) {
+  // Filter nav items based on ownership
+  const navItems = allNavItems.filter(item => !item.ownerOnly || isOwner);
   const pathname = usePathname();
   const router = useRouter();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const supabase = createClient();
 
   // Apply theme
@@ -64,18 +67,36 @@ export function AppShell({ children, user, company }: AppShellProps) {
   return (
     <div className="min-h-screen bg-background">
       {/* Desktop sidebar */}
-      <aside className="fixed left-0 top-0 z-40 hidden h-screen w-64 border-r bg-muted/50 lg:block">
+      <aside className={cn(
+        "fixed left-0 top-0 z-40 hidden h-screen border-r bg-muted/50 lg:block transition-all duration-300",
+        sidebarCollapsed ? "w-16" : "w-64"
+      )}>
         <div className="flex h-full flex-col">
           {/* Logo */}
-          <div className="flex h-16 items-center gap-2 border-b px-6">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-              <Droplet className="h-5 w-5 text-primary-foreground" />
+          <div className="flex h-16 items-center gap-2 border-b px-4 justify-between">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary shrink-0">
+                <Droplet className="h-5 w-5 text-primary-foreground" />
+              </div>
+              {!sidebarCollapsed && (
+                <span className="text-lg font-bold truncate">{company.name}</span>
+              )}
             </div>
-            <span className="text-lg font-bold">{company.name}</span>
+            <button
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              className="p-1.5 rounded-lg hover:bg-muted transition-colors shrink-0"
+              title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              {sidebarCollapsed ? (
+                <ChevronRight className="h-4 w-4" />
+              ) : (
+                <ChevronLeft className="h-4 w-4" />
+              )}
+            </button>
           </div>
 
           {/* Nav */}
-          <nav className="flex-1 space-y-1 p-4">
+          <nav className="flex-1 space-y-1 p-4 overflow-y-auto">
             {navItems.map((item) => {
               const isActive =
                 pathname === item.href || pathname.startsWith(item.href + "/");
@@ -83,49 +104,35 @@ export function AppShell({ children, user, company }: AppShellProps) {
                 <Link
                   key={item.href}
                   href={item.href}
+                  title={sidebarCollapsed ? item.label : undefined}
                   className={cn(
                     "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                     isActive
                       ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                    sidebarCollapsed && "justify-center"
                   )}
                 >
-                  <item.icon className="h-5 w-5" />
-                  {item.label}
+                  <item.icon className="h-5 w-5 shrink-0" />
+                  {!sidebarCollapsed && <span>{item.label}</span>}
                 </Link>
               );
             })}
           </nav>
 
-          {/* User menu */}
+          {/* Account section at bottom */}
           <div className="border-t p-4">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm hover:bg-muted">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-xs font-medium">
-                    {getInitials(user.fullName)}
-                  </div>
-                  <div className="flex-1 text-left">
-                    <div className="font-medium">{user.fullName}</div>
-                    <div className="text-xs text-muted-foreground truncate">
-                      {user.email}
-                    </div>
-                  </div>
-                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56" sideOffset={5}>
-                <DropdownMenuItem onClick={() => router.push("/app/settings")}>
-                  <Settings className="mr-2 h-4 w-4" />
-                  Settings
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleSignOut} destructive>
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Sign out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <button
+              onClick={handleSignOut}
+              title={sidebarCollapsed ? "Sign out" : undefined}
+              className={cn(
+                "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-destructive hover:bg-destructive/10 w-full transition-colors",
+                sidebarCollapsed && "justify-center"
+              )}
+            >
+              <LogOut className="h-5 w-5 shrink-0" />
+              {!sidebarCollapsed && <span>Sign Out</span>}
+            </button>
           </div>
         </div>
       </aside>
@@ -198,7 +205,10 @@ export function AppShell({ children, user, company }: AppShellProps) {
       </div>
 
       {/* Main content */}
-      <main className="min-h-screen pt-16 lg:pl-64 lg:pt-0">{children}</main>
+      <main className={cn(
+        "min-h-screen pt-16 lg:pt-0 transition-all duration-300",
+        sidebarCollapsed ? "lg:pl-16" : "lg:pl-64"
+      )}>{children}</main>
 
       {/* Mobile bottom nav */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 flex h-16 items-center justify-around border-t bg-muted/50 lg:hidden">

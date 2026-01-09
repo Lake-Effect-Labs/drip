@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { DashboardView } from "@/components/app/dashboard/dashboard-view";
 
@@ -9,16 +10,28 @@ export default async function DashboardPage() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  if (!user) return null;
+  if (!user) {
+    redirect("/login");
+  }
 
-  // Get company ID
+  // Get company ID and check ownership
   const { data: companyUser } = await adminSupabase
     .from("company_users")
-    .select("company_id")
+    .select("company_id, companies!inner(owner_user_id)")
     .eq("user_id", user.id)
     .maybeSingle();
 
-  if (!companyUser) return null;
+  if (!companyUser) {
+    redirect("/signup");
+  }
+
+  const company = (companyUser as any).companies;
+  const isOwner = company.owner_user_id === user.id;
+
+  // Redirect non-owners away from dashboard
+  if (!isOwner) {
+    redirect("/app/board");
+  }
 
   // Get job stats
   const { data: jobs } = await adminSupabase
@@ -31,6 +44,32 @@ export default async function DashboardPage() {
     .from("invoices")
     .select("amount_total, status, created_at")
     .eq("company_id", companyUser.company_id);
+
+  // Get materials across all jobs
+  const { data: materials } = await adminSupabase
+    .from("job_materials")
+    .select(`
+      id,
+      name,
+      checked,
+      job_id,
+      jobs!inner(company_id, status)
+    `)
+    .eq("jobs.company_id", companyUser.company_id)
+    .in("jobs.status", ["scheduled", "in_progress"]);
+
+  // Aggregate materials by name
+  const materialCounts = (materials || []).reduce((acc, material) => {
+    const name = material.name;
+    if (!acc[name]) {
+      acc[name] = { total: 0, checked: 0 };
+    }
+    acc[name].total++;
+    if (material.checked) {
+      acc[name].checked++;
+    }
+    return acc;
+  }, {} as Record<string, { total: number; checked: number }>);
 
   // Calculate stats
   const totalJobs = jobs?.length || 0;
@@ -55,6 +94,9 @@ export default async function DashboardPage() {
       totalRevenue={totalRevenue}
       jobsThisWeek={jobsThisWeek}
       jobsByStatus={jobsByStatus}
+      companyId={companyUser.company_id}
+      materialCounts={materialCounts}
+      isOwner={isOwner}
     />
   );
 }

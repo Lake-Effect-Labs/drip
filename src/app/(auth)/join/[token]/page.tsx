@@ -29,6 +29,7 @@ export default function JoinPage({
   const [loading, setLoading] = useState(false);
   const [inviteInfo, setInviteInfo] = useState<InviteInfo | null>(null);
   const [inviteLoading, setInviteLoading] = useState(true);
+  const [isSignUp, setIsSignUp] = useState(true);
   const router = useRouter();
   const { addToast } = useToast();
   const supabase = createClient();
@@ -60,25 +61,65 @@ export default function JoinPage({
     setLoading(true);
 
     try {
-      // Sign up the user
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            full_name: fullName,
-          },
-        },
-      });
+      let userId: string;
+      let userEmail: string;
+      let userName: string | null = null;
 
-      if (authError) {
-        addToast(authError.message, "error");
-        return;
+      if (isSignUp) {
+        // Sign up the user
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              full_name: fullName,
+            },
+          },
+        });
+
+        if (authError) {
+          addToast(authError.message, "error");
+          return;
+        }
+
+        if (!authData.user) {
+          addToast("Failed to create account", "error");
+          return;
+        }
+
+        userId = authData.user.id;
+        userEmail = email;
+        userName = fullName;
+      } else {
+        // Sign in existing user
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+
+        if (authError) {
+          addToast(authError.message, "error");
+          return;
+        }
+
+        if (!authData.user) {
+          addToast("Failed to sign in", "error");
+          return;
+        }
+
+        userId = authData.user.id;
+        userEmail = authData.user.email || email;
+        userName = authData.user.user_metadata?.full_name || null;
       }
 
-      if (!authData.user) {
-        addToast("Failed to create account", "error");
-        return;
+      // Wait for the session to be established
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Refresh the session multiple times to ensure it's available
+      for (let i = 0; i < 3; i++) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) break;
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
 
       // Join company via invite
@@ -86,9 +127,9 @@ export default function JoinPage({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user_id: authData.user.id,
-          email,
-          full_name: fullName,
+          user_id: userId,
+          email: userEmail,
+          full_name: userName,
         }),
       });
 
@@ -143,21 +184,25 @@ export default function JoinPage({
     <Card className="w-full max-w-md">
       <CardHeader className="text-center">
         <CardTitle className="text-2xl">Join {inviteInfo.company_name}</CardTitle>
-        <CardDescription>Create your account to join the team</CardDescription>
+        <CardDescription>
+          {isSignUp ? "Create your account to join the team" : "Sign in to join the team"}
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="fullName">Your name</Label>
-            <Input
-              id="fullName"
-              type="text"
-              placeholder="John Smith"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              required
-            />
-          </div>
+          {isSignUp && (
+            <div className="space-y-2">
+              <Label htmlFor="fullName">Your name</Label>
+              <Input
+                id="fullName"
+                type="text"
+                placeholder="John Smith"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                required
+              />
+            </div>
+          )}
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             <Input
@@ -177,20 +222,23 @@ export default function JoinPage({
               placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              minLength={6}
+              minLength={isSignUp ? 6 : undefined}
               required
             />
           </div>
           <Button type="submit" className="w-full" loading={loading}>
-            Join team
+            {isSignUp ? "Create account & join" : "Sign in & join"}
           </Button>
         </form>
-        <p className="mt-6 text-center text-sm text-muted-foreground">
-          Already have an account?{" "}
-          <Link href="/login" className="text-foreground underline hover:no-underline">
-            Sign in
-          </Link>
-        </p>
+        <div className="mt-6 text-center">
+          <button
+            type="button"
+            onClick={() => setIsSignUp(!isSignUp)}
+            className="text-sm text-muted-foreground hover:text-foreground underline"
+          >
+            {isSignUp ? "Already have an account? Sign in" : "Need an account? Sign up"}
+          </button>
+        </div>
       </CardContent>
     </Card>
   );
