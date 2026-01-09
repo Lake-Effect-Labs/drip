@@ -12,7 +12,7 @@ type EstimateWithDetails = Estimate & {
   line_items: EstimateLineItem[];
   customer: Customer | null;
   job: Job | null;
-  company: Pick<Company, "name" | "logo_url" | "contact_phone" | "contact_email"> | null;
+  company: Pick<Company, "name"> | null;
 };
 
 interface PublicEstimateViewProps {

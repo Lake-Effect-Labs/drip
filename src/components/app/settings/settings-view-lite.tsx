@@ -197,7 +197,7 @@ export function SettingsViewLite({
                 {/* Background preview */}
                 <div
                   className="absolute inset-0 opacity-20"
-                  style={{ backgroundColor: theme.bgColor || theme.color }}
+                  style={{ backgroundColor: (theme as any).bgColor || (theme as any).color }}
                 />
                 {/* Primary color swatch */}
                 <div className="relative">

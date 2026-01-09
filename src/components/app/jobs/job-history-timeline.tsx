@@ -3,7 +3,14 @@
 import { formatDate, formatTime } from "@/lib/utils";
 import { JOB_STATUS_LABELS } from "@/lib/utils";
 import { Clock, CheckCircle } from "lucide-react";
-import type { JobHistory } from "@/types/database";
+
+type JobHistory = {
+  id: string;
+  job_id: string;
+  status: string;
+  changed_at: string;
+  notes?: string | null;
+};
 
 interface JobHistoryTimelineProps {
   history: JobHistory[];

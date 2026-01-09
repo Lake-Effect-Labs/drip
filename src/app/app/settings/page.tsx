@@ -17,7 +17,7 @@ export default async function SettingsPage() {
   // Get company user (use admin client to avoid RLS issues)
   const { data: companyUser } = await adminSupabase
     .from("company_users")
-    .select("company_id, companies!inner(id, name, theme_id, owner_user_id)")
+    .select("company_id")
     .eq("user_id", user.id)
     .maybeSingle();
 
@@ -25,7 +25,18 @@ export default async function SettingsPage() {
     redirect("/signup");
   }
 
-  const company = (companyUser as any).companies;
+  // Get company separately
+  const { data: companyData } = await adminSupabase
+    .from("companies")
+    .select("id, name, theme_id, owner_user_id, created_at")
+    .eq("id", companyUser.company_id)
+    .maybeSingle();
+
+  if (!companyData) {
+    redirect("/signup");
+  }
+
+  const company = companyData;
   const isOwner = company.owner_user_id === user.id;
 
   // Redirect non-owners away from settings

@@ -71,13 +71,16 @@ export function MessageTemplatesDialog({
     setLoading(true);
     try {
       const { data, error } = await supabase
-        .from("message_templates")
+        .from("message_templates" as any)
         .select("*")
         .eq("company_id", companyId)
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
-      setTemplates(data || []);
+      if (error) {
+        setTemplates([]);
+        return;
+      }
+      setTemplates((data as any) || []);
     } catch (error) {
       console.error("Error loading templates:", error);
       addToast("Failed to load templates", "error");
@@ -125,7 +128,7 @@ export function MessageTemplatesDialog({
 
     try {
       const { data, error } = await supabase
-        .from("message_templates")
+        .from("message_templates" as any)
         .insert({
           company_id: companyId,
           name: templateName.trim(),
@@ -139,7 +142,7 @@ export function MessageTemplatesDialog({
 
       if (error) throw error;
 
-      setTemplates((prev) => [data, ...prev]);
+      setTemplates((prev) => [(data as any), ...prev]);
       setTemplateName("");
       setTemplateBody("");
       setTemplateSubject("");
@@ -159,7 +162,7 @@ export function MessageTemplatesDialog({
   async function handleDeleteTemplate(templateId: string) {
     try {
       const { error } = await supabase
-        .from("message_templates")
+        .from("message_templates" as any)
         .delete()
         .eq("id", templateId);
 

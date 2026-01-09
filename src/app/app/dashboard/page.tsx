@@ -17,7 +17,7 @@ export default async function DashboardPage() {
   // Get company ID and check ownership
   const { data: companyUser } = await adminSupabase
     .from("company_users")
-    .select("company_id, companies!inner(owner_user_id)")
+    .select("company_id")
     .eq("user_id", user.id)
     .maybeSingle();
 
@@ -25,7 +25,17 @@ export default async function DashboardPage() {
     redirect("/signup");
   }
 
-  const company = (companyUser as any).companies;
+  // Get company separately to check ownership
+  const { data: company } = await adminSupabase
+    .from("companies")
+    .select("owner_user_id")
+    .eq("id", companyUser.company_id)
+    .maybeSingle();
+
+  if (!company) {
+    redirect("/signup");
+  }
+
   const isOwner = company.owner_user_id === user.id;
 
   // Redirect non-owners away from dashboard
@@ -45,18 +55,20 @@ export default async function DashboardPage() {
     .select("amount_total, status, created_at")
     .eq("company_id", companyUser.company_id);
 
-  // Get materials across all jobs
-  const { data: materials } = await adminSupabase
-    .from("job_materials")
-    .select(`
-      id,
-      name,
-      checked,
-      job_id,
-      jobs!inner(company_id, status)
-    `)
-    .eq("jobs.company_id", companyUser.company_id)
-    .in("jobs.status", ["scheduled", "in_progress"]);
+  // Get materials across all jobs - fetch jobs first, then materials
+  const { data: activeJobs } = await adminSupabase
+    .from("jobs")
+    .select("id")
+    .eq("company_id", companyUser.company_id)
+    .in("status", ["scheduled", "in_progress"]);
+
+  const jobIds = activeJobs?.map(j => j.id) || [];
+  const { data: materials } = jobIds.length > 0
+    ? await adminSupabase
+        .from("job_materials")
+        .select("id, name, checked, job_id")
+        .in("job_id", jobIds)
+    : { data: [] };
 
   // Aggregate materials by name
   const materialCounts = (materials || []).reduce((acc, material) => {

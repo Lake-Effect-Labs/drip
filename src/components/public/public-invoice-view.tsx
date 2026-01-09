@@ -9,7 +9,7 @@ import { Droplet, MapPin, User } from "lucide-react";
 type InvoiceWithDetails = Invoice & {
   customer: Customer;
   job: Job;
-  company: Pick<Company, "name" | "logo_url" | "contact_phone" | "contact_email"> | null;
+  company: Pick<Company, "name"> | null;
 };
 
 interface PublicInvoiceViewProps {

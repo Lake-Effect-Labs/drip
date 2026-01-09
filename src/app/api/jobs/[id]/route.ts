@@ -56,7 +56,7 @@ export async function PATCH(
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)
-      .select("*, customer:customers(*)")
+      .select("*")
       .single();
 
     if (updateError) {
@@ -69,7 +69,18 @@ export async function PATCH(
       );
     }
 
-    return NextResponse.json(updatedJob);
+    // Fetch customer separately if exists
+    let customer = null;
+    if (updatedJob.customer_id) {
+      const { data: customerData } = await adminSupabase
+        .from("customers")
+        .select("*")
+        .eq("id", updatedJob.customer_id)
+        .maybeSingle();
+      customer = customerData;
+    }
+
+    return NextResponse.json({ ...updatedJob, customer });
   } catch (error) {
     if (process.env.NODE_ENV === "development") {
       console.error("Error in job update:", error);

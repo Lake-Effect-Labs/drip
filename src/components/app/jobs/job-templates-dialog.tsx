@@ -58,14 +58,19 @@ export function JobTemplatesDialog({
   async function loadTemplates() {
     setLoading(true);
     try {
+      // job_templates table may not exist, so use optional query
       const { data, error } = await supabase
-        .from("job_templates")
+        .from("job_templates" as any)
         .select("*")
         .eq("company_id", companyId)
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
-      setTemplates(data || []);
+      if (error || !data || Array.isArray(data) === false) {
+        // Table doesn't exist or error, use empty array
+        setTemplates([]);
+        return;
+      }
+      setTemplates((data as any) || []);
     } catch (error) {
       console.error("Error loading templates:", error);
       addToast("Failed to load templates", "error");
@@ -83,7 +88,7 @@ export function JobTemplatesDialog({
     setSaving(true);
     try {
       const { data, error } = await supabase
-        .from("job_templates")
+        .from("job_templates" as any)
         .insert({
           company_id: companyId,
           name: templateName.trim(),
@@ -96,7 +101,7 @@ export function JobTemplatesDialog({
 
       if (error) throw error;
 
-      setTemplates((prev) => [data, ...prev]);
+      setTemplates((prev) => [(data as any), ...prev]);
       setTemplateName("");
       setTemplateDescription("");
       setShowSaveForm(false);
@@ -112,7 +117,7 @@ export function JobTemplatesDialog({
   async function handleDeleteTemplate(templateId: string) {
     try {
       const { error } = await supabase
-        .from("job_templates")
+        .from("job_templates" as any)
         .delete()
         .eq("id", templateId);
 

@@ -364,16 +364,26 @@ export function SettingsView({
 
   async function handleExportPayments() {
     try {
-      const { data: payments, error } = await supabase
-        .from("invoice_payments")
-        .select("*, invoices!inner(company_id, customer_id, job_id)")
-        .eq("invoices.company_id", company.id)
-        .order("paid_at", { ascending: false });
+      // Get invoices for company first
+      const { data: companyInvoices } = await supabase
+        .from("invoices")
+        .select("id")
+        .eq("company_id", company.id);
+
+      const invoiceIds = companyInvoices?.map(i => i.id) || [];
+      
+      // Get payments for those invoices
+      const { data: payments, error } = invoiceIds.length > 0
+        ? await supabase
+            .from("invoice_payments")
+            .select("*")
+            .in("invoice_id", invoiceIds)
+            .order("paid_at", { ascending: false })
+        : { data: [] };
 
       if (error) throw error;
 
       // Get invoice details
-      const invoiceIds = [...new Set((payments || []).map(p => p.invoice_id))];
       const { data: invoices } = invoiceIds.length > 0
         ? await supabase.from("invoices").select("id, customer_id, job_id").in("id", invoiceIds)
         : { data: [] };
@@ -401,10 +411,12 @@ export function SettingsView({
           const method = isManual
             ? payment.stripe_payment_intent_id.split("_")[1]
             : "Stripe";
+          const customerId = invoice?.customer_id || "";
+          const jobId = invoice?.job_id || "";
           return [
             payment.paid_at,
-            `"${customerMap.get(invoice?.customer_id) || ""}"`,
-            `"${jobMap.get(invoice?.job_id) || ""}"`,
+            `"${customerMap.get(customerId) || ""}"`,
+            `"${jobMap.get(jobId) || ""}"`,
             (payment.amount / 100).toFixed(2),
             method,
           ].join(",");

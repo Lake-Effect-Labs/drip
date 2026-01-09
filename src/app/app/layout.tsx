@@ -54,7 +54,7 @@ export default async function AppLayout({
       // Use the linked company
       const { data: company } = await adminSupabase
         .from("companies")
-        .select("id, name, theme_id, owner_user_id")
+        .select("id, name, theme_id, owner_user_id, created_at")
         .eq("id", linkedCompanyUser.company_id)
         .maybeSingle();
 
@@ -98,7 +98,7 @@ export default async function AppLayout({
   // Get company details (use admin client to avoid RLS issues)
   const { data: company } = await adminSupabase
     .from("companies")
-    .select("id, name, theme_id, owner_user_id")
+    .select("id, name, theme_id, owner_user_id, created_at")
     .eq("id", companyUser.company_id)
     .maybeSingle();
 

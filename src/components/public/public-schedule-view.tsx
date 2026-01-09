@@ -9,7 +9,7 @@ import { CheckCircle, Calendar, Clock, MapPin } from "lucide-react";
 
 type JobWithCustomer = Job & { 
   customer: Customer | null;
-  company: Pick<Company, "name" | "logo_url" | "contact_phone" | "contact_email"> | null;
+  company: Pick<Company, "name"> | null;
 };
 
 interface PublicScheduleViewProps {

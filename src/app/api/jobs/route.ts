@@ -69,7 +69,7 @@ export async function POST(request: Request) {
         assigned_user_id: assigned_user_id || null,
         status,
       })
-      .select("*, customer:customers(*)")
+      .select("*")
       .single();
 
     if (jobError) {
@@ -82,7 +82,18 @@ export async function POST(request: Request) {
       );
     }
 
-    return NextResponse.json(job);
+    // Fetch customer separately if exists
+    let customer = null;
+    if (job.customer_id) {
+      const { data: customerData } = await adminSupabase
+        .from("customers")
+        .select("*")
+        .eq("id", job.customer_id)
+        .maybeSingle();
+      customer = customerData;
+    }
+
+    return NextResponse.json({ ...job, customer });
   } catch (error) {
     if (process.env.NODE_ENV === "development") {
       console.error("Error in job creation:", error);

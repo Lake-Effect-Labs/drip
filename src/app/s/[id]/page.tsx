@@ -35,7 +35,7 @@ export default async function ScheduleConfirmationPage({ params }: PageProps) {
   // Fetch company info
   const { data: company } = await supabase
     .from("companies")
-    .select("name, logo_url, contact_phone, contact_email")
+    .select("name")
     .eq("id", job.company_id)
     .maybeSingle();
 

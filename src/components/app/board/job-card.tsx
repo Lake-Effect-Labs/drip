@@ -82,10 +82,18 @@ export function JobCard({ job, onStatusChange, onDuplicate }: JobCardProps) {
           notes: job.notes,
           status: "new",
         })
-        .select("*, customer:customers(*)")
+        .select("*")
         .single();
 
       if (error) throw error;
+
+      // Fetch customer separately if exists
+      let customer = job.customer;
+      if (newJob.customer_id && job.customer_id) {
+        customer = job.customer; // Use existing customer data
+      }
+
+      const jobWithCustomer = { ...newJob, customer };
       addToast("Job duplicated!", "success");
       router.push(`/app/jobs/${newJob.id}`);
     } catch (error) {

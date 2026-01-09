@@ -14,10 +14,10 @@ export default async function CrewPage() {
     redirect("/login");
   }
 
-  // Get company
+  // Get company user
   const { data: companyUser } = await adminSupabase
     .from("company_users")
-    .select("company_id, companies!inner(id, name, owner_user_id)")
+    .select("company_id")
     .eq("user_id", user.id)
     .maybeSingle();
 
@@ -25,7 +25,17 @@ export default async function CrewPage() {
     redirect("/signup");
   }
 
-  const company = (companyUser as any).companies;
+  // Get company separately
+  const { data: company } = await adminSupabase
+    .from("companies")
+    .select("id, name, owner_user_id, created_at")
+    .eq("id", companyUser.company_id)
+    .maybeSingle();
+
+  if (!company) {
+    redirect("/signup");
+  }
+
   const isOwner = company.owner_user_id === user.id;
 
   // Redirect non-owners away from crew page
@@ -58,7 +68,7 @@ export default async function CrewPage() {
 
   return (
     <CrewView
-      companyId={companyUser.company_id}
+      companyId={company.id}
       companyOwnerId={company.owner_user_id}
       currentUserId={user.id}
       isOwner={isOwner}

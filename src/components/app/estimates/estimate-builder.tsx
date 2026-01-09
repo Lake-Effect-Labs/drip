@@ -111,7 +111,7 @@ export function EstimateBuilder({
 
         const defaultSheen = 
           serviceKey === "interior_walls" ? "Eggshell" :
-          serviceKey === "trim_and_doors" ? "Satin" :
+          serviceKey === "trim_doors" ? "Satin" :
           "Eggshell";
 
         if (existingIndex >= 0) {
