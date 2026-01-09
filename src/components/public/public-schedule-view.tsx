@@ -2,12 +2,15 @@
 
 import { useState } from "react";
 import { formatDate, formatTime } from "@/lib/utils";
-import type { Job, Customer } from "@/types/database";
+import type { Job, Customer, Company } from "@/types/database";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CheckCircle, Calendar, Clock, MapPin } from "lucide-react";
 
-type JobWithCustomer = Job & { customer: Customer | null };
+type JobWithCustomer = Job & { 
+  customer: Customer | null;
+  company: Pick<Company, "name" | "logo_url" | "contact_phone" | "contact_email"> | null;
+};
 
 interface PublicScheduleViewProps {
   job: JobWithCustomer;
