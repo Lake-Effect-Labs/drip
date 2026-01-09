@@ -9,7 +9,7 @@ import { Droplet, MapPin, User } from "lucide-react";
 type InvoiceWithDetails = Invoice & {
   customer: Customer;
   job: Job;
-  company: Pick<Company, "name"> | null;
+  company: Pick<Company, "name" | "logo_url" | "contact_phone" | "contact_email"> | null;
 };
 
 interface PublicInvoiceViewProps {
@@ -26,9 +26,17 @@ export function PublicInvoiceView({ invoice }: PublicInvoiceViewProps) {
       {/* Header */}
       <header className="border-b bg-card/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-stone-800 flex items-center justify-center">
-            <Droplet className="w-5 h-5 text-white" />
-          </div>
+          {(invoice.company as any)?.logo_url ? (
+            <img 
+              src={(invoice.company as any).logo_url} 
+              alt={invoice.company?.name || "Company Logo"}
+              className="w-10 h-10 rounded-lg object-cover"
+            />
+          ) : (
+            <div className="w-8 h-8 rounded-lg bg-stone-800 flex items-center justify-center">
+              <Droplet className="w-5 h-5 text-white" />
+            </div>
+          )}
           <div>
             <span className="font-bold">{invoice.company?.name}</span>
             <p className="text-xs text-muted-foreground">Invoice</p>
@@ -102,6 +110,19 @@ export function PublicInvoiceView({ invoice }: PublicInvoiceViewProps) {
               </div>
             </CardContent>
           </Card>
+        )}
+
+        {/* Footer with contact info */}
+        {((invoice.company as any)?.contact_phone || (invoice.company as any)?.contact_email) && (
+          <div className="mt-8 pt-6 border-t text-center text-sm text-muted-foreground space-y-1">
+            <p className="font-medium text-foreground">{invoice.company?.name}</p>
+            {(invoice.company as any)?.contact_phone && (
+              <p>{(invoice.company as any).contact_phone}</p>
+            )}
+            {(invoice.company as any)?.contact_email && (
+              <p>{(invoice.company as any).contact_email}</p>
+            )}
+          </div>
         )}
       </main>
     </div>

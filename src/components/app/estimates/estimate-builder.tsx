@@ -55,8 +55,22 @@ export function EstimateBuilder({
   const supabase = createClient();
 
   const [loading, setLoading] = useState(false);
+  const [useSqftPricing, setUseSqftPricing] = useState(false);
   const [sqft, setSqft] = useState("");
-  const [lineItems, setLineItems] = useState<LineItem[]>([]);
+  const [lineItems, setLineItems] = useState<LineItem[]>([
+    {
+      id: crypto.randomUUID(),
+      service_key: "other",
+      service_type: "flat",
+      name: "",
+      description: "",
+      price: 0,
+      paint_color_name_or_code: "",
+      sheen: "Eggshell",
+      product_line: "",
+      gallons_estimate: "",
+    },
+  ]);
   const [selectedCustomerId, setSelectedCustomerId] = useState(
     initialCustomer?.id || ""
   );
@@ -72,8 +86,10 @@ export function EstimateBuilder({
     trim: config?.trim_rate_per_sqft || 0.75,
   };
 
-  // Auto-add sqft services when sqft changes
+  // Auto-add sqft services when sqft changes (only if using sqft pricing)
   useEffect(() => {
+    if (!useSqftPricing) return;
+    
     const sqftNum = parseFloat(sqft);
     if (!sqftNum || sqftNum <= 0) return;
 
@@ -93,6 +109,11 @@ export function EstimateBuilder({
             : rates.trim;
         const price = Math.round(sqftNum * rate * 100);
 
+        const defaultSheen = 
+          serviceKey === "interior_walls" ? "Eggshell" :
+          serviceKey === "trim_and_doors" ? "Satin" :
+          "Eggshell";
+
         if (existingIndex >= 0) {
           updated[existingIndex].price = price;
         } else {
@@ -104,7 +125,7 @@ export function EstimateBuilder({
             description: "",
             price,
             paint_color_name_or_code: "",
-            sheen: "",
+            sheen: defaultSheen,
             product_line: "",
             gallons_estimate: "",
           });
@@ -113,24 +134,41 @@ export function EstimateBuilder({
 
       return updated;
     });
-  }, [sqft, rates.walls, rates.ceilings, rates.trim]);
+  }, [useSqftPricing, sqft, rates.walls, rates.ceilings, rates.trim]);
 
-  function addLineItem(serviceKey: string, serviceType: "sqft" | "flat") {
+  function addLineItem() {
+    const isPaintService = true; // Default to paint service
+    const defaultSheen = "Eggshell";
+    
     setLineItems((prev) => [
       ...prev,
       {
         id: crypto.randomUUID(),
-        service_key: serviceKey,
-        service_type: serviceType,
-        name: SERVICE_LABELS[serviceKey] || serviceKey,
+        service_key: "other",
+        service_type: "flat",
+        name: "",
         description: "",
         price: 0,
         paint_color_name_or_code: "",
-        sheen: "",
+        sheen: defaultSheen,
         product_line: "",
         gallons_estimate: "",
       },
     ]);
+  }
+
+  function getDefaultSheen(serviceName: string): string {
+    const lowerName = serviceName.toLowerCase();
+    if (lowerName.includes("wall") || lowerName.includes("interior")) return "Eggshell";
+    if (lowerName.includes("trim") || lowerName.includes("door")) return "Satin";
+    if (lowerName.includes("cabinet")) return "Semi-Gloss";
+    return "Eggshell";
+  }
+
+  function isPaintRelatedService(serviceName: string): boolean {
+    const lowerName = serviceName.toLowerCase();
+    const nonPaintKeywords = ["prep", "repair", "patch", "sand", "demo", "removal"];
+    return !nonPaintKeywords.some(keyword => lowerName.includes(keyword));
   }
 
   function updateLineItem(id: string, updates: Partial<LineItem>) {
@@ -296,25 +334,58 @@ export function EstimateBuilder({
           </div>
         )}
 
-        {/* Square Footage */}
+        {/* Pricing Method */}
         <div className="rounded-lg border bg-card p-4 space-y-4">
-          <h3 className="font-semibold">Square Footage (optional)</h3>
-          <p className="text-sm text-muted-foreground">
-            Enter sqft to auto-calculate prices for walls, ceilings, and trim.
-          </p>
-          <div className="max-w-xs">
-            <Input
-              type="number"
-              placeholder="e.g., 2000"
-              value={sqft}
-              onChange={(e) => setSqft(e.target.value)}
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="useSqftPricing"
+              checked={useSqftPricing}
+              onChange={(e) => {
+                setUseSqftPricing(e.target.checked);
+                if (!e.target.checked) {
+                  setSqft("");
+                  setLineItems([{
+                    id: crypto.randomUUID(),
+                    service_key: "other",
+                    service_type: "flat",
+                    name: "",
+                    description: "",
+                    price: 0,
+                    paint_color_name_or_code: "",
+                    sheen: "Eggshell",
+                    product_line: "",
+                    gallons_estimate: "",
+                  }]);
+                }
+              }}
+              className="h-4 w-4"
             />
+            <label htmlFor="useSqftPricing" className="font-semibold cursor-pointer">
+              Use square footage pricing
+            </label>
           </div>
-          {sqft && (
-            <div className="text-sm text-muted-foreground">
-              Rates: Walls ${rates.walls}/sqft • Ceilings ${rates.ceilings}/sqft
-              • Trim ${rates.trim}/sqft
-            </div>
+          
+          {useSqftPricing && (
+            <>
+              <p className="text-sm text-muted-foreground">
+                Enter sqft to auto-calculate prices for walls, ceilings, and trim.
+              </p>
+              <div className="max-w-xs">
+                <Input
+                  type="number"
+                  placeholder="e.g., 2000"
+                  value={sqft}
+                  onChange={(e) => setSqft(e.target.value)}
+                />
+              </div>
+              {sqft && (
+                <div className="text-sm text-muted-foreground">
+                  Rates: Walls ${rates.walls}/sqft • Ceilings ${rates.ceilings}/sqft
+                  • Trim ${rates.trim}/sqft
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -324,7 +395,7 @@ export function EstimateBuilder({
 
           {lineItems.length === 0 ? (
             <p className="text-sm text-muted-foreground py-4 text-center">
-              No line items yet. Add sqft above or add services below.
+              No line items yet. Click "Add Line Item" below to get started.
             </p>
           ) : (
             <div className="space-y-4">
@@ -382,11 +453,8 @@ export function EstimateBuilder({
                         />
                       </div>
 
-                      {/* Paint details */}
-                      <details className="group">
-                        <summary className="text-sm text-muted-foreground cursor-pointer hover:text-foreground">
-                          Paint details (optional)
-                        </summary>
+                      {/* Paint details - shown by default for paint services */}
+                      {isPaintRelatedService(item.name) && (
                         <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                           <div className="space-y-2">
                             <Label className="text-xs">Color</Label>
@@ -408,7 +476,6 @@ export function EstimateBuilder({
                                 updateLineItem(item.id, { sheen: e.target.value })
                               }
                             >
-                              <option value="">Select</option>
                               {SHEENS.map((s) => (
                                 <option key={s} value={s}>
                                   {s}
@@ -442,7 +509,7 @@ export function EstimateBuilder({
                             />
                           </div>
                         </div>
-                      </details>
+                      )}
                     </div>
 
                     <button
@@ -458,21 +525,16 @@ export function EstimateBuilder({
             </div>
           )}
 
-          {/* Add service buttons */}
-          <div className="flex flex-wrap gap-2 pt-2">
-            {SERVICE_TYPES.flat.map((service) => (
-              <Button
-                key={service}
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => addLineItem(service, "flat")}
-              >
-                <Plus className="mr-1 h-3 w-3" />
-                {SERVICE_LABELS[service]}
-              </Button>
-            ))}
-          </div>
+          {/* Add line item button */}
+          <Button
+            type="button"
+            variant="outline"
+            onClick={addLineItem}
+            className="w-full"
+          >
+            <Plus className="mr-2 h-4 w-4" />
+            Add Line Item
+          </Button>
         </div>
 
         {/* Total */}

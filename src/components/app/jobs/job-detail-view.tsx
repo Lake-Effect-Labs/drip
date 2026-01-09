@@ -18,7 +18,6 @@ import {
 } from "@/lib/utils";
 import type { Job, Customer, Estimate, EstimateLineItem, Invoice, JobMaterial } from "@/types/database";
 import { JobHistoryTimeline } from "./job-history-timeline";
-import { VoiceNotes } from "./voice-notes";
 import { JobTemplatesDialog } from "./job-templates-dialog";
 import { MessageTemplatesDialog } from "./message-templates-dialog";
 import { Button } from "@/components/ui/button";
@@ -614,14 +613,7 @@ export function JobDetailView({
                 </div>
 
                 <div className="rounded-lg border bg-card p-4 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-semibold">Notes</h3>
-                    <VoiceNotes
-                      onTranscript={(text) => {
-                        setNotes((prev) => (prev ? `${prev}\n${text}` : text));
-                      }}
-                    />
-                  </div>
+                  <h3 className="font-semibold">Notes</h3>
                   <Textarea
                     value={notes}
                     onChange={(e) => setNotes(e.target.value)}

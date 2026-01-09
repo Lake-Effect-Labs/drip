@@ -13,10 +13,11 @@ import {
   ArrowLeft,
   Copy,
   ExternalLink,
-  Send,
   User,
   MapPin,
   FileText,
+  Receipt,
+  MessageSquare,
 } from "lucide-react";
 
 type EstimateWithDetails = Estimate & {
@@ -35,7 +36,7 @@ export function EstimateDetailView({ estimate: initialEstimate }: EstimateDetail
   const supabase = createClient();
 
   const [estimate, setEstimate] = useState(initialEstimate);
-  const [sending, setSending] = useState(false);
+  const [creatingInvoice, setCreatingInvoice] = useState(false);
 
   const total = estimate.line_items.reduce((sum, li) => sum + li.price, 0);
   const publicUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/e/${estimate.public_token}`;
@@ -46,35 +47,59 @@ export function EstimateDetailView({ estimate: initialEstimate }: EstimateDetail
         .join(", ")
     : "";
 
-  async function handleMarkSent() {
-    setSending(true);
-    try {
-      const { error } = await supabase
-        .from("estimates")
-        .update({ status: "sent", updated_at: new Date().toISOString() })
-        .eq("id", estimate.id);
-
-      if (error) throw error;
-
-      setEstimate((prev) => ({ ...prev, status: "sent" }));
-      addToast("Marked as sent!", "success");
-    } catch {
-      addToast("Failed to update status", "error");
-    } finally {
-      setSending(false);
-    }
-  }
-
-  function copyEstimateLink() {
-    copyToClipboard(publicUrl);
-    addToast("Link copied!", "success");
-  }
-
   function copyEstimateMessage() {
     const customerName = estimate.customer?.name || "there";
     const message = `Hey ${customerName} — here's your estimate for ${address || "your project"}: ${publicUrl}`;
     copyToClipboard(message);
     addToast("Message copied!", "success");
+  }
+
+  function textEstimate() {
+    const customerName = estimate.customer?.name || "there";
+    const message = `Hey ${customerName} — here's your estimate for ${address || "your project"}: ${publicUrl}`;
+    const phone = estimate.customer?.phone;
+    
+    if (phone && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+      // Mobile device - open SMS app
+      window.location.href = `sms:${phone}${/iPhone|iPad|iPod/i.test(navigator.userAgent) ? '&' : '?'}body=${encodeURIComponent(message)}`;
+    } else {
+      // Desktop - copy message
+      copyToClipboard(message);
+      addToast("Message copied!", "success");
+    }
+  }
+
+  async function handleCreateInvoice() {
+    if (!estimate.job_id || !estimate.customer_id) {
+      addToast("Cannot create invoice without job and customer", "error");
+      return;
+    }
+
+    setCreatingInvoice(true);
+    try {
+      const { data: invoice, error } = await supabase
+        .from("invoices")
+        .insert({
+          company_id: estimate.company_id,
+          job_id: estimate.job_id,
+          customer_id: estimate.customer_id,
+          amount_total: total,
+          status: "draft",
+          public_token: crypto.randomUUID().replace(/-/g, '').substring(0, 24),
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      addToast("Invoice created!", "success");
+      router.push(`/app/invoices/${invoice.id}`);
+    } catch (error) {
+      console.error("Error creating invoice:", error);
+      addToast("Failed to create invoice", "error");
+    } finally {
+      setCreatingInvoice(false);
+    }
   }
 
   return (
@@ -111,18 +136,14 @@ export function EstimateDetailView({ estimate: initialEstimate }: EstimateDetail
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={copyEstimateLink}>
-                <Copy className="mr-2 h-4 w-4" />
-                Copy Link
+              <Button variant="outline" size="sm" onClick={textEstimate}>
+                <MessageSquare className="mr-2 h-4 w-4" />
+                {estimate.customer?.phone && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? 'Text Estimate' : 'Copy Message'}
               </Button>
-              <Button variant="outline" size="sm" onClick={copyEstimateMessage}>
-                <Copy className="mr-2 h-4 w-4" />
-                Copy Message
-              </Button>
-              {estimate.status === "draft" && (
-                <Button size="sm" onClick={handleMarkSent} loading={sending}>
-                  <Send className="mr-2 h-4 w-4" />
-                  Mark Sent
+              {estimate.status === "accepted" && (
+                <Button size="sm" onClick={handleCreateInvoice} loading={creatingInvoice}>
+                  <Receipt className="mr-2 h-4 w-4" />
+                  Create Invoice
                 </Button>
               )}
             </div>
@@ -226,32 +247,43 @@ export function EstimateDetailView({ estimate: initialEstimate }: EstimateDetail
 
         {/* Public Link */}
         <div className="rounded-lg border bg-card p-4">
-          <h3 className="font-semibold mb-2">Public Link</h3>
+          <h3 className="font-semibold mb-2">Share with Customer</h3>
           <p className="text-sm text-muted-foreground mb-3">
-            Share this link with your customer. They can view and accept the estimate.
+            Send this estimate to your customer. They can view and accept it online.
           </p>
-          <div className="flex items-center gap-2">
-            <code className="flex-1 bg-muted px-3 py-2 rounded text-sm truncate">
-              {publicUrl}
-            </code>
-            <Button variant="outline" size="sm" onClick={copyEstimateLink}>
-              <Copy className="h-4 w-4" />
+          <div className="flex flex-col gap-3">
+            <Button onClick={textEstimate} className="w-full justify-start">
+              <MessageSquare className="mr-2 h-4 w-4" />
+              {estimate.customer?.phone && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) 
+                ? `Text to ${estimate.customer.name}` 
+                : 'Copy Message'}
             </Button>
-            <a href={publicUrl} target="_blank" rel="noopener noreferrer">
-              <Button variant="outline" size="sm">
-                <ExternalLink className="h-4 w-4" />
-              </Button>
-            </a>
+            <div className="flex items-center gap-2">
+              <code className="flex-1 bg-muted px-3 py-2 rounded text-sm truncate">
+                {publicUrl}
+              </code>
+              <a href={publicUrl} target="_blank" rel="noopener noreferrer">
+                <Button variant="outline" size="sm">
+                  <ExternalLink className="h-4 w-4" />
+                </Button>
+              </a>
+            </div>
           </div>
         </div>
 
-        {/* Acceptance Info */}
+        {/* Acceptance Info & Create Invoice */}
         {estimate.status === "accepted" && estimate.accepted_at && (
-          <div className="rounded-lg border border-success bg-success/10 p-4">
-            <h3 className="font-semibold text-success mb-1">Estimate Accepted</h3>
-            <p className="text-sm text-muted-foreground">
-              Accepted on {formatDate(estimate.accepted_at)}
-            </p>
+          <div className="rounded-lg border border-success bg-success/10 p-4 space-y-3">
+            <div>
+              <h3 className="font-semibold text-success mb-1">Estimate Accepted</h3>
+              <p className="text-sm text-muted-foreground">
+                Accepted on {formatDate(estimate.accepted_at)}
+              </p>
+            </div>
+            <Button onClick={handleCreateInvoice} loading={creatingInvoice} className="w-full">
+              <Receipt className="mr-2 h-4 w-4" />
+              Create Invoice from This Estimate
+            </Button>
           </div>
         )}
       </div>

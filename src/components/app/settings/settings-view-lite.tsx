@@ -29,6 +29,9 @@ export function SettingsViewLite({
 
   // Company form
   const [companyName, setCompanyName] = useState(company.name);
+  const [logoUrl, setLogoUrl] = useState((company as any).logo_url || "");
+  const [contactPhone, setContactPhone] = useState((company as any).contact_phone || "");
+  const [contactEmail, setContactEmail] = useState((company as any).contact_email || "");
   const [selectedTheme, setSelectedTheme] = useState<ThemeId>(
     (company.theme_id as ThemeId) || "agreeable-gray"
   );
@@ -49,6 +52,9 @@ export function SettingsViewLite({
         body: JSON.stringify({
           name: companyName.trim(),
           theme_id: selectedTheme,
+          logo_url: logoUrl.trim() || null,
+          contact_phone: contactPhone.trim() || null,
+          contact_email: contactEmail.trim() || null,
         }),
       });
 
@@ -113,18 +119,57 @@ export function SettingsViewLite({
       </div>
 
       <div className="max-w-lg mx-auto p-4 space-y-6">
-        {/* Company Name */}
+        {/* Company Info */}
         <div className="rounded-lg border bg-card p-4 space-y-4">
           <div className="flex items-center gap-2">
             <Building className="h-5 w-5 text-muted-foreground" />
-            <h3 className="font-semibold">Company Name</h3>
+            <h3 className="font-semibold">Company Information</h3>
           </div>
-          <div className="space-y-2">
-            <Input
-              value={companyName}
-              onChange={(e) => setCompanyName(e.target.value)}
-              placeholder="Your company name"
-            />
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="companyName">Company Name</Label>
+              <Input
+                id="companyName"
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                placeholder="Your company name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="logoUrl">Logo URL (optional)</Label>
+              <Input
+                id="logoUrl"
+                type="url"
+                value={logoUrl}
+                onChange={(e) => setLogoUrl(e.target.value)}
+                placeholder="https://example.com/logo.png"
+              />
+              <p className="text-xs text-muted-foreground">
+                Upload your logo to a service like Imgur and paste the URL here
+              </p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="contactPhone">Contact Phone</Label>
+                <Input
+                  id="contactPhone"
+                  type="tel"
+                  value={contactPhone}
+                  onChange={(e) => setContactPhone(e.target.value)}
+                  placeholder="(555) 123-4567"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="contactEmail">Contact Email</Label>
+                <Input
+                  id="contactEmail"
+                  type="email"
+                  value={contactEmail}
+                  onChange={(e) => setContactEmail(e.target.value)}
+                  placeholder="contact@company.com"
+                />
+              </div>
+            </div>
           </div>
         </div>
 

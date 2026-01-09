@@ -19,12 +19,11 @@ import {
 import { useToast } from "@/components/ui/toast";
 import {
   ArrowLeft,
-  Copy,
-  Send,
   User,
   MapPin,
   FileText,
   Banknote,
+  MessageSquare,
 } from "lucide-react";
 
 type InvoiceWithDetails = Invoice & {
@@ -50,7 +49,6 @@ export function InvoiceDetailView({ invoice: initialInvoice }: InvoiceDetailView
   const supabase = createClient();
 
   const [invoice, setInvoice] = useState(initialInvoice);
-  const [markingSent, setMarkingSent] = useState(false);
   const [markPaidDialogOpen, setMarkPaidDialogOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [markingPaid, setMarkingPaid] = useState(false);
@@ -60,34 +58,19 @@ export function InvoiceDetailView({ invoice: initialInvoice }: InvoiceDetailView
     .filter(Boolean)
     .join(", ");
 
-  async function handleMarkSent() {
-    setMarkingSent(true);
-    try {
-      const { error } = await supabase
-        .from("invoices")
-        .update({ status: "sent", updated_at: new Date().toISOString() })
-        .eq("id", invoice.id);
-
-      if (error) throw error;
-
-      setInvoice((prev) => ({ ...prev, status: "sent" }));
-      addToast("Marked as sent!", "success");
-    } catch {
-      addToast("Failed to update status", "error");
-    } finally {
-      setMarkingSent(false);
+  function textInvoice() {
+    const customerName = invoice.customer?.name || "there";
+    const message = `Hey ${customerName} — here's your invoice for ${formatCurrency(invoice.amount_total)}: ${publicUrl} — thank you!`;
+    const phone = invoice.customer?.phone;
+    
+    if (phone && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+      // Mobile device - open SMS app
+      window.location.href = `sms:${phone}${/iPhone|iPad|iPod/i.test(navigator.userAgent) ? '&' : '?'}body=${encodeURIComponent(message)}`;
+    } else {
+      // Desktop - copy message
+      copyToClipboard(message);
+      addToast("Message copied!", "success");
     }
-  }
-
-  function copyInvoiceLink() {
-    copyToClipboard(publicUrl);
-    addToast("Link copied!", "success");
-  }
-
-  function copyInvoiceMessage() {
-    const message = `Here's your invoice for ${address || "your project"}: ${publicUrl} — thank you!`;
-    copyToClipboard(message);
-    addToast("Message copied!", "success");
   }
 
   async function handleMarkPaidManually() {
@@ -172,20 +155,10 @@ export function InvoiceDetailView({ invoice: initialInvoice }: InvoiceDetailView
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={copyInvoiceLink}>
-                <Copy className="mr-2 h-4 w-4" />
-                Copy Link
+              <Button variant="outline" size="sm" onClick={textInvoice}>
+                <MessageSquare className="mr-2 h-4 w-4" />
+                {invoice.customer?.phone && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? 'Text Invoice' : 'Copy Message'}
               </Button>
-              <Button variant="outline" size="sm" onClick={copyInvoiceMessage}>
-                <Copy className="mr-2 h-4 w-4" />
-                Copy Message
-              </Button>
-              {invoice.status === "draft" && (
-                <Button size="sm" onClick={handleMarkSent} loading={markingSent}>
-                  <Send className="mr-2 h-4 w-4" />
-                  Mark Sent
-                </Button>
-              )}
             </div>
           </div>
         </div>

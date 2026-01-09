@@ -12,7 +12,7 @@ type EstimateWithDetails = Estimate & {
   line_items: EstimateLineItem[];
   customer: Customer | null;
   job: Job | null;
-  company: Pick<Company, "name"> | null;
+  company: Pick<Company, "name" | "logo_url" | "contact_phone" | "contact_email"> | null;
 };
 
 interface PublicEstimateViewProps {
@@ -86,9 +86,17 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
       {/* Header */}
       <header className="border-b bg-card/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-stone-800 flex items-center justify-center">
-            <Droplet className="w-5 h-5 text-white" />
-          </div>
+          {(estimate.company as any)?.logo_url ? (
+            <img 
+              src={(estimate.company as any).logo_url} 
+              alt={estimate.company?.name || "Company Logo"}
+              className="w-10 h-10 rounded-lg object-cover"
+            />
+          ) : (
+            <div className="w-8 h-8 rounded-lg bg-stone-800 flex items-center justify-center">
+              <Droplet className="w-5 h-5 text-white" />
+            </div>
+          )}
           <div>
             <span className="font-bold">{estimate.company?.name}</span>
             <p className="text-xs text-muted-foreground">Estimate</p>
@@ -182,6 +190,19 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
             {estimate.company?.name} will contact you to schedule.
           </p>
         </div>
+
+        {/* Footer with contact info */}
+        {((estimate.company as any)?.contact_phone || (estimate.company as any)?.contact_email) && (
+          <div className="mt-8 pt-6 border-t text-center text-sm text-muted-foreground space-y-1">
+            <p className="font-medium text-foreground">{estimate.company?.name}</p>
+            {(estimate.company as any)?.contact_phone && (
+              <p>{(estimate.company as any).contact_phone}</p>
+            )}
+            {(estimate.company as any)?.contact_email && (
+              <p>{(estimate.company as any).contact_email}</p>
+            )}
+          </div>
+        )}
       </main>
     </div>
   );
