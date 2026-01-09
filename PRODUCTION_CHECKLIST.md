@@ -4,6 +4,31 @@
 
 ---
 
+## 🚨 0. CRITICAL DATABASE MIGRATIONS (RUN BEFORE LAUNCH)
+
+These SQL migrations **MUST** be applied to your production Supabase database before launch.
+
+### RLS Recursion Fix (REQUIRED)
+- [ ] Run `supabase/fix_rls_recursion.sql` on production database
+- [ ] Verify fix applied: Run `SELECT prosrc FROM pg_proc WHERE proname = 'get_user_company_id';`
+  - ✅ Should contain `STABLE` at the end
+  - ❌ If missing or function doesn't exist, RLS policies will fail with infinite recursion
+
+### Accepted Estimate Protection (REQUIRED)
+- [ ] Run `supabase/migrations/003_protect_accepted_estimates.sql` on production database
+- [ ] Verify: Try updating an accepted estimate - should fail with error
+
+### How to Apply Migrations
+```bash
+# Option 1: Supabase CLI (recommended)
+supabase db push
+
+# Option 2: Manual - In Supabase Dashboard > SQL Editor
+# Copy/paste each migration file and run
+```
+
+---
+
 ## 🧱 1. CORE PRODUCT READINESS (MUST PASS)
 
 ### Job & Board

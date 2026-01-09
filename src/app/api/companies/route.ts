@@ -19,14 +19,18 @@ export async function POST(request: Request) {
     try {
       const { data: authUser, error: authError } = await supabase.auth.admin.getUserById(owner_id);
       if (authError || !authUser?.user) {
-        console.error("User not found in auth.users:", authError);
+        if (process.env.NODE_ENV === "development") {
+          console.error("User not found in auth.users:", authError);
+        }
         return NextResponse.json(
           { error: "User account not found. If email confirmation is required, please confirm your email first." },
           { status: 400 }
         );
       }
     } catch (err) {
-      console.error("Error checking user:", err);
+      if (process.env.NODE_ENV === "development") {
+        console.error("Error checking user:", err);
+      }
       // Continue anyway - the function will fail with a clearer error
     }
 
@@ -42,7 +46,9 @@ export async function POST(request: Request) {
     );
 
     if (functionError) {
-      console.error("Error creating company:", functionError);
+      if (process.env.NODE_ENV === "development") {
+        console.error("Error creating company:", functionError);
+      }
       // Check if it's a foreign key error
       if (functionError.message?.includes("foreign key constraint") || functionError.message?.includes("owner_user_id_fkey")) {
         return NextResponse.json(
@@ -51,14 +57,16 @@ export async function POST(request: Request) {
         );
       }
       return NextResponse.json(
-        { error: functionError.message || "Failed to create company" },
+        { error: "Failed to create company" },
         { status: 500 }
       );
     }
 
     return NextResponse.json({ company_id: companyId });
   } catch (error) {
-    console.error("Error in company creation:", error);
+    if (process.env.NODE_ENV === "development") {
+      console.error("Error in company creation:", error);
+    }
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
