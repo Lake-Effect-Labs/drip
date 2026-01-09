@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -29,6 +29,12 @@ import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { SimpleCheckbox } from "@/components/ui/checkbox";
 import { useToast } from "@/components/ui/toast";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   ArrowLeft,
   Calendar,
@@ -86,6 +92,14 @@ export function JobDetailView({
   const [materials, setMaterials] = useState(initialMaterials);
   const [estimatesList, setEstimatesList] = useState(estimates);
   const [invoicesList, setInvoicesList] = useState(invoices);
+
+  // Sync state with props when they change (e.g., after navigation)
+  useEffect(() => {
+    setJob(initialJob);
+    setMaterials(initialMaterials);
+    setEstimatesList(estimates);
+    setInvoicesList(invoices);
+  }, [initialJob.id, initialMaterials.length, estimates.length, invoices.length]);
   const [saving, setSaving] = useState(false);
   const [newMaterial, setNewMaterial] = useState("");
   const [showCommonMaterials, setShowCommonMaterials] = useState(false);
@@ -93,12 +107,16 @@ export function JobDetailView({
   // Inline add forms
   const [showAddEstimate, setShowAddEstimate] = useState(false);
   const [showAddInvoice, setShowAddInvoice] = useState(false);
-  const [newEstimateAmount, setNewEstimateAmount] = useState("");
+  const [estimateLineItems, setEstimateLineItems] = useState<Array<{ title: string; price: string }>>([{ title: "", price: "" }]);
   const [newInvoiceAmount, setNewInvoiceAmount] = useState("");
   const [addingEstimate, setAddingEstimate] = useState(false);
   const [addingInvoice, setAddingInvoice] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [messageTemplatesOpen, setMessageTemplatesOpen] = useState(false);
+  const [selectedEstimate, setSelectedEstimate] = useState<EstimateWithLineItems | null>(null);
+  const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
+  const [showMaterialForm, setShowMaterialForm] = useState(false);
+  const [materialFormData, setMaterialFormData] = useState({ name: "", quantity: "", color: "", notes: "" });
 
   // Form state
   const [scheduledDate, setScheduledDate] = useState(job.scheduled_date || "");
@@ -166,22 +184,77 @@ export function JobDetailView({
   }
 
   async function handleAddMaterial(materialName?: string) {
-    const materialToAdd = materialName || newMaterial.trim();
-    if (!materialToAdd) return;
+    if (materialName) {
+      // Quick add from common materials
+      const materialToAdd = materialName.trim();
+      if (!materialToAdd) return;
+
+      // Check if material already exists
+      if (materials.some(m => m.name.toLowerCase() === materialToAdd.toLowerCase())) {
+        addToast("Material already added", "error");
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from("job_materials")
+          .insert({
+            job_id: job.id,
+            name: materialToAdd,
+            checked: false,
+          })
+          .select()
+          .single();
+
+        if (error) {
+          const errorMessage = error?.message || error?.details || error?.hint || JSON.stringify(error) || "Failed to add material";
+          addToast(errorMessage, "error");
+          console.error("Error adding material:", error);
+          return;
+        }
+
+        setMaterials((prev) => [...prev, data]);
+        setShowCommonMaterials(false);
+        addToast("Material added!", "success");
+      } catch (error: any) {
+        console.error("Error adding material:", error);
+        const errorMessage = error?.message || error?.details || error?.hint || JSON.stringify(error) || "Failed to add material";
+        addToast(errorMessage, "error");
+      }
+    } else {
+      // Show form for detailed material entry
+      setShowMaterialForm(true);
+    }
+  }
+
+  async function handleSubmitMaterialForm() {
+    const name = materialFormData.name.trim();
+    if (!name) {
+      addToast("Please enter a material name", "error");
+      return;
+    }
 
     // Check if material already exists
-    if (materials.some(m => m.name.toLowerCase() === materialToAdd.toLowerCase())) {
+    if (materials.some(m => m.name.toLowerCase() === name.toLowerCase())) {
       addToast("Material already added", "error");
       return;
     }
+
+    // Build notes from quantity, color, and other notes
+    const notesParts = [];
+    if (materialFormData.quantity) notesParts.push(`Qty: ${materialFormData.quantity}`);
+    if (materialFormData.color) notesParts.push(`Color: ${materialFormData.color}`);
+    if (materialFormData.notes) notesParts.push(materialFormData.notes);
+    const notes = notesParts.length > 0 ? notesParts.join(" • ") : null;
 
     try {
       const { data, error } = await supabase
         .from("job_materials")
         .insert({
           job_id: job.id,
-          name: materialToAdd.trim(),
+          name,
           checked: false,
+          notes,
         })
         .select()
         .single();
@@ -194,8 +267,9 @@ export function JobDetailView({
       }
 
       setMaterials((prev) => [...prev, data]);
+      setMaterialFormData({ name: "", quantity: "", color: "", notes: "" });
+      setShowMaterialForm(false);
       setNewMaterial("");
-      setShowCommonMaterials(false);
       addToast("Material added!", "success");
     } catch (error: any) {
       console.error("Error adding material:", error);
@@ -216,22 +290,34 @@ export function JobDetailView({
     setShowAddInvoice(true);
   }
 
-  async function handleAddEstimate() {
-    if (!newEstimateAmount.trim()) {
-      addToast("Please enter an amount", "error");
-      return;
-    }
+  function addEstimateLineItem() {
+    setEstimateLineItems((prev) => [...prev, { title: "", price: "" }]);
+  }
 
-    const amountCents = Math.round(parseFloat(newEstimateAmount) * 100);
-    if (!amountCents || amountCents <= 0) {
-      addToast("Please enter a valid amount", "error");
+  function updateEstimateLineItem(index: number, field: "title" | "price", value: string) {
+    setEstimateLineItems((prev) =>
+      prev.map((item, i) => (i === index ? { ...item, [field]: value } : item))
+    );
+  }
+
+  function removeEstimateLineItem(index: number) {
+    setEstimateLineItems((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  async function handleAddEstimate() {
+    const validItems = estimateLineItems.filter(
+      (item) => item.title.trim() && item.price.trim() && parseFloat(item.price) > 0
+    );
+
+    if (validItems.length === 0) {
+      addToast("Please add at least one line item with title and price", "error");
       return;
     }
 
     setAddingEstimate(true);
 
     try {
-      // Create estimate with a single line item
+      // Create estimate
       const { data: estimate, error: estimateError } = await supabase
         .from("estimates")
         .insert({
@@ -253,17 +339,19 @@ export function JobDetailView({
         throw new Error("Estimate was not created");
       }
 
-      // Create a single line item for the estimate
+      // Create line items
+      const lineItemsToInsert = validItems.map((item) => ({
+        estimate_id: estimate.id,
+        service_key: "other",
+        service_type: "flat" as const,
+        name: item.title.trim(),
+        description: "",
+        price: Math.round(parseFloat(item.price) * 100),
+      }));
+
       const { error: itemError } = await supabase
         .from("estimate_line_items")
-        .insert({
-          estimate_id: estimate.id,
-          service_key: "other",
-          service_type: "flat",
-          name: "Estimate",
-          description: "",
-          price: amountCents,
-        });
+        .insert(lineItemsToInsert);
 
       if (itemError) {
         console.error("Line item insert error:", itemError);
@@ -277,7 +365,7 @@ export function JobDetailView({
         .eq("estimate_id", estimate.id);
 
       setEstimatesList((prev) => [{ ...estimate, line_items: lineItems || [] }, ...prev]);
-      setNewEstimateAmount("");
+      setEstimateLineItems([{ title: "", price: "" }]);
       setShowAddEstimate(false);
       addToast("Estimate added!", "success");
     } catch (error: any) {
@@ -573,43 +661,70 @@ export function JobDetailView({
                 {showAddEstimate && (
                   <div className="rounded-lg border bg-muted/50 p-4 space-y-3">
                     <div className="flex items-center justify-between">
-                      <Label htmlFor="estimateAmount">Amount</Label>
+                      <Label>Line Items</Label>
                       <button
                         onClick={() => {
                           setShowAddEstimate(false);
-                          setNewEstimateAmount("");
+                          setEstimateLineItems([{ title: "", price: "" }]);
                         }}
                         className="text-muted-foreground hover:text-foreground"
                       >
                         <X className="h-4 w-4" />
                       </button>
                     </div>
-                    <div className="flex gap-2">
-                      <div className="relative flex-1">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                          $
-                        </span>
-                        <Input
-                          id="estimateAmount"
-                          type="number"
-                          step="0.01"
-                          min="0.01"
-                          className="pl-7 min-h-[44px]"
-                          placeholder="0.00"
-                          value={newEstimateAmount}
-                          onChange={(e) => setNewEstimateAmount(e.target.value)}
-                          autoFocus
-                        />
-                      </div>
-                      <Button 
-                        onClick={handleAddEstimate}
-                        loading={addingEstimate}
-                        disabled={!newEstimateAmount.trim()}
-                        className="touch-target min-h-[44px]"
+                    <div className="space-y-3">
+                      {estimateLineItems.map((item, index) => (
+                        <div key={index} className="flex gap-2">
+                          <Input
+                            placeholder="Title"
+                            value={item.title}
+                            onChange={(e) => updateEstimateLineItem(index, "title", e.target.value)}
+                            className="flex-1 min-h-[44px]"
+                            autoFocus={index === estimateLineItems.length - 1}
+                          />
+                          <div className="relative w-32">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
+                              $
+                            </span>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0.01"
+                              placeholder="0.00"
+                              value={item.price}
+                              onChange={(e) => updateEstimateLineItem(index, "price", e.target.value)}
+                              className="pl-7 min-h-[44px]"
+                            />
+                          </div>
+                          {estimateLineItems.length > 1 && (
+                            <button
+                              onClick={() => removeEstimateLineItem(index)}
+                              className="text-muted-foreground hover:text-destructive touch-target min-h-[44px] min-w-[44px] flex items-center justify-center"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={addEstimateLineItem}
+                        className="w-full touch-target min-h-[44px]"
                       >
-                        Add
+                        <Plus className="mr-2 h-4 w-4" />
+                        Add Line Item
                       </Button>
                     </div>
+                    <Button 
+                      onClick={handleAddEstimate}
+                      loading={addingEstimate}
+                      disabled={estimateLineItems.every(item => !item.title.trim() || !item.price.trim())}
+                      className="w-full touch-target min-h-[44px]"
+                    >
+                      Create Estimate
+                    </Button>
                   </div>
                 )}
 
@@ -620,37 +735,38 @@ export function JobDetailView({
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {estimatesList.map((estimate) => (
-                      <Link
-                        key={estimate.id}
-                        href={`/app/estimates/${estimate.id}`}
-                        className="block rounded-lg border bg-muted/30 p-4 hover:bg-muted/50 transition-colors"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="font-medium">
-                              {formatCurrency(
-                                estimate.line_items.reduce((sum, li) => sum + li.price, 0)
-                              )}
-                            </p>
-                            <p className="text-sm text-muted-foreground">
-                              {estimate.line_items.length} line items • {formatDate(estimate.created_at)}
-                            </p>
+                    {estimatesList.map((estimate) => {
+                      const total = estimate.line_items.reduce((sum, li) => sum + li.price, 0);
+                      return (
+                        <button
+                          key={estimate.id}
+                          onClick={() => setSelectedEstimate(estimate)}
+                          className="w-full text-left block rounded-lg border bg-muted/30 p-4 hover:bg-muted/50 transition-colors"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="font-medium">
+                                {formatCurrency(total)}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                {estimate.line_items.length} line items • {formatDate(estimate.created_at)}
+                              </p>
+                            </div>
+                            <Badge
+                              variant={
+                                estimate.status === "accepted"
+                                  ? "success"
+                                  : estimate.status === "sent"
+                                  ? "secondary"
+                                  : "outline"
+                              }
+                            >
+                              {estimate.status}
+                            </Badge>
                           </div>
-                          <Badge
-                            variant={
-                              estimate.status === "accepted"
-                                ? "success"
-                                : estimate.status === "sent"
-                                ? "secondary"
-                                : "outline"
-                            }
-                          >
-                            {estimate.status}
-                          </Badge>
-                        </div>
-                      </Link>
-                    ))}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -735,10 +851,10 @@ export function JobDetailView({
                 ) : (
                   <div className="space-y-3">
                     {invoicesList.map((invoice) => (
-                      <Link
+                      <button
                         key={invoice.id}
-                        href={`/app/invoices/${invoice.id}`}
-                        className="block rounded-lg border bg-muted/30 p-4 hover:bg-muted/50 transition-colors"
+                        onClick={() => setSelectedInvoice(invoice)}
+                        className="w-full text-left block rounded-lg border bg-muted/30 p-4 hover:bg-muted/50 transition-colors"
                       >
                         <div className="flex items-center justify-between">
                           <div>
@@ -761,7 +877,7 @@ export function JobDetailView({
                             {invoice.status}
                           </Badge>
                         </div>
-                      </Link>
+                      </button>
                     ))}
                   </div>
                 )}
@@ -789,14 +905,20 @@ export function JobDetailView({
                             handleToggleMaterial(material.id, e.target.checked)
                           }
                         />
-                        <span
-                          className={cn(
-                            "flex-1",
-                            material.checked && "line-through text-muted-foreground"
+                        <div className="flex-1">
+                          <span
+                            className={cn(
+                              material.checked && "line-through text-muted-foreground"
+                            )}
+                          >
+                            {material.name}
+                          </span>
+                          {material.notes && (
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {material.notes}
+                            </p>
                           )}
-                        >
-                          {material.name}
-                        </span>
+                        </div>
                         <button
                           onClick={() => handleDeleteMaterial(material.id)}
                           className="text-muted-foreground hover:text-destructive touch-target min-h-[44px] min-w-[44px] flex items-center justify-center"
@@ -848,7 +970,10 @@ export function JobDetailView({
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
                         e.preventDefault();
-                        handleAddMaterial();
+                        if (newMaterial.trim()) {
+                          setMaterialFormData({ ...materialFormData, name: newMaterial });
+                          setShowMaterialForm(true);
+                        }
                       }
                     }}
                     className="min-h-[44px]"
@@ -862,7 +987,12 @@ export function JobDetailView({
                     <Package className="h-4 w-4" />
                   </Button>
                   <Button 
-                    onClick={() => handleAddMaterial()} 
+                    onClick={() => {
+                      if (newMaterial.trim()) {
+                        setMaterialFormData({ ...materialFormData, name: newMaterial });
+                        setShowMaterialForm(true);
+                      }
+                    }}
                     disabled={!newMaterial.trim()}
                     className="touch-target min-h-[44px] min-w-[44px]"
                   >
@@ -1022,6 +1152,168 @@ export function JobDetailView({
         scheduledTime={scheduledTime}
         address={address}
       />
+
+      {/* Estimate Detail Dialog */}
+      <Dialog open={!!selectedEstimate} onOpenChange={(open) => !open && setSelectedEstimate(null)}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Estimate Details</DialogTitle>
+          </DialogHeader>
+          {selectedEstimate && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Badge
+                  variant={
+                    selectedEstimate.status === "accepted"
+                      ? "success"
+                      : selectedEstimate.status === "sent"
+                      ? "secondary"
+                      : "outline"
+                  }
+                >
+                  {selectedEstimate.status}
+                </Badge>
+                <p className="text-sm text-muted-foreground">
+                  Created {formatDate(selectedEstimate.created_at)}
+                </p>
+              </div>
+              <div className="rounded-lg border divide-y">
+                {selectedEstimate.line_items.map((item) => (
+                  <div key={item.id} className="p-4">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="font-medium">{item.name}</p>
+                        {item.description && (
+                          <p className="text-sm text-muted-foreground mt-1">
+                            {item.description}
+                          </p>
+                        )}
+                      </div>
+                      <p className="font-medium">{formatCurrency(item.price)}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="p-4 border-t bg-muted/50 rounded-b-lg">
+                <div className="flex items-center justify-between text-lg font-semibold">
+                  <span>Total</span>
+                  <span>{formatCurrency(selectedEstimate.line_items.reduce((sum, li) => sum + li.price, 0))}</span>
+                </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Invoice Detail Dialog */}
+      <Dialog open={!!selectedInvoice} onOpenChange={(open) => !open && setSelectedInvoice(null)}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Invoice Details</DialogTitle>
+          </DialogHeader>
+          {selectedInvoice && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Badge
+                  variant={
+                    selectedInvoice.status === "paid"
+                      ? "success"
+                      : selectedInvoice.status === "sent"
+                      ? "secondary"
+                      : "outline"
+                  }
+                >
+                  {selectedInvoice.status}
+                </Badge>
+                <p className="text-sm text-muted-foreground">
+                  Created {formatDate(selectedInvoice.created_at)}
+                </p>
+              </div>
+              <div className="rounded-lg border bg-card p-6 text-center">
+                <p className="text-sm text-muted-foreground mb-1">Amount Due</p>
+                <p className="text-4xl font-bold">
+                  {formatCurrency(selectedInvoice.amount_total)}
+                </p>
+              </div>
+              {selectedInvoice.status === "paid" && selectedInvoice.paid_at && (
+                <div className="bg-success/10 text-success rounded-lg p-4 text-center">
+                  <p className="font-semibold">Paid</p>
+                  <p className="text-sm">on {formatDate(selectedInvoice.paid_at)}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Material Form Dialog */}
+      <Dialog open={showMaterialForm} onOpenChange={setShowMaterialForm}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Material</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="materialName">Material Name *</Label>
+              <Input
+                id="materialName"
+                value={materialFormData.name}
+                onChange={(e) => setMaterialFormData({ ...materialFormData, name: e.target.value })}
+                placeholder="e.g., Paint, Brushes"
+                className="min-h-[44px]"
+                autoFocus
+              />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="materialQuantity">Quantity</Label>
+                <Input
+                  id="materialQuantity"
+                  value={materialFormData.quantity}
+                  onChange={(e) => setMaterialFormData({ ...materialFormData, quantity: e.target.value })}
+                  placeholder="e.g., 5 gallons"
+                  className="min-h-[44px]"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="materialColor">Color</Label>
+                <Input
+                  id="materialColor"
+                  value={materialFormData.color}
+                  onChange={(e) => setMaterialFormData({ ...materialFormData, color: e.target.value })}
+                  placeholder="e.g., SW 7029"
+                  className="min-h-[44px]"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="materialNotes">Additional Notes</Label>
+              <Textarea
+                id="materialNotes"
+                value={materialFormData.notes}
+                onChange={(e) => setMaterialFormData({ ...materialFormData, notes: e.target.value })}
+                placeholder="Any other details..."
+                rows={3}
+              />
+            </div>
+            <div className="flex justify-end gap-3 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setShowMaterialForm(false);
+                  setMaterialFormData({ name: "", quantity: "", color: "", notes: "" });
+                }}
+              >
+                Cancel
+              </Button>
+              <Button onClick={handleSubmitMaterialForm} disabled={!materialFormData.name.trim()}>
+                Add Material
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

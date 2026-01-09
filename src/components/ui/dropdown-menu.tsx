@@ -68,12 +68,14 @@ interface DropdownMenuContentProps {
   children: React.ReactNode;
   className?: string;
   align?: "start" | "center" | "end";
+  sideOffset?: number;
 }
 
 function DropdownMenuContent({
   children,
   className,
   align = "end",
+  sideOffset = 4,
 }: DropdownMenuContentProps) {
   const { open, setOpen } = useDropdownMenu();
   const ref = React.useRef<HTMLDivElement>(null);
@@ -87,12 +89,38 @@ function DropdownMenuContent({
 
     if (open) {
       document.addEventListener("mousedown", handleClickOutside);
+      // Ensure menu stays on screen
+      if (ref.current) {
+        const rect = ref.current.getBoundingClientRect();
+        const viewportHeight = window.innerHeight;
+        const viewportWidth = window.innerWidth;
+        
+        // Adjust if going off bottom
+        if (rect.bottom > viewportHeight) {
+          ref.current.style.top = "auto";
+          ref.current.style.bottom = "100%";
+          ref.current.style.marginBottom = `${sideOffset}px`;
+          ref.current.style.marginTop = "0";
+        }
+        
+        // Adjust if going off right
+        if (rect.right > viewportWidth && align === "end") {
+          ref.current.style.right = "0";
+          ref.current.style.left = "auto";
+        }
+        
+        // Adjust if going off left
+        if (rect.left < 0 && align === "start") {
+          ref.current.style.left = "0";
+          ref.current.style.right = "auto";
+        }
+      }
     }
 
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [open, setOpen]);
+  }, [open, setOpen, align, sideOffset]);
 
   if (!open) return null;
 
@@ -104,9 +132,10 @@ function DropdownMenuContent({
         align === "start" && "left-0",
         align === "center" && "left-1/2 -translate-x-1/2",
         align === "end" && "right-0",
-        "top-full mt-1",
+        "top-full",
         className
       )}
+      style={{ marginTop: `${sideOffset}px` }}
     >
       {children}
     </div>
