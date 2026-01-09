@@ -34,7 +34,6 @@ if (env.isProduction) {
   if (!env.supabaseUrl || !env.supabaseAnonKey || !env.supabaseServiceRoleKey) {
     throw new Error("Missing required Supabase environment variables");
   }
-  if (!env.stripeSecretKey || !env.stripeWebhookSecret) {
-    throw new Error("Missing required Stripe environment variables");
-  }
+  // Note: Stripe env vars are optional for Drip Lite (customer payments disabled)
+  // They will be required when SaaS billing is enabled
 }

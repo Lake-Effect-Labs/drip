@@ -34,7 +34,9 @@ export async function GET(
       expires_at: invite.expires_at,
     });
   } catch (error) {
-    console.error("Error checking invite:", error);
+    if (process.env.NODE_ENV === "development") {
+      console.error("Error checking invite:", error);
+    }
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

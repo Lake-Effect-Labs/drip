@@ -46,16 +46,20 @@ export async function PATCH(
       .single();
 
     if (updateError) {
-      console.error("Error updating company:", updateError);
+      if (process.env.NODE_ENV === "development") {
+        console.error("Error updating company:", updateError);
+      }
       return NextResponse.json(
-        { error: updateError.message },
+        { error: "Failed to update company" },
         { status: 500 }
       );
     }
 
     return NextResponse.json(updatedCompany);
   } catch (error) {
-    console.error("Error in company update:", error);
+    if (process.env.NODE_ENV === "development") {
+      console.error("Error in company update:", error);
+    }
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
