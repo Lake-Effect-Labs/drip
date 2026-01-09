@@ -89,7 +89,9 @@ export async function POST(
         .single();
 
       if (jobError) {
-        console.error("Error creating job:", jobError);
+        if (process.env.NODE_ENV === "development") {
+          console.error("Error creating job:", jobError);
+        }
         return NextResponse.json(
           { error: "Failed to create job" },
           { status: 500 }
@@ -118,7 +120,9 @@ export async function POST(
       .eq("id", estimate.id);
 
     if (updateError) {
-      console.error("Error updating estimate:", updateError);
+      if (process.env.NODE_ENV === "development") {
+        console.error("Error updating estimate:", updateError);
+      }
       return NextResponse.json(
         { error: "Failed to accept estimate" },
         { status: 500 }
@@ -179,7 +183,9 @@ export async function POST(
           .insert(materialsToInsert);
 
         if (materialsError) {
-          console.error("Error creating materials:", materialsError);
+          if (process.env.NODE_ENV === "development") {
+            console.error("Error creating materials:", materialsError);
+          }
           // Don't fail the whole request, just log the error
         }
       }
@@ -187,7 +193,9 @@ export async function POST(
 
     return NextResponse.json({ success: true, job_id: jobId });
   } catch (error) {
-    console.error("Error accepting estimate:", error);
+    if (process.env.NODE_ENV === "development") {
+      console.error("Error accepting estimate:", error);
+    }
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

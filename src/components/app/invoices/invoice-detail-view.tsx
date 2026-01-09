@@ -76,7 +76,23 @@ export function InvoiceDetailView({ invoice: initialInvoice }: InvoiceDetailView
   async function handleMarkPaidManually() {
     setMarkingPaid(true);
     try {
-      // Update invoice to paid
+      // Idempotency check: verify invoice is not already paid
+      const { data: currentInvoice } = await supabase
+        .from("invoices")
+        .select("status")
+        .eq("id", invoice.id)
+        .single();
+
+      if (currentInvoice?.status === "paid") {
+        // Already paid - update local state and exit gracefully
+        setInvoice((prev) => ({ ...prev, status: "paid" }));
+        setMarkPaidDialogOpen(false);
+        addToast("Invoice was already marked as paid", "info");
+        setMarkingPaid(false);
+        return;
+      }
+
+      // Update invoice to paid (only if not already paid)
       const { error: invoiceError } = await supabase
         .from("invoices")
         .update({
@@ -84,7 +100,8 @@ export function InvoiceDetailView({ invoice: initialInvoice }: InvoiceDetailView
           paid_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
-        .eq("id", invoice.id);
+        .eq("id", invoice.id)
+        .neq("status", "paid"); // Extra safety: don't update if already paid
 
       if (invoiceError) throw invoiceError;
 

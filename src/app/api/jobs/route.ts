@@ -73,16 +73,20 @@ export async function POST(request: Request) {
       .single();
 
     if (jobError) {
-      console.error("Error creating job:", jobError);
+      if (process.env.NODE_ENV === "development") {
+        console.error("Error creating job:", jobError);
+      }
       return NextResponse.json(
-        { error: jobError.message },
+        { error: "Failed to create job" },
         { status: 500 }
       );
     }
 
     return NextResponse.json(job);
   } catch (error) {
-    console.error("Error in job creation:", error);
+    if (process.env.NODE_ENV === "development") {
+      console.error("Error in job creation:", error);
+    }
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

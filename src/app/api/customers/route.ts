@@ -69,16 +69,20 @@ export async function POST(request: Request) {
       .single();
 
     if (customerError) {
-      console.error("Error creating customer:", customerError);
+      if (process.env.NODE_ENV === "development") {
+        console.error("Error creating customer:", customerError);
+      }
       return NextResponse.json(
-        { error: customerError.message },
+        { error: "Failed to create customer" },
         { status: 500 }
       );
     }
 
     return NextResponse.json(customer);
   } catch (error) {
-    console.error("Error in customer creation:", error);
+    if (process.env.NODE_ENV === "development") {
+      console.error("Error in customer creation:", error);
+    }
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

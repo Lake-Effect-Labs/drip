@@ -1,14 +1,24 @@
 import { NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/server";
+import { createAdminClient, createClient } from "@/lib/supabase/server";
 
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ token: string }> }
 ) {
   const { token } = await params;
-  const supabase = createAdminClient();
+  const supabase = await createClient();
+  const adminSupabase = createAdminClient();
 
   try {
+    // Verify the requester is authenticated
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await request.json();
     const { user_id, email, full_name } = body;
 
@@ -19,8 +29,17 @@ export async function POST(
       );
     }
 
+    // Security: Verify the authenticated user matches the user_id being added
+    // This prevents an attacker from using a valid token to add arbitrary users
+    if (user.id !== user_id) {
+      return NextResponse.json(
+        { error: "Forbidden - cannot join on behalf of another user" },
+        { status: 403 }
+      );
+    }
+
     // Get invite
-    const { data: invite, error: inviteError } = await supabase
+    const { data: invite, error: inviteError } = await adminSupabase
       .from("invite_links")
       .select("company_id")
       .eq("token", token)
@@ -36,7 +55,7 @@ export async function POST(
     }
 
     // Check if user already in company
-    const { data: existing } = await supabase
+    const { data: existing } = await adminSupabase
       .from("company_users")
       .select("id")
       .eq("user_id", user_id)
@@ -48,20 +67,22 @@ export async function POST(
     }
 
     // Create user profile
-    await supabase.from("user_profiles").upsert({
+    await adminSupabase.from("user_profiles").upsert({
       id: user_id,
       email,
       full_name: full_name || null,
     });
 
     // Add user to company
-    const { error: joinError } = await supabase.from("company_users").insert({
+    const { error: joinError } = await adminSupabase.from("company_users").insert({
       company_id: invite.company_id,
       user_id,
     });
 
     if (joinError) {
-      console.error("Error joining company:", joinError);
+      if (process.env.NODE_ENV === "development") {
+        console.error("Error joining company:", joinError);
+      }
       return NextResponse.json(
         { error: "Failed to join company" },
         { status: 500 }
@@ -70,11 +91,12 @@ export async function POST(
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Error processing invite:", error);
+    if (process.env.NODE_ENV === "development") {
+      console.error("Error processing invite:", error);
+    }
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
     );
   }
 }
-

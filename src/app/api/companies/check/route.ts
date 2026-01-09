@@ -46,7 +46,9 @@ export async function GET() {
 
     return NextResponse.json({ hasCompany: false });
   } catch (error) {
-    console.error("Error checking company:", error);
+    if (process.env.NODE_ENV === "development") {
+      console.error("Error checking company:", error);
+    }
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }
