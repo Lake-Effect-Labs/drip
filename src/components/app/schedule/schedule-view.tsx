@@ -124,7 +124,7 @@ export function ScheduleView({
     <div className="min-h-screen pb-20 lg:pb-0">
       {/* Header */}
       <div className="border-b bg-card p-4">
-        <div className="max-w-7xl mx-auto">
+        <div className="w-full">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h1 className="text-2xl font-bold">Schedule</h1>
@@ -135,16 +135,16 @@ export function ScheduleView({
                 }
               </p>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-2">
               <Select
                 value={filter}
                 onChange={(e) => setFilter(e.target.value as FilterType)}
-                className="w-40"
+                className="w-full sm:w-40 min-w-[120px]"
               >
                 <option value="all">All jobs</option>
                 <option value="mine">My jobs</option>
               </Select>
-              <div className="flex items-center gap-1 border rounded-lg">
+              <div className="flex items-center gap-1 border rounded-lg shrink-0">
                 <Button
                   variant={view === "day" ? "default" : "ghost"}
                   size="sm"
@@ -162,7 +162,7 @@ export function ScheduleView({
                   Week
                 </Button>
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1 shrink-0">
                 <Button
                   variant="outline"
                   size="sm"
@@ -174,7 +174,7 @@ export function ScheduleView({
                   variant="outline"
                   size="sm"
                   onClick={goToToday}
-                  className="min-w-[80px]"
+                  className="text-xs px-2"
                 >
                   Today
                 </Button>
@@ -192,7 +192,7 @@ export function ScheduleView({
       </div>
 
       {/* Schedule Content */}
-      <div className="max-w-7xl mx-auto p-4">
+      <div className="w-full p-4">
         {view === "day" ? (
           <div className="space-y-4">
             <div className="text-sm font-medium text-muted-foreground mb-2">
@@ -253,14 +253,14 @@ export function ScheduleView({
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="grid grid-cols-7 gap-2">
+            <div className="grid grid-cols-7 gap-1 sm:gap-2 overflow-x-auto">
               {weekDays.map((day, index) => {
                 const dayKey = format(day, "yyyy-MM-dd");
                 const dayJobs = jobsByDate.get(dayKey) || [];
                 const isToday = isSameDay(day, new Date());
 
                 return (
-                  <div key={index} className="space-y-2">
+                  <div key={index} className="space-y-2 min-w-[80px] sm:min-w-0">
                     <div
                       className={cn(
                         "text-center p-2 rounded-lg",
@@ -274,22 +274,22 @@ export function ScheduleView({
                         {format(day, "d")}
                       </div>
                     </div>
-                    <div className="space-y-1 min-h-[200px]">
+                    <div className="space-y-1.5 min-h-[200px]">
                       {dayJobs.map((job) => (
                         <Link
                           key={job.id}
                           href={`/app/jobs/${job.id}`}
                           className="block"
                         >
-                          <Card className="p-2 hover:bg-muted/50 transition-colors text-xs">
-                            <div className="font-medium truncate">{job.title}</div>
+                          <Card className="p-2.5 hover:bg-muted/50 transition-colors">
+                            <div className="font-semibold text-sm truncate mb-1">{job.title}</div>
                             {job.scheduled_time && (
-                              <div className="text-muted-foreground">
+                              <div className="text-xs text-muted-foreground mb-0.5">
                                 {formatTime(job.scheduled_time)}
                               </div>
                             )}
                             {job.customer && (
-                              <div className="text-muted-foreground truncate">
+                              <div className="text-xs text-muted-foreground truncate">
                                 {job.customer.name}
                               </div>
                             )}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -72,6 +72,14 @@ export function SettingsView({
   const [config, setConfig] = useState(initialConfig);
   const [inviteLinks, setInviteLinks] = useState(initialLinks);
   const [locations, setLocations] = useState(initialLocations);
+  const [origin, setOrigin] = useState<string>("");
+
+  // Safely get origin after component mounts (client-side only)
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setOrigin(window.location.origin);
+    }
+  }, []);
 
   // Company form
   const [companyName, setCompanyName] = useState(company.name);
@@ -180,7 +188,7 @@ export function SettingsView({
 
       setInviteLinks((prev) => [data, ...prev]);
       
-      const inviteUrl = `${window.location.origin}/join/${token}`;
+      const inviteUrl = `${origin || (typeof window !== "undefined" ? window.location.origin : "")}/join/${token}`;
       copyToClipboard(inviteUrl);
       addToast("Invite link created and copied!", "success");
     } catch {
@@ -592,7 +600,7 @@ export function SettingsView({
 
       <div className="max-w-3xl mx-auto p-4">
         <Tabs defaultValue="company" className="w-full">
-          <TabsList className="w-full justify-start flex-wrap h-auto gap-1">
+          <TabsList className="w-full justify-start overflow-x-auto scrollbar-hide flex-nowrap gap-1 -mx-4 px-4 lg:flex-wrap lg:overflow-x-visible">
             <TabsTrigger value="company">
               <Building className="mr-1.5 h-4 w-4" />
               Company
@@ -838,7 +846,7 @@ export function SettingsView({
                     >
                       <div className="flex-1 min-w-0">
                         <code className="text-xs bg-muted px-2 py-1 rounded truncate block">
-                          {`${window.location.origin}/join/${link.token}`}
+                          {origin ? `${origin}/join/${link.token}` : `/join/${link.token}`}
                         </code>
                         <p className="text-xs text-muted-foreground mt-1">
                           Expires {formatDate(link.expires_at)}
@@ -849,9 +857,8 @@ export function SettingsView({
                           variant="ghost"
                           size="sm"
                           onClick={() => {
-                            copyToClipboard(
-                              `${window.location.origin}/join/${link.token}`
-                            );
+                            const url = `${origin || (typeof window !== "undefined" ? window.location.origin : "")}/join/${link.token}`;
+                            copyToClipboard(url);
                             addToast("Link copied!", "success");
                           }}
                         >

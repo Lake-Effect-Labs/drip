@@ -32,7 +32,7 @@ export function DateTimePicker({
   return (
     <div className={cn("space-y-2", className)}>
       {label && <Label className="text-sm font-medium">{label}</Label>}
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 grid-cols-1 sm:grid-cols-2">
         <div className="space-y-1.5">
           <div
             className={cn(

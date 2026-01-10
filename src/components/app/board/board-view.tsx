@@ -59,7 +59,9 @@ export function BoardView({
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 8,
+        distance: 5,
+        delay: 100,
+        tolerance: 5,
       },
     }),
     useSensor(KeyboardSensor, {
@@ -196,7 +198,7 @@ export function BoardView({
       </div>
 
       {/* Board */}
-      <div className="flex-1 overflow-x-auto p-4">
+      <div className="flex-1 overflow-x-auto overflow-y-hidden p-4 min-h-0" style={{ maxHeight: 'calc(100vh - 14rem)' }}>
         {!mounted ? (
           // Show loading state during hydration to prevent mismatch
           <div className="flex h-full items-center justify-center">

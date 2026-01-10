@@ -111,7 +111,7 @@ export function AppShell({ children, user, company, isOwner }: AppShellProps) {
       </aside>
 
       {/* Mobile header */}
-      <header className="fixed left-0 right-0 top-0 z-40 flex h-14 items-center justify-between border-b bg-muted/50 px-4 lg:hidden">
+      <header className="flex h-14 items-center justify-between border-b bg-background px-4 lg:hidden">
         <div className="flex items-center gap-2 min-w-0">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary shrink-0">
             <Droplet className="h-5 w-5 text-primary-foreground" />
@@ -122,7 +122,7 @@ export function AppShell({ children, user, company, isOwner }: AppShellProps) {
 
       {/* Main content */}
       <main className={cn(
-        "min-h-screen pt-14 pb-16 lg:pt-0 lg:pb-0 transition-all duration-300",
+        "min-h-screen pb-16 lg:pt-0 lg:pb-0 transition-all duration-300",
         sidebarCollapsed ? "lg:pl-16" : "lg:pl-64"
       )}>{children}</main>
 

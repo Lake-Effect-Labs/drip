@@ -304,7 +304,7 @@ export function CustomerDetailView({
             ) : (
               /* Tabs View */
               <Tabs defaultValue="timeline" className="w-full">
-                <TabsList className="w-full justify-start overflow-x-auto scrollbar-hide">
+                <TabsList className="w-full justify-start overflow-x-auto scrollbar-hide -mx-4 px-4">
                   <TabsTrigger value="timeline" className="shrink-0">
                     <Clock className="mr-1.5 h-4 w-4 shrink-0" />
                     <span className="whitespace-nowrap">Timeline</span>
