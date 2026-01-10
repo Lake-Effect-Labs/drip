@@ -213,32 +213,32 @@ export function ScheduleView({
                   >
                     <Card className="p-4 hover:bg-muted/50 transition-colors">
                       <div className="flex items-start justify-between gap-4">
-                        <div className="flex-1 space-y-2">
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-semibold">{job.title}</h3>
-                            <Badge variant="secondary">{job.status}</Badge>
+                        <div className="flex-1 min-w-0 space-y-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <h3 className="font-semibold truncate flex-1">{job.title}</h3>
+                            <Badge variant="secondary" className="shrink-0">{job.status}</Badge>
                           </div>
-                          <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
+                          <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                             {job.scheduled_time && (
-                              <div className="flex items-center gap-1.5">
-                                <Clock className="h-4 w-4" />
-                                {formatTime(job.scheduled_time)}
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <Clock className="h-4 w-4 shrink-0" />
+                                <span className="whitespace-nowrap">{formatTime(job.scheduled_time)}</span>
                               </div>
                             )}
                             {job.customer && (
-                              <div className="flex items-center gap-1.5">
-                                <User className="h-4 w-4" />
-                                {job.customer.name}
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <User className="h-4 w-4 shrink-0" />
+                                <span className="truncate">{job.customer.name}</span>
                               </div>
                             )}
                             {job.address1 && (
-                              <div className="flex items-center gap-1.5">
-                                <MapPin className="h-4 w-4" />
-                                {[job.address1, job.city, job.state].filter(Boolean).join(", ")}
+                              <div className="flex items-start gap-1.5 min-w-0 flex-1">
+                                <MapPin className="h-4 w-4 shrink-0 mt-0.5" />
+                                <span className="break-words text-xs">{[job.address1, job.city, job.state].filter(Boolean).join(", ")}</span>
                               </div>
                             )}
                             {job.assigned_user_id && (
-                              <div className="text-xs">
+                              <div className="text-xs shrink-0 whitespace-nowrap">
                                 Assigned to: {getTeamMemberName(job.assigned_user_id)}
                               </div>
                             )}

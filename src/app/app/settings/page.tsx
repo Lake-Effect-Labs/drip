@@ -94,6 +94,7 @@ export default async function SettingsPage() {
       company={company}
       isOwner={isOwner}
       currentUserId={user.id}
+      currentUserEmail={user.email || ""}
       config={config}
       teamMembers={members}
       inviteLinks={inviteLinks || []}

@@ -25,7 +25,6 @@ import {
   MapPin,
   Briefcase,
   Users,
-  Download,
   Upload,
 } from "lucide-react";
 
@@ -178,38 +177,6 @@ export function CustomersView({
     }
   }
 
-  async function handleExportCustomers() {
-    try {
-      const csv = [
-        ["Name", "Phone", "Email", "Address", "City", "State", "ZIP", "Total Jobs", "Created At"].join(","),
-        ...customers.map((cust) =>
-          [
-            `"${cust.name.replace(/"/g, '""')}"`,
-            cust.phone || "",
-            cust.email || "",
-            `"${(cust.address1 || "").replace(/"/g, '""')}"`,
-            cust.city || "",
-            cust.state || "",
-            cust.zip || "",
-            customerJobCounts[cust.id] || 0,
-            cust.created_at,
-          ].join(",")
-        ),
-      ].join("\n");
-
-      const blob = new Blob([csv], { type: "text/csv" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `customers-${new Date().toISOString().split("T")[0]}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-
-      addToast("Customers exported!", "success");
-    } catch {
-      addToast("Failed to export", "error");
-    }
-  }
 
   return (
     <div className="flex h-full flex-col">
@@ -238,14 +205,6 @@ export function CustomersView({
             >
               <Upload className="mr-2 h-4 w-4" />
               Import
-            </Button>
-            <Button
-              variant="outline"
-              onClick={handleExportCustomers}
-              disabled={customers.length === 0}
-            >
-              <Download className="mr-2 h-4 w-4" />
-              Export
             </Button>
             <Button onClick={() => setDialogOpen(true)}>
               <Plus className="mr-2 h-4 w-4" />

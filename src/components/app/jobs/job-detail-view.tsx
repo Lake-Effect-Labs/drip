@@ -652,11 +652,11 @@ export function JobDetailView({
 
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <h1 className="text-xl sm:text-2xl font-bold">{job.title}</h1>
+              <h1 className="text-xl sm:text-2xl font-bold truncate">{job.title}</h1>
               {job.customer && (
-                <p className="text-muted-foreground flex items-center gap-1 mt-1 text-sm sm:text-base">
-                  <User className="h-4 w-4" />
-                  {job.customer.name}
+                <p className="text-muted-foreground flex items-center gap-1 mt-1 text-sm sm:text-base min-w-0">
+                  <User className="h-4 w-4 shrink-0" />
+                  <span className="truncate">{job.customer.name}</span>
                 </p>
               )}
             </div>
@@ -677,16 +677,16 @@ export function JobDetailView({
               {address && (
                 <div className="flex items-start gap-3">
                   <MapPin className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
-                  <span>{address}</span>
+                  <span className="break-words">{address}</span>
                 </div>
               )}
               {job.customer?.phone && (
-                <div className="flex items-center gap-3">
-                  <Phone className="h-5 w-5 text-muted-foreground" />
-                  <div className="flex gap-2">
+                <div className="flex items-center gap-3 min-w-0">
+                  <Phone className="h-5 w-5 text-muted-foreground shrink-0" />
+                  <div className="flex gap-2 min-w-0">
                     <a 
                       href={`tel:${job.customer.phone}`} 
-                      className="hover:underline touch-target min-h-[44px] flex items-center"
+                      className="hover:underline touch-target min-h-[44px] flex items-center truncate"
                     >
                       {job.customer.phone}
                     </a>
@@ -701,11 +701,11 @@ export function JobDetailView({
                 </div>
               )}
               {job.customer?.email && (
-                <div className="flex items-center gap-3">
-                  <Mail className="h-5 w-5 text-muted-foreground" />
+                <div className="flex items-center gap-3 min-w-0">
+                  <Mail className="h-5 w-5 text-muted-foreground shrink-0" />
                   <a 
                     href={`mailto:${job.customer.email}`} 
-                    className="hover:underline touch-target min-h-[44px] flex items-center"
+                    className="hover:underline touch-target min-h-[44px] flex items-center truncate"
                   >
                     {job.customer.email}
                   </a>

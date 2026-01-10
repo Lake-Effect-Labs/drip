@@ -42,6 +42,7 @@ interface SettingsViewProps {
   company: Company;
   isOwner: boolean;
   currentUserId: string;
+  currentUserEmail: string;
   config: EstimatingConfig | null;
   teamMembers: {
     id: string;
@@ -57,6 +58,7 @@ export function SettingsView({
   company: initialCompany,
   isOwner,
   currentUserId,
+  currentUserEmail,
   config: initialConfig,
   teamMembers: initialMembers,
   inviteLinks: initialLinks,
@@ -478,6 +480,109 @@ export function SettingsView({
     }
   }
 
+  // Export Jobs state
+  const [exportJobsDialogOpen, setExportJobsDialogOpen] = useState(false);
+  const [exportingJobs, setExportingJobs] = useState(false);
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+
+  async function handleExportJobs() {
+    if (!startDate || !endDate) {
+      addToast("Please select both start and end dates", "error");
+      return;
+    }
+
+    setExportingJobs(true);
+
+    try {
+      // Fetch jobs with customer info
+      const { data: jobs, error: jobsError } = await supabase
+        .from("jobs")
+        .select(`
+          *,
+          customer:customers(name, phone, email, address1, city, state, zip)
+        `)
+        .eq("company_id", company.id)
+        .gte("created_at", startDate)
+        .lte("created_at", `${endDate}T23:59:59`)
+        .order("created_at", { ascending: false });
+
+      if (jobsError) throw jobsError;
+
+      // Fetch invoices for these jobs
+      const { data: invoices, error: invoicesError } = await supabase
+        .from("invoices")
+        .select("*")
+        .eq("company_id", company.id)
+        .gte("created_at", startDate)
+        .lte("created_at", `${endDate}T23:59:59`)
+        .order("created_at", { ascending: false });
+
+      if (invoicesError) throw invoicesError;
+
+      // Create CSV
+      const csv = [
+        [
+          "Date",
+          "Job Title",
+          "Customer Name",
+          "Customer Phone",
+          "Customer Email",
+          "Address",
+          "Job Status",
+          "Invoice Amount",
+          "Invoice Status",
+          "Payment Date",
+        ].join(","),
+        ...(jobs || []).map((job) => {
+          const jobInvoices = (invoices || []).filter((inv) => inv.job_id === job.id);
+          const totalInvoiced = jobInvoices.reduce((sum, inv) => sum + inv.amount_total, 0);
+          const paidInvoices = jobInvoices.filter((inv) => inv.status === "paid");
+          const paymentDate = paidInvoices.length > 0 
+            ? paidInvoices[0].updated_at 
+            : "";
+
+          const customer = job.customer as any;
+          const address = customer
+            ? [customer.address1, customer.city, customer.state, customer.zip]
+                .filter(Boolean)
+                .join(", ")
+            : "";
+
+          return [
+            formatDate(job.created_at),
+            `"${job.title.replace(/"/g, '""')}"`,
+            customer ? `"${customer.name.replace(/"/g, '""')}"` : "",
+            customer?.phone || "",
+            customer?.email || "",
+            `"${address.replace(/"/g, '""')}"`,
+            job.status,
+            totalInvoiced.toFixed(2),
+            jobInvoices.length > 0 ? jobInvoices[0].status : "none",
+            paymentDate ? formatDate(paymentDate) : "",
+          ].join(",");
+        }),
+      ].join("\n");
+
+      // Download CSV
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `jobs-export-${startDate}-to-${endDate}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+
+      addToast("Export complete!", "success");
+      setExportJobsDialogOpen(false);
+    } catch (error) {
+      console.error("Export error:", error);
+      addToast("Failed to export data", "error");
+    } finally {
+      setExportingJobs(false);
+    }
+  }
+
   return (
     <div className="min-h-screen pb-20 lg:pb-0">
       {/* Header */}
@@ -567,55 +672,6 @@ export function SettingsView({
               </div>
             </div>
 
-            <Button onClick={handleSaveCompany} loading={savingCompany}>
-              Save Company Settings
-            </Button>
-          </TabsContent>
-
-          {/* Estimating Tab */}
-          <TabsContent value="estimating" className="mt-6 space-y-6">
-            <div className="rounded-lg border bg-card p-4 space-y-4">
-              <h3 className="font-semibold">Square Footage Rates</h3>
-              <p className="text-sm text-muted-foreground">
-                Set your default $/sqft rates for auto-pricing estimates.
-              </p>
-              <div className="grid gap-4 sm:grid-cols-3">
-                <div className="space-y-2">
-                  <Label htmlFor="wallsRate">Interior Walls ($/sqft)</Label>
-                  <Input
-                    id="wallsRate"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={wallsRate}
-                    onChange={(e) => setWallsRate(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="ceilingsRate">Ceilings ($/sqft)</Label>
-                  <Input
-                    id="ceilingsRate"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={ceilingsRate}
-                    onChange={(e) => setCeilingsRate(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="trimRate">Trim & Doors ($/sqft)</Label>
-                  <Input
-                    id="trimRate"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={trimRate}
-                    onChange={(e) => setTrimRate(e.target.value)}
-                  />
-                </div>
-              </div>
-            </div>
-
             <div className="rounded-lg border bg-card p-4 space-y-4">
               <h3 className="font-semibold">Material Defaults</h3>
               <p className="text-sm text-muted-foreground">
@@ -668,6 +724,55 @@ export function SettingsView({
               <p className="text-xs text-muted-foreground">
                 These defaults will be suggested when adding materials to jobs. You can always change them per job.
               </p>
+            </div>
+
+            <Button onClick={handleSaveCompany} loading={savingCompany}>
+              Save Company Settings
+            </Button>
+          </TabsContent>
+
+          {/* Estimating Tab */}
+          <TabsContent value="estimating" className="mt-6 space-y-6">
+            <div className="rounded-lg border bg-card p-4 space-y-4">
+              <h3 className="font-semibold">Square Footage Rates</h3>
+              <p className="text-sm text-muted-foreground">
+                Set your default $/sqft rates for auto-pricing estimates.
+              </p>
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div className="space-y-2">
+                  <Label htmlFor="wallsRate">Interior Walls ($/sqft)</Label>
+                  <Input
+                    id="wallsRate"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={wallsRate}
+                    onChange={(e) => setWallsRate(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="ceilingsRate">Ceilings ($/sqft)</Label>
+                  <Input
+                    id="ceilingsRate"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={ceilingsRate}
+                    onChange={(e) => setCeilingsRate(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="trimRate">Trim & Doors ($/sqft)</Label>
+                  <Input
+                    id="trimRate"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={trimRate}
+                    onChange={(e) => setTrimRate(e.target.value)}
+                  />
+                </div>
+              </div>
             </div>
 
             <Button onClick={handleSaveConfig} loading={savingConfig}>
@@ -840,6 +945,10 @@ export function SettingsView({
                 Download your data for accounting or backup purposes.
               </p>
               <div className="flex flex-wrap gap-3">
+                <Button variant="outline" onClick={() => setExportJobsDialogOpen(true)}>
+                  <Download className="mr-2 h-4 w-4" />
+                  Export Jobs (CSV)
+                </Button>
                 <Button variant="outline" onClick={handleExportInvoices}>
                   <Download className="mr-2 h-4 w-4" />
                   Export Invoices (CSV)
@@ -863,7 +972,7 @@ export function SettingsView({
               <div className="space-y-3">
                 <div>
                   <p className="text-sm text-muted-foreground mb-1">Email</p>
-                  <p className="font-medium">{currentUserId}</p>
+                  <p className="font-medium">{currentUserEmail}</p>
                 </div>
                 <Button
                   variant="destructive"
@@ -936,6 +1045,64 @@ export function SettingsView({
           )}
         </Tabs>
       </div>
+
+      {/* Export Jobs Dialog */}
+      <Dialog open={exportJobsDialogOpen} onOpenChange={setExportJobsDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Export Jobs Data</DialogTitle>
+            <DialogDescription>
+              Export job and invoice data for accounting purposes. Select a date range to export.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 mt-4">
+            <div className="space-y-2">
+              <Label htmlFor="startDate">Start Date</Label>
+              <Input
+                id="startDate"
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="endDate">End Date</Label>
+              <Input
+                id="endDate"
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+              />
+            </div>
+
+            <div className="rounded-lg bg-muted p-3 text-sm">
+              <p className="font-medium mb-1">Export includes:</p>
+              <ul className="list-disc list-inside text-muted-foreground space-y-1">
+                <li>Job details and status</li>
+                <li>Customer information</li>
+                <li>Invoice amounts and payment status</li>
+                <li>Payment dates</li>
+              </ul>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setExportJobsDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button onClick={handleExportJobs} loading={exportingJobs}>
+                <Download className="mr-2 h-4 w-4" />
+                Export CSV
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Location Dialog */}
       <Dialog open={locationDialogOpen} onOpenChange={setLocationDialogOpen}>

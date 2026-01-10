@@ -175,13 +175,13 @@ export function CustomerDetailView({
           </button>
 
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center">
+            <div className="flex items-center gap-4 min-w-0">
+              <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
                 <User className="h-7 w-7 text-primary" />
               </div>
-              <div>
-                <h1 className="text-2xl font-bold">{customer.name}</h1>
-                <p className="text-muted-foreground">
+              <div className="min-w-0 flex-1">
+                <h1 className="text-2xl font-bold truncate">{customer.name}</h1>
+                <p className="text-muted-foreground text-sm">
                   Customer since {formatDate(customer.created_at)}
                 </p>
               </div>
@@ -304,22 +304,22 @@ export function CustomerDetailView({
             ) : (
               /* Tabs View */
               <Tabs defaultValue="timeline" className="w-full">
-                <TabsList className="w-full justify-start overflow-x-auto">
-                  <TabsTrigger value="timeline">
-                    <Clock className="mr-1.5 h-4 w-4" />
-                    Timeline
+                <TabsList className="w-full justify-start overflow-x-auto scrollbar-hide">
+                  <TabsTrigger value="timeline" className="shrink-0">
+                    <Clock className="mr-1.5 h-4 w-4 shrink-0" />
+                    <span className="whitespace-nowrap">Timeline</span>
                   </TabsTrigger>
-                  <TabsTrigger value="jobs">
-                    <Briefcase className="mr-1.5 h-4 w-4" />
-                    Jobs ({jobs.length})
+                  <TabsTrigger value="jobs" className="shrink-0">
+                    <Briefcase className="mr-1.5 h-4 w-4 shrink-0" />
+                    <span className="whitespace-nowrap">Jobs ({jobs.length})</span>
                   </TabsTrigger>
-                  <TabsTrigger value="invoices">
-                    <Receipt className="mr-1.5 h-4 w-4" />
-                    Invoices ({invoices.length})
+                  <TabsTrigger value="invoices" className="shrink-0">
+                    <Receipt className="mr-1.5 h-4 w-4 shrink-0" />
+                    <span className="whitespace-nowrap">Invoices ({invoices.length})</span>
                   </TabsTrigger>
-                  <TabsTrigger value="notes">
-                    <FileText className="mr-1.5 h-4 w-4" />
-                    Notes
+                  <TabsTrigger value="notes" className="shrink-0">
+                    <FileText className="mr-1.5 h-4 w-4 shrink-0" />
+                    <span className="whitespace-nowrap">Notes</span>
                   </TabsTrigger>
                 </TabsList>
 
@@ -493,7 +493,7 @@ export function CustomerDetailView({
               {address && (
                 <div className="flex items-start gap-3">
                   <MapPin className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-                  <span className="text-sm">{address}</span>
+                  <span className="text-sm break-words">{address}</span>
                 </div>
               )}
               {!customer.phone && !customer.email && !address && (
