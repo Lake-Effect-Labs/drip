@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
-import { classifyIntent } from "@/lib/matte/intents";
+import { classifyIntent, detectEntities } from "@/lib/matte/intents";
 import {
   getUnpaidInvoices,
   getOverdueInvoices,
@@ -12,6 +12,12 @@ import {
   getJobsMissingMaterials,
   getFocusToday,
   getGeneralSummary,
+  getJobsByNameOrCustomer,
+  getEstimatesForJob,
+  getMaterialsForJob,
+  getInvoicesForDateRange,
+  getCustomersWithUnpaidInvoices,
+  getJobsWithAcceptedEstimatesButNoInvoice,
 } from "@/lib/matte/queries";
 
 // System prompt for Matte
@@ -63,17 +69,14 @@ export async function POST(request: NextRequest) {
     // Classify intent
     const intent = classifyIntent(message);
 
-    // Handle out of scope
-    if (intent === "OUT_OF_SCOPE") {
-      return NextResponse.json({
-        response:
-          "I can only answer questions about your jobs, invoices, and materials.",
-      });
-    }
+    // Detect entities for flexible queries
+    const entities = detectEntities(message);
 
     // Fetch data based on intent
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let data: any = {};
     let userPrompt = "";
+    let specificRefusal = "";
 
     switch (intent) {
       case "UNPAID_INVOICES": {
@@ -293,14 +296,184 @@ ${JSON.stringify(jobsByStatus)}
 Respond concisely with a breakdown of jobs by status.`;
         break;
       }
+
+      // New flexible intent handlers
+      case "JOB_LOOKUP":
+      case "ESTIMATE_LOOKUP":
+      case "MATERIAL_LOOKUP": {
+        if (!entities.jobIdentifier) {
+          specificRefusal = "I need a job or customer name to look up that information.";
+          break;
+        }
+
+        // First, find the job(s)
+        const jobsResult = await getJobsByNameOrCustomer(adminSupabase, companyId, entities.jobIdentifier);
+
+        if (jobsResult.count === 0) {
+          specificRefusal = `I don't see any jobs matching "${entities.jobIdentifier}".`;
+          break;
+        }
+
+        const job = jobsResult.jobs[0]; // Use first match
+
+        if (intent === "ESTIMATE_LOOKUP") {
+          const estimateResult = await getEstimatesForJob(adminSupabase, companyId, job.id);
+          if (estimateResult.count === 0) {
+            specificRefusal = `I don't see any estimates for the ${job.title} job.`;
+            break;
+          }
+          data = estimateResult;
+          const totalDollars = (estimateResult.total / 100).toFixed(2);
+          userPrompt = `The user asked about estimates for the "${job.title}" job (customer: ${job.customerName}). Here's the data:
+- Count: ${estimateResult.count}
+- Total: $${totalDollars}
+- Estimates: ${JSON.stringify(estimateResult.estimates.map((e) => ({
+  status: e.status,
+  total: `$${(e.total / 100).toFixed(2)}`,
+  lineItems: e.lineItems.slice(0, 3)
+})))}
+
+Respond concisely about the estimate amount and status.`;
+        } else if (intent === "MATERIAL_LOOKUP") {
+          const materialsResult = await getMaterialsForJob(adminSupabase, companyId, job.id);
+          if (materialsResult.materials.length === 0) {
+            specificRefusal = `I don't see any materials listed for the ${job.title} job.`;
+            break;
+          }
+          data = materialsResult;
+          userPrompt = `The user asked about materials/paint for the "${job.title}" job (customer: ${job.customerName}). Here's the data:
+- Materials: ${JSON.stringify(materialsResult.materials.map((m) => ({
+  name: m.name,
+  paintColor: m.paintColor,
+  sheen: m.sheen,
+  checked: m.checked
+})))}
+
+Respond concisely about what materials/paint are needed.`;
+        } else {
+          // JOB_LOOKUP
+          data = jobsResult;
+          userPrompt = `The user asked about jobs matching "${entities.jobIdentifier}". Here's the data:
+- Count: ${jobsResult.count}
+- Jobs: ${JSON.stringify(jobsResult.jobs.map((j) => ({
+  title: j.title,
+  customer: j.customerName,
+  status: j.status,
+  scheduledDate: j.scheduledDate
+})))}
+
+Respond concisely about the job(s) found.`;
+        }
+        break;
+      }
+
+      case "INVOICE_LOOKUP": {
+        let startDate: Date;
+        let endDate: Date;
+
+        if (entities.dateRange === "last_month") {
+          const now = new Date();
+          startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+          endDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        } else if (entities.dateRange === "this_week") {
+          const now = new Date();
+          const dayOfWeek = now.getDay();
+          startDate = new Date(now);
+          startDate.setDate(now.getDate() - dayOfWeek);
+          endDate = new Date(now);
+          endDate.setDate(now.getDate() + (7 - dayOfWeek));
+        } else {
+          specificRefusal = "I need a date range (like 'last month' or 'this week') to look up invoices.";
+          break;
+        }
+
+        const invoiceResult = await getInvoicesForDateRange(adminSupabase, companyId, startDate, endDate);
+
+        if (invoiceResult.count === 0) {
+          specificRefusal = `I don't see any invoices in that date range.`;
+          break;
+        }
+
+        data = invoiceResult;
+        const totalDollars = (invoiceResult.total / 100).toFixed(2);
+        const dateRangeStr = entities.dateRange === "last_month" ? "last month" : "this week";
+        userPrompt = `The user asked about invoices for ${dateRangeStr}. Here's the data:
+- Count: ${invoiceResult.count}
+- Total: $${totalDollars}
+- Invoices: ${JSON.stringify(invoiceResult.invoices.map((inv) => ({
+  customer: inv.customerName,
+  job: inv.jobTitle,
+  amount: `$${(inv.amount / 100).toFixed(2)}`,
+  status: inv.status
+})))}
+
+Respond concisely about the invoices in that period.`;
+        break;
+      }
+
+      case "CUSTOMER_LOOKUP": {
+        const customerResult = await getCustomersWithUnpaidInvoices(adminSupabase, companyId);
+
+        if (customerResult.customers.length === 0) {
+          specificRefusal = "All customers have paid their invoices!";
+          break;
+        }
+
+        data = customerResult;
+        userPrompt = `The user asked about customers who owe money. Here's the data:
+- Customers: ${JSON.stringify(customerResult.customers.map((c) => ({
+  name: c.name,
+  unpaidCount: c.unpaidCount,
+  total: `$${(c.unpaidTotal / 100).toFixed(2)}`
+})))}
+
+Respond concisely about which customers have unpaid invoices.`;
+        break;
+      }
+
+      case "RELATIONSHIP_QUERY": {
+        if (entities.relationship === "accepted_no_invoice") {
+          const relationshipResult = await getJobsWithAcceptedEstimatesButNoInvoice(adminSupabase, companyId);
+
+          if (relationshipResult.count === 0) {
+            specificRefusal = "All jobs with accepted estimates have been invoiced!";
+            break;
+          }
+
+          data = relationshipResult;
+          userPrompt = `The user asked about jobs with accepted estimates but no invoice. Here's the data:
+- Count: ${relationshipResult.count}
+- Jobs: ${JSON.stringify(relationshipResult.jobs.map((j) => ({
+  title: j.title,
+  customer: j.customerName,
+  acceptedAt: j.acceptedAt
+})))}
+
+Respond concisely about which jobs need invoices created.`;
+        }
+        break;
+      }
+
+      case "OUT_OF_SCOPE": {
+        return NextResponse.json({
+          response: "I can only answer questions about your jobs, invoices, estimates, materials, and customers.",
+        });
+      }
+    }
+
+    // Handle specific refusals first
+    if (specificRefusal) {
+      return NextResponse.json({
+        response: specificRefusal,
+      });
     }
 
     // Check if data is empty (skip check for metrics and date-based queries that should return 0)
     const skipEmptyCheck = [
-      "TOTAL_JOBS", 
-      "TOTAL_REVENUE", 
-      "JOBS_THIS_WEEK", 
-      "ACTIVE_JOBS", 
+      "TOTAL_JOBS",
+      "TOTAL_REVENUE",
+      "JOBS_THIS_WEEK",
+      "ACTIVE_JOBS",
       "JOBS_BY_STATUS",
       "JOBS_TODAY",
       "JOBS_TOMORROW",

@@ -1,6 +1,7 @@
 // Data aggregation queries for Matte
 // Each function returns only the data needed for responses
 
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { formatCurrency, formatDate } from "@/lib/utils";
 
@@ -371,5 +372,268 @@ export async function getGeneralSummary(
     totalInvoiced,
     totalPaid,
     unpaidCount: unpaid.count,
+  };
+}
+
+// New flexible query functions for entity-based queries
+
+export async function getJobsByNameOrCustomer(
+  supabase: SupabaseClient,
+  companyId: string,
+  searchTerm: string
+): Promise<JobsData> {
+  // Search by job title or customer name (case-insensitive)
+  const { data: jobs } = await supabase
+    .from("jobs")
+    .select("id, title, status, scheduled_date, customer:customers(name)")
+    .eq("company_id", companyId)
+    .or(`title.ilike.%${searchTerm}%,customer.name.ilike.%${searchTerm}%`);
+
+  const jobsList = (jobs || []).map((job) => ({
+    id: job.id,
+    title: job.title,
+    customerName: (job.customer as any)?.name || "Unknown",
+    status: job.status,
+    scheduledDate: job.scheduled_date,
+  }));
+
+  return {
+    count: jobsList.length,
+    jobs: jobsList.slice(0, 10),
+  };
+}
+
+interface EstimateData {
+  count: number;
+  total: number;
+  estimates: Array<{
+    id: string;
+    status: string;
+    sqft: number | null;
+    acceptedAt: string | null;
+    lineItems: Array<{ name: string; price: number; paintColor?: string; sheen?: string }>;
+  }>;
+}
+
+export async function getEstimatesForJob(
+  supabase: SupabaseClient,
+  companyId: string,
+  jobId: string
+): Promise<EstimateData> {
+  const { data: estimates } = await supabase
+    .from("estimates")
+    .select("id, status, sqft, accepted_at, line_items:estimate_line_items(name, price, paint_color_name_or_code, sheen)")
+    .eq("company_id", companyId)
+    .eq("job_id", jobId)
+    .order("created_at", { ascending: false });
+
+  const estimatesList = (estimates || []).map((est) => {
+    const lineItems = (est.line_items as any[]) || [];
+    const total = lineItems.reduce((sum, item) => sum + (item.price || 0), 0);
+
+    return {
+      id: est.id,
+      status: est.status,
+      sqft: est.sqft,
+      acceptedAt: est.accepted_at,
+      lineItems: lineItems.slice(0, 10).map((item) => ({
+        name: item.name,
+        price: item.price,
+        paintColor: item.paint_color_name_or_code,
+        sheen: item.sheen,
+      })),
+      total,
+    };
+  });
+
+  const total = estimatesList.reduce((sum, est) => sum + (est.total || 0), 0);
+
+  return {
+    count: estimatesList.length,
+    total,
+    estimates: estimatesList as any,
+  };
+}
+
+export async function getMaterialsForJob(
+  supabase: SupabaseClient,
+  companyId: string,
+  jobId: string
+): Promise<MaterialsData> {
+  // Get materials from job_materials table
+  const { data: jobMaterials } = await supabase
+    .from("job_materials")
+    .select("name, checked, notes, job:jobs(title, customer:customers(name))")
+    .eq("job_id", jobId);
+
+  // Also get paint info from estimates if available
+  const { data: estimates } = await supabase
+    .from("estimates")
+    .select("line_items:estimate_line_items(name, paint_color_name_or_code, sheen, product_line, gallons_estimate)")
+    .eq("company_id", companyId)
+    .eq("job_id", jobId)
+    .eq("status", "accepted");
+
+  const materials: any[] = [];
+
+  // Add job materials
+  if (jobMaterials && jobMaterials.length > 0) {
+    const job = (jobMaterials[0].job as any);
+    materials.push(...jobMaterials.map((m) => ({
+      name: m.name,
+      jobTitle: job?.title || "Unknown",
+      customerName: job?.customer?.name || "Unknown",
+      checked: m.checked,
+      notes: m.notes,
+    })));
+  }
+
+  // Add paint from estimate line items
+  if (estimates && estimates.length > 0) {
+    for (const estimate of estimates) {
+      const lineItems = (estimate.line_items as any[]) || [];
+      for (const item of lineItems) {
+        if (item.paint_color_name_or_code) {
+          materials.push({
+            name: item.name,
+            paintColor: item.paint_color_name_or_code,
+            sheen: item.sheen,
+            productLine: item.product_line,
+            gallons: item.gallons_estimate,
+          });
+        }
+      }
+    }
+  }
+
+  return {
+    materials: materials.slice(0, 20),
+  };
+}
+
+interface InvoiceData {
+  count: number;
+  total: number;
+  invoices: Array<{ id: string; customerName: string; jobTitle: string; amount: number; status: string; created: string }>;
+}
+
+export async function getInvoicesForDateRange(
+  supabase: SupabaseClient,
+  companyId: string,
+  startDate: Date,
+  endDate: Date
+): Promise<InvoiceData> {
+  const { data: invoices } = await supabase
+    .from("invoices")
+    .select("id, amount_total, status, created_at, customer:customers(name), job:jobs(title)")
+    .eq("company_id", companyId)
+    .gte("created_at", startDate.toISOString())
+    .lt("created_at", endDate.toISOString())
+    .order("created_at", { ascending: false });
+
+  const invoicesList = (invoices || []).map((inv) => ({
+    id: inv.id,
+    customerName: (inv.customer as any)?.name || "Unknown",
+    jobTitle: (inv.job as any)?.title || "Unknown",
+    amount: inv.amount_total,
+    status: inv.status,
+    created: inv.created_at,
+  }));
+
+  const total = invoicesList.reduce((sum, inv) => sum + inv.amount, 0);
+
+  return {
+    count: invoicesList.length,
+    total,
+    invoices: invoicesList.slice(0, 10),
+  };
+}
+
+interface CustomerData {
+  customers: Array<{ name: string; unpaidCount: number; unpaidTotal: number }>;
+}
+
+export async function getCustomersWithUnpaidInvoices(
+  supabase: SupabaseClient,
+  companyId: string
+): Promise<CustomerData> {
+  const { data: invoices } = await supabase
+    .from("invoices")
+    .select("customer_id, amount_total, customer:customers(name)")
+    .eq("company_id", companyId)
+    .neq("status", "paid")
+    .order("created_at", { ascending: false });
+
+  // Group by customer
+  const customerMap = new Map<string, { name: string; unpaidCount: number; unpaidTotal: number }>();
+
+  for (const invoice of invoices || []) {
+    const customerId = invoice.customer_id;
+    const customerName = (invoice.customer as any)?.name || "Unknown";
+    const existing = customerMap.get(customerId) || { name: customerName, unpaidCount: 0, unpaidTotal: 0 };
+    existing.unpaidCount += 1;
+    existing.unpaidTotal += invoice.amount_total;
+    customerMap.set(customerId, existing);
+  }
+
+  const customers = Array.from(customerMap.values()).slice(0, 10);
+
+  return { customers };
+}
+
+interface RelationshipQueryData {
+  count: number;
+  jobs: Array<{
+    id: string;
+    title: string;
+    customerName: string;
+    estimateStatus: string;
+    acceptedAt: string | null;
+  }>;
+}
+
+export async function getJobsWithAcceptedEstimatesButNoInvoice(
+  supabase: SupabaseClient,
+  companyId: string
+): Promise<RelationshipQueryData> {
+  // Get all jobs with accepted estimates
+  const { data: estimates } = await supabase
+    .from("estimates")
+    .select("job_id, status, accepted_at, job:jobs(id, title, customer:customers(name))")
+    .eq("company_id", companyId)
+    .eq("status", "accepted");
+
+  if (!estimates || estimates.length === 0) {
+    return { count: 0, jobs: [] };
+  }
+
+  const jobIds = estimates.map((e) => e.job_id).filter((id) => id !== null) as string[];
+
+  // Get invoices for these jobs
+  const { data: invoices } = await supabase
+    .from("invoices")
+    .select("job_id")
+    .eq("company_id", companyId)
+    .in("job_id", jobIds);
+
+  const jobsWithInvoices = new Set((invoices || []).map((inv) => inv.job_id));
+
+  // Filter estimates for jobs without invoices
+  const jobsWithoutInvoices = estimates
+    .filter((est) => est.job_id && !jobsWithInvoices.has(est.job_id))
+    .map((est) => {
+      const job = est.job as any;
+      return {
+        id: est.job_id!,
+        title: job?.title || "Unknown",
+        customerName: job?.customer?.name || "Unknown",
+        estimateStatus: est.status,
+        acceptedAt: est.accepted_at,
+      };
+    });
+
+  return {
+    count: jobsWithoutInvoices.length,
+    jobs: jobsWithoutInvoices.slice(0, 10),
   };
 }
