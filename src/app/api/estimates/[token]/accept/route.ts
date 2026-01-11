@@ -135,6 +135,7 @@ export async function POST(
       .select("service_key, paint_color_name_or_code, sheen, product_line, gallons_estimate")
       .eq("estimate_id", estimate.id);
 
+    let materialsCreated = 0;
     if (lineItems && lineItems.length > 0) {
       // Collect all materials from services, avoiding duplicates
       const materialsSet = new Set<string>();
@@ -187,11 +188,18 @@ export async function POST(
             console.error("Error creating materials:", materialsError);
           }
           // Don't fail the whole request, just log the error
+        } else {
+          materialsCreated = materialsToInsert.length;
         }
       }
     }
 
-    return NextResponse.json({ success: true, job_id: jobId });
+    return NextResponse.json({
+      success: true,
+      job_id: jobId,
+      materials_auto_generated: materialsCreated > 0,
+      materials_count: materialsCreated
+    });
   } catch (error) {
     if (process.env.NODE_ENV === "development") {
       console.error("Error accepting estimate:", error);

@@ -84,20 +84,6 @@ export default async function JobPage({
     .eq("job_id", id)
     .order("created_at", { ascending: true });
 
-  // Fetch job history (use admin client) - table may not exist, so make it optional
-  let jobHistory: any[] = [];
-  try {
-    const { data } = await adminSupabase
-      .from("job_history" as any)
-      .select("*")
-      .eq("job_id", id)
-      .order("changed_at", { ascending: false });
-    jobHistory = data || [];
-  } catch {
-    // Table doesn't exist or error, use empty array
-    jobHistory = [];
-  }
-
   // Fetch team members (use admin client)
   const members = await getTeamMembers(adminSupabase, companyUser.company_id);
 
@@ -107,7 +93,6 @@ export default async function JobPage({
       estimates={estimates}
       invoices={invoices || []}
       materials={materials || []}
-      jobHistory={jobHistory || []}
       teamMembers={members}
       companyId={companyUser.company_id}
     />

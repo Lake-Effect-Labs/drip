@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -13,7 +13,6 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { createClient } from "@/lib/supabase/client";
 import { JOB_STATUSES, JOB_STATUS_LABELS, type JobStatus } from "@/lib/utils";
 import type { Job, Customer } from "@/types/database";
 import { BoardColumn } from "./board-column";
@@ -22,7 +21,7 @@ import { NewJobDialog } from "./new-job-dialog";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, X } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 
 type JobWithCustomer = Job & { customer: Customer | null };
@@ -47,14 +46,7 @@ export function BoardView({
   const [filter, setFilter] = useState<FilterType>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [newJobOpen, setNewJobOpen] = useState(false);
-  const [mounted, setMounted] = useState(false);
   const { addToast } = useToast();
-  const supabase = createClient();
-
-  // Prevent hydration mismatch with dnd-kit
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -148,7 +140,7 @@ export function BoardView({
         addToast("Failed to update job status", "error");
       }
     },
-    [jobs, supabase, addToast]
+    [jobs, addToast]
   );
 
   const handleJobCreated = useCallback((newJob: JobWithCustomer) => {
@@ -192,21 +184,23 @@ export function BoardView({
             placeholder="Search jobs by title, customer, or address..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 min-h-[44px]"
+            className="pl-9 pr-10 min-h-[44px]"
           />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="Clear search"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
         </div>
       </div>
 
       {/* Board */}
       <div className="flex-1 overflow-x-auto overflow-y-hidden p-4 min-h-0" style={{ maxHeight: 'calc(100vh - 14rem)' }}>
-        {!mounted ? (
-          // Show loading state during hydration to prevent mismatch
-          <div className="flex h-full items-center justify-center">
-            <div className="text-center">
-              <p className="text-muted-foreground">Loading...</p>
-            </div>
-          </div>
-        ) : jobs.length === 0 ? (
+        {jobs.length === 0 ? (
           <div className="flex h-full items-center justify-center">
             <div className="text-center max-w-md">
               <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
