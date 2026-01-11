@@ -46,13 +46,25 @@ export default async function PublicEstimatePage({
       lineItems = oldLineItems || [];
     }
 
-    const { data: customer } = estimate.customer_id
-      ? await supabase.from("customers").select("*").eq("id", estimate.customer_id).single()
-      : { data: null };
+    let customer = null;
+    if (estimate.customer_id) {
+      const { data } = await supabase
+        .from("customers")
+        .select("*")
+        .eq("id", estimate.customer_id)
+        .single();
+      customer = data;
+    }
 
-    const { data: job } = estimate.job_id
-      ? await supabase.from("jobs").select("*").eq("id", estimate.job_id).single()
-      : { data: null };
+    let job = null;
+    if (estimate.job_id) {
+      const { data } = await supabase
+        .from("jobs")
+        .select("*")
+        .eq("id", estimate.job_id)
+        .single();
+      job = data;
+    }
 
     const { data: company } = await supabase
       .from("companies")

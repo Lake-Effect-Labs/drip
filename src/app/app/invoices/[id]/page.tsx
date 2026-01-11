@@ -38,17 +38,25 @@ export default async function InvoicePage({
   }
 
   // Fetch customer and job
-  const { data: customer } = await supabase
-    .from("customers")
-    .select("*")
-    .eq("id", invoice.customer_id)
-    .single();
+  let customer = null;
+  if (invoice.customer_id) {
+    const { data } = await supabase
+      .from("customers")
+      .select("*")
+      .eq("id", invoice.customer_id)
+      .single();
+    customer = data;
+  }
 
-  const { data: job } = await supabase
-    .from("jobs")
-    .select("*")
-    .eq("id", invoice.job_id)
-    .single();
+  let job = null;
+  if (invoice.job_id) {
+    const { data } = await supabase
+      .from("jobs")
+      .select("*")
+      .eq("id", invoice.job_id)
+      .single();
+    job = data;
+  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const invoiceWithDetails = { ...invoice, customer, job } as any;
