@@ -1,22 +1,28 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useCallback, useEffect } from "react";
 import Link from "next/link";
 import {
   format,
   startOfWeek,
   endOfWeek,
+  startOfMonth,
+  endOfMonth,
   eachDayOfInterval,
   isSameDay,
+  isSameMonth,
   addDays,
   subDays,
   addWeeks,
   subWeeks,
+  addMonths,
+  subMonths,
   startOfDay,
   parseISO,
+  getDay,
 } from "date-fns";
 import { createClient } from "@/lib/supabase/client";
-import { cn, formatTime, formatDate } from "@/lib/utils";
+import { cn, formatTime, formatDate, JOB_STATUS_COLORS, JOB_STATUS_LABELS, type JobStatus } from "@/lib/utils";
 import type { Job, Customer } from "@/types/database";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
@@ -26,7 +32,7 @@ import { useToast } from "@/components/ui/toast";
 import { ChevronLeft, ChevronRight, Calendar, Clock, MapPin, User } from "lucide-react";
 
 type JobWithCustomer = Job & { customer: Customer | null };
-type ViewType = "day" | "week";
+type ViewType = "day" | "week" | "month";
 type FilterType = "all" | "mine";
 
 interface ScheduleViewProps {
@@ -44,8 +50,34 @@ export function ScheduleView({
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<ViewType>("day");
   const [filter, setFilter] = useState<FilterType>("all");
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const { addToast } = useToast();
   const supabase = createClient();
+
+  // Check scroll position
+  const checkScroll = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (container) {
+      setCanScrollLeft(container.scrollLeft > 0);
+      setCanScrollRight(
+        container.scrollLeft < container.scrollWidth - container.clientWidth - 1
+      );
+    }
+  }, []);
+
+  // Scroll left/right
+  const scroll = useCallback((direction: "left" | "right") => {
+    const container = scrollContainerRef.current;
+    if (container) {
+      const scrollAmount = container.clientWidth * 0.8;
+      container.scrollBy({
+        left: direction === "left" ? -scrollAmount : scrollAmount,
+        behavior: "smooth",
+      });
+    }
+  }, []);
 
   // Filter jobs
   const filteredJobs = jobs.filter((job) => {
@@ -55,19 +87,25 @@ export function ScheduleView({
     return true;
   });
 
-  // Get jobs for current day/week
+  // Get jobs for current day/week/month
   const jobsForPeriod = useMemo(() => {
-    const start = view === "day" 
-      ? startOfDay(currentDate)
-      : startOfWeek(currentDate, { weekStartsOn: 0 });
-    const end = view === "day"
-      ? startOfDay(addDays(currentDate, 1))
-      : endOfWeek(currentDate, { weekStartsOn: 0 });
+    let start, end;
+    
+    if (view === "day") {
+      start = startOfDay(currentDate);
+      end = startOfDay(addDays(currentDate, 1));
+    } else if (view === "week") {
+      start = startOfWeek(currentDate, { weekStartsOn: 0 });
+      end = endOfWeek(currentDate, { weekStartsOn: 0 });
+    } else {
+      start = startOfMonth(currentDate);
+      end = endOfMonth(currentDate);
+    }
 
     return filteredJobs.filter((job) => {
       if (!job.scheduled_date) return false;
       const jobDate = parseISO(job.scheduled_date);
-      return jobDate >= start && jobDate < end;
+      return jobDate >= start && jobDate <= end;
     }).sort((a, b) => {
       // Sort by date, then by time
       if (a.scheduled_date !== b.scheduled_date) {
@@ -79,14 +117,37 @@ export function ScheduleView({
     });
   }, [filteredJobs, currentDate, view]);
 
-  // Get days for week view
-  const weekDays = useMemo(() => {
+  // Get days for week/month view
+  const viewDays = useMemo(() => {
     if (view === "day") return [currentDate];
-    const start = startOfWeek(currentDate, { weekStartsOn: 0 });
-    return eachDayOfInterval({
-      start,
-      end: endOfWeek(currentDate, { weekStartsOn: 0 }),
-    });
+    if (view === "week") {
+      const start = startOfWeek(currentDate, { weekStartsOn: 0 });
+      return eachDayOfInterval({
+        start,
+        end: endOfWeek(currentDate, { weekStartsOn: 0 }),
+      });
+    }
+    // Month view - get all days including padding
+    const start = startOfMonth(currentDate);
+    const end = endOfMonth(currentDate);
+    const monthDays = eachDayOfInterval({ start, end });
+    
+    // Add padding days to start at Sunday
+    const firstDayOfWeek = getDay(start);
+    const paddingStart = [];
+    for (let i = 0; i < firstDayOfWeek; i++) {
+      paddingStart.push(subDays(start, firstDayOfWeek - i));
+    }
+    
+    // Add padding days to end at Saturday
+    const lastDay = monthDays[monthDays.length - 1];
+    const lastDayOfWeek = getDay(lastDay);
+    const paddingEnd = [];
+    for (let i = 1; i < 7 - lastDayOfWeek; i++) {
+      paddingEnd.push(addDays(lastDay, i));
+    }
+    
+    return [...paddingStart, ...monthDays, ...paddingEnd];
   }, [currentDate, view]);
 
   // Group jobs by date for week view
@@ -105,8 +166,10 @@ export function ScheduleView({
   function navigateDate(direction: "prev" | "next") {
     if (view === "day") {
       setCurrentDate((prev) => (direction === "next" ? addDays(prev, 1) : subDays(prev, 1)));
-    } else {
+    } else if (view === "week") {
       setCurrentDate((prev) => (direction === "next" ? addWeeks(prev, 1) : subWeeks(prev, 1)));
+    } else {
+      setCurrentDate((prev) => (direction === "next" ? addMonths(prev, 1) : subMonths(prev, 1)));
     }
   }
 
@@ -120,6 +183,14 @@ export function ScheduleView({
     return member?.fullName || "Unknown";
   };
 
+  // Check scroll on mount and when view changes
+  useEffect(() => {
+    checkScroll();
+    const handleResize = () => checkScroll();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [checkScroll, view]);
+
   return (
     <div className="min-h-screen pb-20 lg:pb-0">
       {/* Header */}
@@ -131,7 +202,9 @@ export function ScheduleView({
               <p className="text-sm text-muted-foreground">
                 {view === "day" 
                   ? format(currentDate, "EEEE, MMMM d, yyyy")
-                  : `Week of ${format(startOfWeek(currentDate, { weekStartsOn: 0 }), "MMM d")}`
+                  : view === "week"
+                  ? `Week of ${format(startOfWeek(currentDate, { weekStartsOn: 0 }), "MMM d")}`
+                  : format(currentDate, "MMMM yyyy")
                 }
               </p>
             </div>
@@ -149,7 +222,7 @@ export function ScheduleView({
                   variant={view === "day" ? "default" : "ghost"}
                   size="sm"
                   onClick={() => setView("day")}
-                  className="rounded-r-none"
+                  className="rounded-r-none rounded-l-lg"
                 >
                   Day
                 </Button>
@@ -157,9 +230,17 @@ export function ScheduleView({
                   variant={view === "week" ? "default" : "ghost"}
                   size="sm"
                   onClick={() => setView("week")}
-                  className="rounded-l-none"
+                  className="rounded-none"
                 >
                   Week
+                </Button>
+                <Button
+                  variant={view === "month" ? "default" : "ghost"}
+                  size="sm"
+                  onClick={() => setView("month")}
+                  className="rounded-l-none rounded-r-lg"
+                >
+                  Month
                 </Button>
               </div>
               <div className="flex items-center gap-1 shrink-0">
@@ -211,12 +292,17 @@ export function ScheduleView({
                     href={`/app/jobs/${job.id}`}
                     className="block"
                   >
-                    <Card className="p-4 hover:bg-muted/50 transition-colors">
+                    <Card className={cn(
+                      "p-4 hover:opacity-90 transition-all border-l-4",
+                      JOB_STATUS_COLORS[job.status as JobStatus]
+                    )}>
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex-1 min-w-0 space-y-2">
                           <div className="flex items-center gap-2 min-w-0">
                             <h3 className="font-semibold truncate flex-1">{job.title}</h3>
-                            <Badge variant="secondary" className="shrink-0">{job.status}</Badge>
+                            <Badge className={cn("shrink-0", JOB_STATUS_COLORS[job.status as JobStatus])}>
+                              {JOB_STATUS_LABELS[job.status as JobStatus]}
+                            </Badge>
                           </div>
                           <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                             {job.scheduled_time && (
@@ -252,54 +338,147 @@ export function ScheduleView({
             )}
           </div>
         ) : (
-          <div className="space-y-4">
-            <div className="grid grid-cols-7 gap-1 sm:gap-2 overflow-x-auto">
-              {weekDays.map((day, index) => {
-                const dayKey = format(day, "yyyy-MM-dd");
-                const dayJobs = jobsByDate.get(dayKey) || [];
-                const isToday = isSameDay(day, new Date());
+          <div className="relative">
+            {/* Left scroll button */}
+            {canScrollLeft && (view === "week" || view === "month") && (
+              <button
+                onClick={() => scroll("left")}
+                className="absolute left-2 top-1/2 -translate-y-1/2 z-10 bg-card border rounded-full p-2 shadow-lg hover:bg-muted transition-colors touch-target"
+                aria-label="Scroll left"
+              >
+                <ChevronLeft className="h-6 w-6" />
+              </button>
+            )}
 
-                return (
-                  <div key={index} className="space-y-2 min-w-[80px] sm:min-w-0">
-                    <div
-                      className={cn(
-                        "text-center p-2 rounded-lg",
-                        isToday && "bg-primary text-primary-foreground"
-                      )}
-                    >
-                      <div className="text-xs text-muted-foreground">
-                        {format(day, "EEE")}
-                      </div>
-                      <div className="text-lg font-semibold">
-                        {format(day, "d")}
-                      </div>
-                    </div>
-                    <div className="space-y-1.5 min-h-[200px]">
-                      {dayJobs.map((job) => (
-                        <Link
-                          key={job.id}
-                          href={`/app/jobs/${job.id}`}
-                          className="block"
+            {/* Right scroll button */}
+            {canScrollRight && (view === "week" || view === "month") && (
+              <button
+                onClick={() => scroll("right")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 z-10 bg-card border rounded-full p-2 shadow-lg hover:bg-muted transition-colors touch-target"
+                aria-label="Scroll right"
+              >
+                <ChevronRight className="h-6 w-6" />
+              </button>
+            )}
+
+            <div 
+              ref={scrollContainerRef}
+              onScroll={checkScroll}
+              className="overflow-x-auto scrollbar-hide"
+            >
+              {view === "week" ? (
+                <div className="grid grid-cols-7 gap-1 sm:gap-2 min-w-[560px]">
+                  {viewDays.map((day, index) => {
+                    const dayKey = format(day, "yyyy-MM-dd");
+                    const dayJobs = jobsByDate.get(dayKey) || [];
+                    const isToday = isSameDay(day, new Date());
+
+                    return (
+                      <div key={index} className="space-y-2 min-w-[80px]">
+                        <div
+                          className={cn(
+                            "text-center p-2 rounded-lg",
+                            isToday && "bg-primary text-primary-foreground"
+                          )}
                         >
-                          <Card className="p-2.5 hover:bg-muted/50 transition-colors">
-                            <div className="font-semibold text-sm truncate mb-1">{job.title}</div>
-                            {job.scheduled_time && (
-                              <div className="text-xs text-muted-foreground mb-0.5">
-                                {formatTime(job.scheduled_time)}
-                              </div>
-                            )}
-                            {job.customer && (
-                              <div className="text-xs text-muted-foreground truncate">
-                                {job.customer.name}
-                              </div>
-                            )}
-                          </Card>
-                        </Link>
-                      ))}
-                    </div>
+                          <div className="text-xs text-muted-foreground">
+                            {format(day, "EEE")}
+                          </div>
+                          <div className="text-lg font-semibold">
+                            {format(day, "d")}
+                          </div>
+                        </div>
+                        <div className="space-y-1.5 min-h-[200px]">
+                          {dayJobs.map((job) => (
+                            <Link
+                              key={job.id}
+                              href={`/app/jobs/${job.id}`}
+                              className="block"
+                            >
+                              <Card className={cn(
+                                "p-2.5 hover:opacity-90 transition-all border-l-4",
+                                JOB_STATUS_COLORS[job.status as JobStatus]
+                              )}>
+                                <div className="font-semibold text-sm truncate mb-1">{job.title}</div>
+                                {job.scheduled_time && (
+                                  <div className="text-xs text-muted-foreground mb-0.5">
+                                    {formatTime(job.scheduled_time)}
+                                  </div>
+                                )}
+                                {job.customer && (
+                                  <div className="text-xs text-muted-foreground truncate">
+                                    {job.customer.name}
+                                  </div>
+                                )}
+                              </Card>
+                            </Link>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="min-w-[640px]">
+                  {/* Month view header */}
+                  <div className="grid grid-cols-7 gap-1 mb-2">
+                    {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+                      <div key={day} className="text-center text-sm font-semibold text-muted-foreground py-2">
+                        {day}
+                      </div>
+                    ))}
                   </div>
-                );
-              })}
+                  {/* Month view grid */}
+                  <div className="grid grid-cols-7 gap-1">
+                    {viewDays.map((day, index) => {
+                      const dayKey = format(day, "yyyy-MM-dd");
+                      const dayJobs = jobsByDate.get(dayKey) || [];
+                      const isToday = isSameDay(day, new Date());
+                      const isCurrentMonth = isSameMonth(day, currentDate);
+
+                      return (
+                        <div
+                          key={index}
+                          className={cn(
+                            "min-h-[100px] border rounded-lg p-2",
+                            !isCurrentMonth && "bg-muted/30 text-muted-foreground",
+                            isToday && "ring-2 ring-primary"
+                          )}
+                        >
+                          <div className={cn(
+                            "text-sm font-semibold mb-1",
+                            isToday && "text-primary"
+                          )}>
+                            {format(day, "d")}
+                          </div>
+                          <div className="space-y-1">
+                            {dayJobs.slice(0, 3).map((job) => (
+                              <Link
+                                key={job.id}
+                                href={`/app/jobs/${job.id}`}
+                                className="block"
+                              >
+                                <div className={cn(
+                                  "text-xs p-1 rounded border-l-2 truncate",
+                                  JOB_STATUS_COLORS[job.status as JobStatus]
+                                )}>
+                                  {job.scheduled_time && `${formatTime(job.scheduled_time)} `}
+                                  {job.title}
+                                </div>
+                              </Link>
+                            ))}
+                            {dayJobs.length > 3 && (
+                              <div className="text-xs text-muted-foreground">
+                                +{dayJobs.length - 3} more
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

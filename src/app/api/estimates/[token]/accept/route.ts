@@ -69,6 +69,19 @@ export async function POST(
       }
     }
 
+    // Calculate total from payment line items (unified payment system) if job exists
+    let paymentAmount = 0;
+    if (jobId) {
+      const { data: paymentLineItems } = await supabase
+        .from("job_payment_line_items")
+        .select("price")
+        .eq("job_id", jobId);
+      
+      if (paymentLineItems && paymentLineItems.length > 0) {
+        paymentAmount = paymentLineItems.reduce((sum, item) => sum + item.price, 0);
+      }
+    }
+
     // Create job if doesn't exist
     if (!jobId) {
       const { data: newJob, error: jobError } = await supabase
@@ -80,6 +93,9 @@ export async function POST(
             ? `${customer.name} Project`
             : "New Project",
           status: "quoted",
+          payment_state: "approved",
+          payment_approved_at: new Date().toISOString(),
+          payment_amount: paymentAmount > 0 ? paymentAmount : null,
           address1: job?.address1 || customer?.address1,
           city: job?.city || customer?.city,
           state: job?.state || customer?.state,
@@ -100,10 +116,16 @@ export async function POST(
 
       jobId = newJob.id;
     } else {
-      // Update existing job status to quoted
+      // Update existing job status to quoted and payment state to approved
       await supabase
         .from("jobs")
-        .update({ status: "quoted", updated_at: new Date().toISOString() })
+        .update({ 
+          status: "quoted", 
+          payment_state: "approved",
+          payment_approved_at: new Date().toISOString(),
+          payment_amount: paymentAmount > 0 ? paymentAmount : undefined,
+          updated_at: new Date().toISOString() 
+        })
         .eq("id", jobId);
     }
 

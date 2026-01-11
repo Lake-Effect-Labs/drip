@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn, getInitials } from "@/lib/utils";
 import {
-  Droplet,
+  Paintbrush,
   LayoutGrid,
   Settings,
   Users,
@@ -63,7 +63,7 @@ export function AppShell({ children, user, company, isOwner }: AppShellProps) {
           <div className="flex h-16 items-center gap-2 border-b px-4 justify-between">
             <div className="flex items-center gap-2 min-w-0">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary shrink-0">
-                <Droplet className="h-5 w-5 text-primary-foreground" />
+                <Paintbrush className="h-5 w-5 text-primary-foreground" />
               </div>
               {!sidebarCollapsed && (
                 <span className="text-lg font-bold truncate">{company.name}</span>
@@ -114,7 +114,7 @@ export function AppShell({ children, user, company, isOwner }: AppShellProps) {
       <header className="flex h-14 items-center justify-between border-b bg-background px-4 lg:hidden">
         <div className="flex items-center gap-2 min-w-0">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary shrink-0">
-            <Droplet className="h-5 w-5 text-primary-foreground" />
+            <Paintbrush className="h-5 w-5 text-primary-foreground" />
           </div>
           <span className="font-bold truncate">{company.name}</span>
         </div>

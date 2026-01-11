@@ -1,15 +1,16 @@
 import Link from "next/link";
-import { Droplet, ArrowRight, CheckCircle, Calendar, FileText, Package } from "lucide-react";
+import { Paintbrush, ArrowRight, CheckCircle, Calendar, FileText, Package } from "lucide-react";
+import { PaintChipAnimator } from "@/components/public/paint-chip-animator";
 
 export default function HomePage() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-stone-50 via-white to-stone-100">
+    <div className="min-h-screen bg-gradient-to-br from-stone-50 via-white to-stone-100 relative">
       {/* Header */}
       <header className="border-b bg-white/80 backdrop-blur-sm sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-stone-800 flex items-center justify-center">
-              <Droplet className="w-5 h-5 text-white" />
+              <Paintbrush className="w-5 h-5 text-white" />
             </div>
             <span className="text-xl font-bold tracking-tight">Matte</span>
           </div>
@@ -22,7 +23,7 @@ export default function HomePage() {
             </Link>
             <Link
               href="/signup"
-              className="inline-flex items-center gap-2 bg-stone-800 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-stone-700 transition-colors"
+              className="themed-button inline-flex items-center gap-2 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-md"
             >
               Get Started
               <ArrowRight className="w-4 h-4" />
@@ -49,7 +50,7 @@ export default function HomePage() {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link
               href="/signup"
-              className="inline-flex items-center gap-2 bg-stone-800 text-white px-6 py-3 rounded-lg font-medium hover:bg-stone-700 transition-colors"
+              className="themed-button inline-flex items-center gap-2 text-white px-6 py-3 rounded-lg font-medium shadow-lg"
             >
               Start free trial
               <ArrowRight className="w-4 h-4" />
@@ -126,7 +127,7 @@ export default function HomePage() {
         <div className="max-w-6xl mx-auto px-4 py-8 flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 rounded-md bg-stone-800 flex items-center justify-center">
-              <Droplet className="w-4 h-4 text-white" />
+              <Paintbrush className="w-4 h-4 text-white" />
             </div>
             <span className="font-semibold">Matte</span>
           </div>
@@ -135,6 +136,9 @@ export default function HomePage() {
           </p>
         </div>
       </footer>
+
+      {/* Animated Paint Chip */}
+      <PaintChipAnimator />
     </div>
   );
 }

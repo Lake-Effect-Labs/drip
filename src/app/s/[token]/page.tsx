@@ -3,18 +3,18 @@ import { createAdminClient } from "@/lib/supabase/server";
 import { PublicScheduleView } from "@/components/public/public-schedule-view";
 
 interface PageProps {
-  params: Promise<{ id: string }>;
+  params: Promise<{ token: string }>;
 }
 
 export default async function ScheduleConfirmationPage({ params }: PageProps) {
-  const { id } = await params;
+  const { token } = await params;
   const supabase = createAdminClient();
 
-  // Fetch job
+  // Fetch job by schedule_token
   const { data: job, error: jobError } = await supabase
     .from("jobs")
     .select("*")
-    .eq("id", id)
+    .eq("schedule_token", token)
     .single();
 
   if (jobError || !job) {
@@ -45,5 +45,5 @@ export default async function ScheduleConfirmationPage({ params }: PageProps) {
     company: company || null,
   };
 
-  return <PublicScheduleView job={jobWithCustomer} jobId={id} />;
+  return <PublicScheduleView job={jobWithCustomer} token={token} />;
 }

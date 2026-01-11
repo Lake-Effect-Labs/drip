@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -8,7 +8,14 @@ import { formatCurrency, formatDate, copyToClipboard } from "@/lib/utils";
 import type { Estimate, EstimateLineItem, Customer, Job } from "@/types/database";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/components/ui/toast";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   ArrowLeft,
   Copy,
@@ -18,6 +25,7 @@ import {
   FileText,
   Receipt,
   MessageSquare,
+  Clock,
 } from "lucide-react";
 
 type EstimateWithDetails = Estimate & {
@@ -37,6 +45,9 @@ export function EstimateDetailView({ estimate: initialEstimate }: EstimateDetail
 
   const [estimate, setEstimate] = useState(initialEstimate);
   const [creatingInvoice, setCreatingInvoice] = useState(false);
+  const [existingInvoiceId, setExistingInvoiceId] = useState<string | null>(null);
+  const [checkingInvoice, setCheckingInvoice] = useState(false);
+  const [showFollowUpDialog, setShowFollowUpDialog] = useState(false);
 
   const total = estimate.line_items.reduce((sum, li) => sum + li.price, 0);
   const publicUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/e/${estimate.public_token}`;
@@ -47,11 +58,87 @@ export function EstimateDetailView({ estimate: initialEstimate }: EstimateDetail
         .join(", ")
     : "";
 
+  // Check if invoice already exists for this estimate on mount
+  useEffect(() => {
+    async function checkExistingInvoice() {
+      if (estimate.status !== "accepted") return;
+      
+      const { data } = await supabase
+        .from("invoices")
+        .select("id")
+        .eq("estimate_id", estimate.id)
+        .limit(1)
+        .maybeSingle();
+
+      if (data) {
+        setExistingInvoiceId(data.id);
+      }
+    }
+
+    checkExistingInvoice();
+  }, [estimate.id, estimate.status, supabase]);
+
   function copyEstimateMessage() {
     const customerName = estimate.customer?.name || "there";
     const message = `Hey ${customerName} — here's your estimate for ${address || "your project"}: ${publicUrl}`;
     copyToClipboard(message);
     addToast("Message copied!", "success");
+  }
+
+  function getExpirationStatus() {
+    if (estimate.status === "accepted" || !estimate.expires_at) {
+      return null;
+    }
+
+    const now = new Date();
+    const expiresAt = new Date(estimate.expires_at);
+    const daysUntilExpiration = Math.ceil(
+      (expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+    );
+
+    if (daysUntilExpiration < 0) {
+      return {
+        variant: "destructive" as const,
+        text: `Expired ${Math.abs(daysUntilExpiration)} day${Math.abs(daysUntilExpiration) !== 1 ? 's' : ''} ago`,
+      };
+    }
+
+    if (daysUntilExpiration <= 7) {
+      return {
+        variant: "warning" as const,
+        text: `Expires in ${daysUntilExpiration} day${daysUntilExpiration !== 1 ? 's' : ''}`,
+      };
+    }
+
+    return {
+      variant: "secondary" as const,
+      text: `Valid until ${formatDate(expiresAt)}`,
+    };
+  }
+
+  function getFollowUpMessage() {
+    const customerName = estimate.customer?.name || "there";
+    const jobTitle = estimate.job?.title || "your project";
+    const companyName = ""; // Can be added from context if needed
+    
+    let message = `Hi ${customerName},\n\nJust following up on the estimate I sent for ${jobTitle}.\n`;
+    
+    if (estimate.expires_at) {
+      message += `It's set to expire on ${formatDate(estimate.expires_at)}, so I wanted to check if you had any questions.\n`;
+    } else {
+      message += `Let me know if you have any questions.\n`;
+    }
+    
+    message += `\nYou can review it here: ${publicUrl}\n\n`;
+    message += `Thanks${companyName ? `,\n${companyName}` : ''}`;
+    
+    return message;
+  }
+
+  function copyFollowUpMessage() {
+    copyToClipboard(getFollowUpMessage());
+    addToast("Follow-up message copied!", "success");
+    setShowFollowUpDialog(false);
   }
 
   function textEstimate() {
@@ -75,14 +162,43 @@ export function EstimateDetailView({ estimate: initialEstimate }: EstimateDetail
       return;
     }
 
+    // Check if estimate is accepted
+    if (estimate.status !== "accepted") {
+      addToast("Only accepted estimates can be converted to invoices", "error");
+      return;
+    }
+
     setCreatingInvoice(true);
+    setCheckingInvoice(true);
+
     try {
+      // First, check if an invoice already exists for this estimate
+      const { data: existingInvoices, error: checkError } = await supabase
+        .from("invoices")
+        .select("id")
+        .eq("estimate_id", estimate.id)
+        .limit(1);
+
+      if (checkError) throw checkError;
+
+      if (existingInvoices && existingInvoices.length > 0) {
+        // Invoice already exists, redirect to it
+        const invoiceId = existingInvoices[0].id;
+        addToast("Invoice already exists for this estimate", "success");
+        router.push(`/app/invoices/${invoiceId}`);
+        return;
+      }
+
+      setCheckingInvoice(false);
+
+      // Create the invoice with estimate_id to link them
       const { data: invoice, error } = await supabase
         .from("invoices")
         .insert({
           company_id: estimate.company_id,
           job_id: estimate.job_id,
           customer_id: estimate.customer_id,
+          estimate_id: estimate.id,
           amount_total: total,
           status: "draft",
           public_token: crypto.randomUUID().replace(/-/g, '').substring(0, 24),
@@ -90,8 +206,26 @@ export function EstimateDetailView({ estimate: initialEstimate }: EstimateDetail
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        // Check if it's a unique constraint violation (race condition)
+        if (error.code === "23505") {
+          // Another invoice was just created, fetch it and redirect
+          const { data: raceInvoice } = await supabase
+            .from("invoices")
+            .select("id")
+            .eq("estimate_id", estimate.id)
+            .single();
 
+          if (raceInvoice) {
+            addToast("Invoice already exists", "success");
+            router.push(`/app/invoices/${raceInvoice.id}`);
+            return;
+          }
+        }
+        throw error;
+      }
+
+      setExistingInvoiceId(invoice.id);
       addToast("Invoice created!", "success");
       router.push(`/app/invoices/${invoice.id}`);
     } catch (error) {
@@ -99,6 +233,7 @@ export function EstimateDetailView({ estimate: initialEstimate }: EstimateDetail
       addToast("Failed to create invoice", "error");
     } finally {
       setCreatingInvoice(false);
+      setCheckingInvoice(false);
     }
   }
 
@@ -130,6 +265,15 @@ export function EstimateDetailView({ estimate: initialEstimate }: EstimateDetail
                 >
                   {estimate.status}
                 </Badge>
+                {(() => {
+                  const expirationStatus = getExpirationStatus();
+                  return expirationStatus ? (
+                    <Badge variant={expirationStatus.variant}>
+                      <Clock className="mr-1 h-3 w-3" />
+                      {expirationStatus.text}
+                    </Badge>
+                  ) : null;
+                })()}
               </div>
               <p className="text-muted-foreground mt-1">
                 Created {formatDate(estimate.created_at)}
@@ -140,6 +284,12 @@ export function EstimateDetailView({ estimate: initialEstimate }: EstimateDetail
                 <MessageSquare className="mr-2 h-4 w-4" />
                 {estimate.customer?.phone && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ? 'Text Estimate' : 'Copy Message'}
               </Button>
+              {estimate.status === "sent" && (
+                <Button variant="outline" size="sm" onClick={() => setShowFollowUpDialog(true)}>
+                  <MessageSquare className="mr-2 h-4 w-4" />
+                  Follow Up
+                </Button>
+              )}
               {estimate.status === "accepted" && (
                 <Button size="sm" onClick={handleCreateInvoice} loading={creatingInvoice}>
                   <Receipt className="mr-2 h-4 w-4" />
@@ -275,18 +425,62 @@ export function EstimateDetailView({ estimate: initialEstimate }: EstimateDetail
         {estimate.status === "accepted" && estimate.accepted_at && (
           <div className="rounded-lg border border-success bg-success/10 p-4 space-y-3">
             <div>
-              <h3 className="font-semibold text-success mb-1">Estimate Accepted</h3>
+              <h3 className="font-semibold text-success mb-1">✓ Estimate Accepted</h3>
               <p className="text-sm text-muted-foreground">
                 Accepted on {formatDate(estimate.accepted_at)}
               </p>
             </div>
-            <Button onClick={handleCreateInvoice} loading={creatingInvoice} className="w-full">
-              <Receipt className="mr-2 h-4 w-4" />
-              Create Invoice from This Estimate
-            </Button>
+            {!existingInvoiceId ? (
+              <Button 
+                onClick={handleCreateInvoice} 
+                loading={creatingInvoice}
+                disabled={checkingInvoice}
+                className="w-full bg-success hover:bg-success/90 text-white text-lg py-6"
+                size="lg"
+              >
+                <Receipt className="mr-2 h-5 w-5" />
+                Create Invoice ({formatCurrency(total)})
+              </Button>
+            ) : (
+              <Button 
+                onClick={() => router.push(`/app/invoices/${existingInvoiceId}`)}
+                variant="outline"
+                className="w-full"
+              >
+                <Receipt className="mr-2 h-4 w-4" />
+                View Invoice
+              </Button>
+            )}
           </div>
         )}
       </div>
+
+      {/* Follow-up Message Dialog */}
+      <Dialog open={showFollowUpDialog} onOpenChange={setShowFollowUpDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Follow-up Message</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Copy this message to text or email to your customer.
+            </p>
+            <Textarea 
+              value={getFollowUpMessage()} 
+              readOnly 
+              rows={8}
+              className="font-sans"
+            />
+            <Button 
+              onClick={copyFollowUpMessage}
+              className="w-full"
+            >
+              <Copy className="mr-2 h-4 w-4" />
+              Copy Message
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

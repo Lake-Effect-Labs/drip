@@ -88,15 +88,18 @@ export function SettingsView({
   );
   const [savingCompany, setSavingCompany] = useState(false);
 
-  // Config form
+  // Config form - use empty strings, show placeholders with suggestions
   const [wallsRate, setWallsRate] = useState(
-    config?.walls_rate_per_sqft?.toString() || "2.00"
+    config?.walls_rate_per_sqft?.toString() || ""
   );
   const [ceilingsRate, setCeilingsRate] = useState(
-    config?.ceilings_rate_per_sqft?.toString() || "0.50"
+    config?.ceilings_rate_per_sqft?.toString() || ""
   );
   const [trimRate, setTrimRate] = useState(
-    config?.trim_rate_per_sqft?.toString() || "0.75"
+    config?.trim_rate_per_sqft?.toString() || ""
+  );
+  const [laborRate, setLaborRate] = useState(
+    config?.labor_rate_per_hour?.toString() || ""
   );
   const [savingConfig, setSavingConfig] = useState(false);
 
@@ -144,13 +147,24 @@ export function SettingsView({
   async function handleSaveConfig() {
     setSavingConfig(true);
     try {
-      const configData = {
+      // Only save values that are provided (non-empty)
+      const configData: any = {
         company_id: company.id,
-        walls_rate_per_sqft: parseFloat(wallsRate) || 2.0,
-        ceilings_rate_per_sqft: parseFloat(ceilingsRate) || 0.5,
-        trim_rate_per_sqft: parseFloat(trimRate) || 0.75,
         updated_at: new Date().toISOString(),
       };
+
+      if (wallsRate.trim()) {
+        configData.walls_rate_per_sqft = parseFloat(wallsRate);
+      }
+      if (ceilingsRate.trim()) {
+        configData.ceilings_rate_per_sqft = parseFloat(ceilingsRate);
+      }
+      if (trimRate.trim()) {
+        configData.trim_rate_per_sqft = parseFloat(trimRate);
+      }
+      if (laborRate.trim()) {
+        configData.labor_rate_per_hour = parseFloat(laborRate);
+      }
 
       const { error } = await supabase
         .from("estimating_config")
@@ -158,7 +172,21 @@ export function SettingsView({
 
       if (error) throw error;
 
-      setConfig(configData);
+      // Fetch updated config to get all values
+      const { data: updatedConfig } = await supabase
+        .from("estimating_config")
+        .select("*")
+        .eq("company_id", company.id)
+        .single();
+
+      if (updatedConfig) {
+        setConfig(updatedConfig);
+        setWallsRate(updatedConfig.walls_rate_per_sqft?.toString() || "");
+        setCeilingsRate(updatedConfig.ceilings_rate_per_sqft?.toString() || "");
+        setTrimRate(updatedConfig.trim_rate_per_sqft?.toString() || "");
+        setLaborRate(updatedConfig.labor_rate_per_hour?.toString() || "");
+      }
+
       addToast("Estimating rates saved!", "success");
     } catch {
       addToast("Failed to save rates", "error");
@@ -171,7 +199,7 @@ export function SettingsView({
     try {
       const token = generateToken(24);
       const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + 7);
+      expiresAt.setHours(expiresAt.getHours() + 1); // Expire in 1 hour
 
       const { data, error } = await supabase
         .from("invite_links")
@@ -625,12 +653,6 @@ export function SettingsView({
               <Users className="mr-1.5 h-4 w-4" />
               Account
             </TabsTrigger>
-            {isOwner && (
-              <TabsTrigger value="billing">
-                <CreditCard className="mr-1.5 h-4 w-4" />
-                Billing
-              </TabsTrigger>
-            )}
           </TabsList>
 
           {/* Company Tab */}
@@ -680,60 +702,6 @@ export function SettingsView({
               </div>
             </div>
 
-            <div className="rounded-lg border bg-card p-4 space-y-4">
-              <h3 className="font-semibold">Material Defaults</h3>
-              <p className="text-sm text-muted-foreground">
-                Set your preferred paint brands and suppliers for quick reference.
-              </p>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="preferredBrand">Preferred Paint Brand</Label>
-                  <Input
-                    id="preferredBrand"
-                    placeholder="e.g., Sherwin-Williams"
-                    defaultValue="Sherwin-Williams"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="preferredLine">Preferred Product Line</Label>
-                  <Input
-                    id="preferredLine"
-                    placeholder="e.g., Duration, Emerald"
-                    defaultValue="Duration"
-                  />
-                </div>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-3">
-                <div className="space-y-2">
-                  <Label htmlFor="defaultWallSheen">Default Wall Sheen</Label>
-                  <Input
-                    id="defaultWallSheen"
-                    placeholder="e.g., Eggshell"
-                    defaultValue="Eggshell"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="defaultCeilingSheen">Default Ceiling Sheen</Label>
-                  <Input
-                    id="defaultCeilingSheen"
-                    placeholder="e.g., Flat"
-                    defaultValue="Flat"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="defaultTrimSheen">Default Trim Sheen</Label>
-                  <Input
-                    id="defaultTrimSheen"
-                    placeholder="e.g., Semi-Gloss"
-                    defaultValue="Semi-Gloss"
-                  />
-                </div>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                These defaults will be suggested when adding materials to jobs. You can always change them per job.
-              </p>
-            </div>
-
             <Button onClick={handleSaveCompany} loading={savingCompany}>
               Save Company Settings
             </Button>
@@ -756,6 +724,7 @@ export function SettingsView({
                     min="0"
                     value={wallsRate}
                     onChange={(e) => setWallsRate(e.target.value)}
+                    placeholder="Suggested: 2.00"
                   />
                 </div>
                 <div className="space-y-2">
@@ -767,6 +736,7 @@ export function SettingsView({
                     min="0"
                     value={ceilingsRate}
                     onChange={(e) => setCeilingsRate(e.target.value)}
+                    placeholder="Suggested: 0.50"
                   />
                 </div>
                 <div className="space-y-2">
@@ -778,6 +748,28 @@ export function SettingsView({
                     min="0"
                     value={trimRate}
                     onChange={(e) => setTrimRate(e.target.value)}
+                    placeholder="Suggested: 0.75"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-lg border bg-card p-4 space-y-4">
+              <h3 className="font-semibold">Labor Rate</h3>
+              <p className="text-sm text-muted-foreground">
+                Set your default hourly rate for labor estimates.
+              </p>
+              <div className="max-w-xs">
+                <div className="space-y-2">
+                  <Label htmlFor="laborRate">Labor Rate ($/hr)</Label>
+                  <Input
+                    id="laborRate"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={laborRate}
+                    onChange={(e) => setLaborRate(e.target.value)}
+                    placeholder="Suggested: 50.00"
                   />
                 </div>
               </div>
@@ -995,11 +987,9 @@ export function SettingsView({
                 </Button>
               </div>
             </div>
-          </TabsContent>
 
-          {/* Billing Tab - Owner Only */}
-          {isOwner && (
-            <TabsContent value="billing" className="mt-6 space-y-6">
+            {/* Billing Section - Owner Only */}
+            {isOwner && (
               <div className="rounded-lg border bg-card p-6 space-y-6">
                 <div>
                   <h3 className="font-semibold text-lg mb-2">Billing & Subscription</h3>
@@ -1048,8 +1038,8 @@ export function SettingsView({
                   </div>
                 </div>
               </div>
-            </TabsContent>
-          )}
+            )}
+          </TabsContent>
         </Tabs>
       </div>
 

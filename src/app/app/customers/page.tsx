@@ -24,10 +24,13 @@ export default async function CustomersPage() {
     redirect("/signup");
   }
 
-  // Get customers with job counts
+  // Get customers with tags
   const { data: customers } = await supabase
     .from("customers")
-    .select("*")
+    .select(`
+      *,
+      tags:customer_tags(tag)
+    `)
     .eq("company_id", companyUser.company_id)
     .order("name");
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   Dialog,
@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
-import type { Job, Customer } from "@/types/database";
+import type { Job, Customer, JobTemplateWithRelations } from "@/types/database";
 
 type JobWithCustomer = Job & { customer: Customer | null };
 
@@ -25,6 +25,7 @@ interface NewJobDialogProps {
   companyId: string;
   teamMembers: { id: string; email: string; fullName: string }[];
   onJobCreated: (job: JobWithCustomer) => void;
+  initialCustomerId?: string | null;
 }
 
 const US_STATES = [
@@ -41,8 +42,14 @@ export function NewJobDialog({
   companyId,
   teamMembers,
   onJobCreated,
+  initialCustomerId,
 }: NewJobDialogProps) {
   const [loading, setLoading] = useState(false);
+  const [templates, setTemplates] = useState<JobTemplateWithRelations[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [customerSearchQuery, setCustomerSearchQuery] = useState("");
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
@@ -57,6 +64,65 @@ export function NewJobDialog({
   const { addToast} = useToast();
   const supabase = createClient();
 
+  useEffect(() => {
+    if (open) {
+      loadTemplates();
+      loadCustomers();
+    }
+  }, [open]);
+
+  async function loadTemplates() {
+    try {
+      const response = await fetch("/api/job-templates");
+      if (!response.ok) throw new Error("Failed to load templates");
+      const data = await response.json();
+      setTemplates(data);
+    } catch (error) {
+      console.error("Error loading templates:", error);
+    }
+  }
+
+  async function loadCustomers() {
+    try {
+      const response = await fetch("/api/customers");
+      if (!response.ok) throw new Error("Failed to load customers");
+      const data = await response.json();
+      setCustomers(data);
+      
+      // If initialCustomerId is provided, pre-select that customer
+      if (initialCustomerId) {
+        const customer = data.find((c: Customer) => c.id === initialCustomerId);
+        if (customer) {
+          handleCustomerSelect(customer.id);
+        }
+      }
+    } catch (error) {
+      console.error("Error loading customers:", error);
+    }
+  }
+
+  function handleCustomerSelect(customerId: string) {
+    const customer = customers.find((c) => c.id === customerId);
+    if (customer) {
+      setSelectedCustomerId(customerId);
+      setCustomerName(customer.name);
+      setCustomerPhone(customer.phone || "");
+      setCustomerEmail(customer.email || "");
+      setAddress1(customer.address1 || "");
+      setAddress2(customer.address2 || "");
+      setCity(customer.city || "");
+      setState(customer.state || "");
+      setZip(customer.zip || "");
+      setCustomerSearchQuery(customer.name);
+    }
+  }
+
+  const filteredCustomers = customers.filter((c) =>
+    c.name.toLowerCase().includes(customerSearchQuery.toLowerCase()) ||
+    c.phone?.toLowerCase().includes(customerSearchQuery.toLowerCase()) ||
+    c.email?.toLowerCase().includes(customerSearchQuery.toLowerCase())
+  );
+
   function resetForm() {
     setTitle("");
     setCustomerName("");
@@ -69,6 +135,9 @@ export function NewJobDialog({
     setZip("");
     setNotes("");
     setAssignedUserId("");
+    setSelectedTemplateId("");
+    setSelectedCustomerId(null);
+    setCustomerSearchQuery("");
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -76,9 +145,9 @@ export function NewJobDialog({
     setLoading(true);
 
     try {
-      // Create customer if name provided (via API to bypass RLS)
-      let customerId: string | null = null;
-      if (customerName.trim()) {
+      // Create customer if name provided and not using existing customer (via API to bypass RLS)
+      let customerId: string | null = selectedCustomerId;
+      if (customerName.trim() && !selectedCustomerId) {
         const customerResponse = await fetch("/api/customers", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -130,6 +199,22 @@ export function NewJobDialog({
 
       const job = await jobResponse.json();
 
+      // Apply template if selected
+      if (selectedTemplateId) {
+        const templateResponse = await fetch(
+          `/api/job-templates/${selectedTemplateId}/use`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ job_id: job.id }),
+          }
+        );
+
+        if (!templateResponse.ok) {
+          console.error("Failed to apply template, but job created");
+        }
+      }
+
       onJobCreated(job);
       resetForm();
     } catch (error) {
@@ -151,6 +236,34 @@ export function NewJobDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 mt-4">
+          {/* Template Selection */}
+          {templates.length > 0 && (
+            <div className="space-y-2 rounded-lg border bg-muted/30 p-4">
+              <Label htmlFor="template" className="text-sm font-medium">
+                Start from Template (Optional)
+              </Label>
+              <Select
+                id="template"
+                value={selectedTemplateId}
+                onChange={(e) => setSelectedTemplateId(e.target.value)}
+                className="min-h-[44px]"
+              >
+                <option value="">None - Blank Job</option>
+                {templates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name}
+                    {template.description && ` - ${template.description.substring(0, 40)}${template.description.length > 40 ? '...' : ''}`}
+                  </option>
+                ))}
+              </Select>
+              {selectedTemplateId && (
+                <p className="text-xs text-muted-foreground mt-2">
+                  ℹ️ Template notes and materials will be added after creating the job
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Job Title */}
           <div className="space-y-2">
             <Label htmlFor="title">Job Title *</Label>
@@ -165,38 +278,93 @@ export function NewJobDialog({
 
           {/* Customer Section */}
           <div className="space-y-3 rounded-lg border p-4">
-            <h4 className="font-medium text-sm">Customer (optional)</h4>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="customerName">Name</Label>
-                <Input
-                  id="customerName"
-                  placeholder="John Smith"
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="customerPhone">Phone</Label>
-                <Input
-                  id="customerPhone"
-                  type="tel"
-                  placeholder="(555) 123-4567"
-                  value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value)}
-                />
-              </div>
-            </div>
+            <h4 className="font-medium text-sm">Customer</h4>
             <div className="space-y-2">
-              <Label htmlFor="customerEmail">Email</Label>
-              <Input
-                id="customerEmail"
-                type="email"
-                placeholder="john@email.com"
-                value={customerEmail}
-                onChange={(e) => setCustomerEmail(e.target.value)}
-              />
+              <Label htmlFor="customerSearch">Search Existing Customer (Optional)</Label>
+              <div className="relative">
+                <Input
+                  id="customerSearch"
+                  placeholder="Type to search customers..."
+                  value={customerSearchQuery}
+                  onChange={(e) => {
+                    setCustomerSearchQuery(e.target.value);
+                    setSelectedCustomerId(null);
+                  }}
+                  className="min-h-[44px]"
+                />
+                {customerSearchQuery && filteredCustomers.length > 0 && !selectedCustomerId && (
+                  <div className="absolute z-10 w-full mt-1 max-h-60 overflow-auto rounded-md border bg-popover shadow-lg">
+                    {filteredCustomers.slice(0, 5).map((customer) => (
+                      <button
+                        key={customer.id}
+                        type="button"
+                        onClick={() => handleCustomerSelect(customer.id)}
+                        className="w-full text-left px-4 py-2 hover:bg-muted transition-colors"
+                      >
+                        <div className="font-medium">{customer.name}</div>
+                        <div className="text-sm text-muted-foreground">
+                          {customer.phone && <span>{customer.phone} </span>}
+                          {customer.email && <span>• {customer.email}</span>}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
+            {selectedCustomerId ? (
+              <div className="rounded-md bg-muted/50 p-3">
+                <p className="text-sm font-medium text-green-700">✓ Using existing customer</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedCustomerId(null);
+                    setCustomerSearchQuery("");
+                    setCustomerName("");
+                    setCustomerPhone("");
+                    setCustomerEmail("");
+                  }}
+                  className="text-xs text-muted-foreground hover:text-foreground mt-1"
+                >
+                  Clear selection
+                </button>
+              </div>
+            ) : (
+              <>
+                <p className="text-xs text-muted-foreground">Or create a new customer:</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="customerName">Name</Label>
+                    <Input
+                      id="customerName"
+                      placeholder="John Smith"
+                      value={customerName}
+                      onChange={(e) => setCustomerName(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="customerPhone">Phone</Label>
+                    <Input
+                      id="customerPhone"
+                      type="tel"
+                      placeholder="(555) 123-4567"
+                      value={customerPhone}
+                      onChange={(e) => setCustomerPhone(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="customerEmail">Email</Label>
+                  <Input
+                    id="customerEmail"
+                    type="email"
+                    placeholder="john@email.com"
+                    value={customerEmail}
+                    onChange={(e) => setCustomerEmail(e.target.value)}
+                  />
+                </div>
+              </>
+            )}
           </div>
 
           {/* Address Section */}

@@ -87,6 +87,13 @@ export default async function JobPage({
   // Fetch team members (use admin client)
   const members = await getTeamMembers(adminSupabase, companyUser.company_id);
 
+  // Fetch estimating config
+  const { data: estimatingConfig } = await adminSupabase
+    .from("estimating_config")
+    .select("*")
+    .eq("company_id", companyUser.company_id)
+    .single();
+
   return (
     <JobDetailView
       job={jobWithCustomer}
@@ -95,6 +102,7 @@ export default async function JobPage({
       materials={materials || []}
       teamMembers={members}
       companyId={companyUser.company_id}
+      estimatingConfig={estimatingConfig}
     />
   );
 }

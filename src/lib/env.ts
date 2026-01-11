@@ -17,9 +17,13 @@ export const env = {
   supabaseAnonKey: getEnvVar("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
   supabaseServiceRoleKey: getEnvVar("SUPABASE_SERVICE_ROLE_KEY"),
 
-  // Stripe (optional for local testing - only needed for future SaaS billing)
+  // Stripe (for customer payments)
   stripeSecretKey: getEnvVar("STRIPE_SECRET_KEY", false),
+  stripePublishableKey: getEnvVar("NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY", false),
   stripeWebhookSecret: getEnvVar("STRIPE_WEBHOOK_SECRET", false),
+
+  // Weather API
+  weatherApiKey: getEnvVar("WEATHER_API_KEY", false),
 
   // App
   appUrl: getEnvVar("NEXT_PUBLIC_APP_URL", false) || "http://localhost:3000",
@@ -34,6 +38,6 @@ if (env.isProduction) {
   if (!env.supabaseUrl || !env.supabaseAnonKey || !env.supabaseServiceRoleKey) {
     throw new Error("Missing required Supabase environment variables");
   }
-  // Note: Stripe env vars are optional for Drip Lite (customer payments disabled)
-  // They will be required when SaaS billing is enabled
+  // Stripe, Weather API, and OpenAI are optional
+  // They should be configured in production if those features are needed
 }

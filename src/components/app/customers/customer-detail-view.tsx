@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
+  cn,
   formatPhone,
   formatDate,
   formatCurrency,
@@ -21,6 +22,13 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/toast";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuLabel,
+} from "@/components/ui/dropdown-menu";
+import {
   ArrowLeft,
   Phone,
   Mail,
@@ -35,6 +43,7 @@ import {
   DollarSign,
   CheckCircle,
   Calendar,
+  Plus,
 } from "lucide-react";
 
 interface CustomerDetailViewProps {
@@ -43,6 +52,17 @@ interface CustomerDetailViewProps {
   invoices: Invoice[];
   companyId: string;
 }
+
+const ALLOWED_TAGS = ['good_payer', 'repeat_customer', 'referral', 'vip', 'needs_followup'] as const;
+const MAX_TAGS_PER_CUSTOMER = 5;
+
+const TAG_CONFIG: Record<typeof ALLOWED_TAGS[number], { label: string; variant: "success" | "default" | "secondary" | "outline"; icon: string }> = {
+  good_payer: { label: 'Good Payer', variant: 'success', icon: '✓' },
+  repeat_customer: { label: 'Repeat Customer', variant: 'default', icon: '↻' },
+  referral: { label: 'Referral', variant: 'secondary', icon: '👥' },
+  vip: { label: 'VIP', variant: 'outline', icon: '⭐' },
+  needs_followup: { label: 'Needs Follow-up', variant: 'secondary', icon: '!' },
+};
 
 export function CustomerDetailView({
   customer: initialCustomer,
@@ -57,6 +77,8 @@ export function CustomerDetailView({
   const [customer, setCustomer] = useState(initialCustomer);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [tags, setTags] = useState<string[]>([]);
+  const [loadingTags, setLoadingTags] = useState(true);
 
   // Form state
   const [name, setName] = useState(customer.name);
@@ -67,6 +89,69 @@ export function CustomerDetailView({
   const [state, setState] = useState(customer.state || "");
   const [zip, setZip] = useState(customer.zip || "");
   const [notes, setNotes] = useState(customer.notes || "");
+
+  // Load tags
+  useEffect(() => {
+    async function loadTags() {
+      const { data } = await supabase
+        .from("customer_tags")
+        .select("tag")
+        .eq("customer_id", customer.id)
+        .eq("company_id", companyId);
+      
+      if (data) {
+        setTags(data.map(t => t.tag));
+      }
+      setLoadingTags(false);
+    }
+    loadTags();
+  }, [customer.id, companyId, supabase]);
+
+  async function handleAddTag(tag: string) {
+    if (tags.length >= MAX_TAGS_PER_CUSTOMER) {
+      addToast("Maximum tags reached", "error");
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from("customer_tags")
+        .insert({
+          customer_id: customer.id,
+          company_id: companyId,
+          tag,
+        });
+
+      if (error && error.code !== "23505") { // Ignore duplicate errors
+        throw error;
+      }
+
+      setTags([...tags, tag]);
+      addToast("Tag added", "success");
+    } catch (error) {
+      console.error("Error adding tag:", error);
+      addToast("Failed to add tag", "error");
+    }
+  }
+
+  async function handleRemoveTag(tag: string) {
+    try {
+      const { error } = await supabase
+        .from("customer_tags")
+        .delete()
+        .eq("customer_id", customer.id)
+        .eq("company_id", companyId)
+        .eq("tag", tag);
+
+      if (error) throw error;
+
+      setTags(tags.filter(t => t !== tag));
+      addToast("Tag removed", "success");
+    } catch (error) {
+      console.error("Error removing tag:", error);
+      addToast("Failed to remove tag", "error");
+    }
+  }
 
   const address = [customer.address1, customer.city, customer.state, customer.zip]
     .filter(Boolean)
@@ -80,6 +165,49 @@ export function CustomerDetailView({
   const pendingAmount = invoices
     .filter((inv) => inv.status !== "paid")
     .reduce((sum, inv) => sum + inv.amount_total, 0);
+
+  // Calculate payment history
+  const paidInvoices = invoices
+    .filter((inv) => inv.status === "paid" && inv.paid_at)
+    .map((inv) => {
+      const createdDate = new Date(inv.created_at);
+      const paidDate = new Date(inv.paid_at!);
+      const daysToPay = Math.round(
+        (paidDate.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24)
+      );
+      return {
+        ...inv,
+        daysToPay: Math.max(0, daysToPay), // Ensure non-negative
+      };
+    })
+    .filter((inv) => inv.daysToPay >= 0) // Filter out any invalid dates
+    .sort((a, b) => new Date(b.paid_at!).getTime() - new Date(a.paid_at!).getTime());
+
+  const averageDaysToPay =
+    paidInvoices.length > 0
+      ? Math.round(
+          paidInvoices.reduce((sum, inv) => sum + inv.daysToPay, 0) / paidInvoices.length
+        )
+      : null;
+
+  function getPaymentBadgeText() {
+    if (!averageDaysToPay && averageDaysToPay !== 0) return null;
+    if (paidInvoices.length === 1) {
+      return `Paid last invoice in ${paidInvoices[0].daysToPay} days`;
+    }
+    if (averageDaysToPay < 7) return "Usually pays within a week ✅";
+    if (averageDaysToPay < 14) return "Usually pays within 2 weeks";
+    if (averageDaysToPay < 30) return `Average ${averageDaysToPay} days`;
+    return `Slow payer: ${averageDaysToPay} days ⚠️`;
+  }
+
+  function getPaymentBadgeVariant(): "success" | "secondary" | "warning" | "outline" {
+    if (!averageDaysToPay && averageDaysToPay !== 0) return "outline";
+    if (averageDaysToPay < 7) return "success";
+    if (averageDaysToPay < 14) return "secondary";
+    if (averageDaysToPay < 30) return "secondary";
+    return "warning";
+  }
 
   // Create a combined timeline of jobs and invoices
   const timeline = [
@@ -184,9 +312,61 @@ export function CustomerDetailView({
                 <p className="text-muted-foreground text-sm">
                   Customer since {formatDate(customer.created_at)}
                 </p>
+                {/* Tags */}
+                {!loadingTags && (
+                  <div className="flex flex-wrap gap-2 items-center mt-2">
+                    {tags.map(tag => {
+                      const config = TAG_CONFIG[tag as keyof typeof TAG_CONFIG];
+                      return config ? (
+                        <Badge
+                          key={tag}
+                          variant={config.variant}
+                          className="cursor-pointer"
+                          onClick={() => {
+                            if (confirm(`Remove "${config.label}" tag?`)) {
+                              handleRemoveTag(tag);
+                            }
+                          }}
+                        >
+                          {config.icon} {config.label}
+                        </Badge>
+                      ) : null;
+                    })}
+                    {tags.length < MAX_TAGS_PER_CUSTOMER && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" size="sm" className="h-6">
+                            <Plus className="mr-1 h-3 w-3" />
+                            Add Tag
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                          <DropdownMenuLabel>Select Tag</DropdownMenuLabel>
+                          {ALLOWED_TAGS.filter(tag => !tags.includes(tag)).map(tag => {
+                            const config = TAG_CONFIG[tag];
+                            return (
+                              <DropdownMenuItem
+                                key={tag}
+                                onClick={() => handleAddTag(tag)}
+                              >
+                                {config.icon} {config.label}
+                              </DropdownMenuItem>
+                            );
+                          })}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
             <div className="flex gap-2">
+              <Link href={`/app/jobs/new?customerId=${customer.id}`}>
+                <Button size="sm">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Job
+                </Button>
+              </Link>
               <Button
                 variant="outline"
                 size="sm"
@@ -547,6 +727,49 @@ export function CustomerDetailView({
                 )}
               </div>
             </div>
+
+            {/* Payment History */}
+            {paidInvoices.length > 0 && (
+              <div className="rounded-lg border bg-card p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold">Payment History</h3>
+                  {averageDaysToPay !== null && (
+                    <Badge variant={getPaymentBadgeVariant()} className="text-xs">
+                      {getPaymentBadgeText()}
+                    </Badge>
+                  )}
+                </div>
+                {paidInvoices.length < 5 && (
+                  <p className="text-xs text-muted-foreground">
+                    Based on {paidInvoices.length} invoice{paidInvoices.length !== 1 ? 's' : ''} • Limited data
+                  </p>
+                )}
+                <div className="space-y-2">
+                  <div className="text-xs font-medium text-muted-foreground grid grid-cols-3 gap-2 pb-1 border-b">
+                    <span>Invoice</span>
+                    <span>Paid</span>
+                    <span className="text-right">Days</span>
+                  </div>
+                  {paidInvoices.slice(0, 5).map((invoice) => (
+                    <div key={invoice.id} className="grid grid-cols-3 gap-2 text-sm">
+                      <span className="font-medium truncate">
+                        {formatCurrency(invoice.amount_total)}
+                      </span>
+                      <span className="text-muted-foreground truncate">
+                        {formatDate(invoice.paid_at!)}
+                      </span>
+                      <span className={cn(
+                        "text-right font-medium",
+                        invoice.daysToPay < 7 ? "text-success" : 
+                        invoice.daysToPay < 30 ? "text-foreground" : "text-warning"
+                      )}>
+                        {invoice.daysToPay}d
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

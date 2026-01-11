@@ -15,6 +15,9 @@ export interface Database {
           name: string;
           theme_id: string;
           owner_user_id: string;
+          stripe_account_id: string | null;
+          stripe_enabled: boolean;
+          stripe_onboarding_complete: boolean;
           created_at: string;
         };
         Insert: {
@@ -22,6 +25,9 @@ export interface Database {
           name: string;
           theme_id?: string;
           owner_user_id: string;
+          stripe_account_id?: string | null;
+          stripe_enabled?: boolean;
+          stripe_onboarding_complete?: boolean;
           created_at?: string;
         };
         Update: {
@@ -29,6 +35,9 @@ export interface Database {
           name?: string;
           theme_id?: string;
           owner_user_id?: string;
+          stripe_account_id?: string | null;
+          stripe_enabled?: boolean;
+          stripe_onboarding_complete?: boolean;
           created_at?: string;
         };
         Relationships: [];
@@ -143,8 +152,19 @@ export interface Database {
           status: string;
           scheduled_date: string | null;
           scheduled_time: string | null;
+          schedule_state: string | null;
+          schedule_token: string | null;
+          schedule_accepted_at: string | null;
           assigned_user_id: string | null;
           notes: string | null;
+          is_outdoor: boolean;
+          pickup_location_id: string | null;
+          payment_state: string;
+          payment_amount: number | null;
+          payment_approved_at: string | null;
+          payment_paid_at: string | null;
+          payment_method: string | null;
+          payment_token: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -161,8 +181,19 @@ export interface Database {
           status?: string;
           scheduled_date?: string | null;
           scheduled_time?: string | null;
+          schedule_state?: string | null;
+          schedule_token?: string | null;
+          schedule_accepted_at?: string | null;
           assigned_user_id?: string | null;
           notes?: string | null;
+          is_outdoor?: boolean;
+          pickup_location_id?: string | null;
+          payment_state?: string;
+          payment_amount?: number | null;
+          payment_approved_at?: string | null;
+          payment_paid_at?: string | null;
+          payment_method?: string | null;
+          payment_token?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -179,8 +210,19 @@ export interface Database {
           status?: string;
           scheduled_date?: string | null;
           scheduled_time?: string | null;
+          schedule_state?: string | null;
+          schedule_token?: string | null;
+          schedule_accepted_at?: string | null;
           assigned_user_id?: string | null;
           notes?: string | null;
+          is_outdoor?: boolean;
+          pickup_location_id?: string | null;
+          payment_state?: string;
+          payment_amount?: number | null;
+          payment_approved_at?: string | null;
+          payment_paid_at?: string | null;
+          payment_method?: string | null;
+          payment_token?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -195,6 +237,8 @@ export interface Database {
           sqft: number | null;
           status: string;
           accepted_at: string | null;
+          expires_at: string | null;
+          hourly_rate: number | null;
           public_token: string;
           created_at: string;
           updated_at: string;
@@ -207,6 +251,8 @@ export interface Database {
           sqft?: number | null;
           status?: string;
           accepted_at?: string | null;
+          expires_at?: string | null;
+          hourly_rate?: number | null;
           public_token: string;
           created_at?: string;
           updated_at?: string;
@@ -219,6 +265,8 @@ export interface Database {
           sqft?: number | null;
           status?: string;
           accepted_at?: string | null;
+          expires_at?: string | null;
+          hourly_rate?: number | null;
           public_token?: string;
           created_at?: string;
           updated_at?: string;
@@ -279,6 +327,7 @@ export interface Database {
           company_id: string;
           job_id: string;
           customer_id: string;
+          estimate_id: string | null;
           status: string;
           public_token: string;
           stripe_checkout_session_id: string | null;
@@ -293,6 +342,7 @@ export interface Database {
           company_id: string;
           job_id: string;
           customer_id: string;
+          estimate_id?: string | null;
           status?: string;
           public_token: string;
           stripe_checkout_session_id?: string | null;
@@ -307,6 +357,7 @@ export interface Database {
           company_id?: string;
           job_id?: string;
           customer_id?: string;
+          estimate_id?: string | null;
           status?: string;
           public_token?: string;
           stripe_checkout_session_id?: string | null;
@@ -348,6 +399,7 @@ export interface Database {
           walls_rate_per_sqft: number;
           ceilings_rate_per_sqft: number;
           trim_rate_per_sqft: number;
+          labor_rate_per_hour: number | null;
           updated_at: string;
         };
         Insert: {
@@ -355,6 +407,7 @@ export interface Database {
           walls_rate_per_sqft?: number;
           ceilings_rate_per_sqft?: number;
           trim_rate_per_sqft?: number;
+          labor_rate_per_hour?: number | null;
           updated_at?: string;
         };
         Update: {
@@ -362,6 +415,7 @@ export interface Database {
           walls_rate_per_sqft?: number;
           ceilings_rate_per_sqft?: number;
           trim_rate_per_sqft?: number;
+          labor_rate_per_hour?: number | null;
           updated_at?: string;
         };
         Relationships: [];
@@ -456,6 +510,9 @@ export interface Database {
           inventory_item_id: string | null;
           vendor_sku: string | null;
           notes: string | null;
+          cost_per_unit: number | null;
+          quantity_decimal: number | null;
+          unit: string | null;
           created_at: string;
         };
         Insert: {
@@ -466,6 +523,9 @@ export interface Database {
           inventory_item_id?: string | null;
           vendor_sku?: string | null;
           notes?: string | null;
+          cost_per_unit?: number | null;
+          quantity_decimal?: number | null;
+          unit?: string | null;
           created_at?: string;
         };
         Update: {
@@ -476,6 +536,9 @@ export interface Database {
           inventory_item_id?: string | null;
           vendor_sku?: string | null;
           notes?: string | null;
+          cost_per_unit?: number | null;
+          quantity_decimal?: number | null;
+          unit?: string | null;
           created_at?: string;
         };
         Relationships: [];
@@ -498,6 +561,291 @@ export interface Database {
           email?: string;
           full_name?: string | null;
           created_at?: string;
+        };
+        Relationships: [];
+      };
+      job_templates: {
+        Row: {
+          id: string;
+          company_id: string;
+          name: string;
+          description: string | null;
+          notes: string | null;
+          estimated_hours: number | null;
+          created_by_user_id: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          company_id: string;
+          name: string;
+          description?: string | null;
+          notes?: string | null;
+          estimated_hours?: number | null;
+          created_by_user_id?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          company_id?: string;
+          name?: string;
+          description?: string | null;
+          notes?: string | null;
+          estimated_hours?: number | null;
+          created_by_user_id?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      template_materials: {
+        Row: {
+          id: string;
+          template_id: string;
+          name: string;
+          quantity: string | null;
+          notes: string | null;
+          sort_order: number;
+        };
+        Insert: {
+          id?: string;
+          template_id: string;
+          name: string;
+          quantity?: string | null;
+          notes?: string | null;
+          sort_order?: number;
+        };
+        Update: {
+          id?: string;
+          template_id?: string;
+          name?: string;
+          quantity?: string | null;
+          notes?: string | null;
+          sort_order?: number;
+        };
+        Relationships: [];
+      };
+      template_estimate_items: {
+        Row: {
+          id: string;
+          template_id: string;
+          service_type: string | null;
+          name: string | null;
+          description: string | null;
+          sort_order: number;
+        };
+        Insert: {
+          id?: string;
+          template_id: string;
+          service_type?: string | null;
+          name?: string | null;
+          description?: string | null;
+          sort_order?: number;
+        };
+        Update: {
+          id?: string;
+          template_id?: string;
+          service_type?: string | null;
+          name?: string | null;
+          description?: string | null;
+          sort_order?: number;
+        };
+        Relationships: [];
+      };
+      job_photos: {
+        Row: {
+          id: string;
+          job_id: string;
+          company_id: string;
+          storage_path: string;
+          public_url: string;
+          thumbnail_url: string | null;
+          file_name: string | null;
+          file_size_bytes: number | null;
+          mime_type: string | null;
+          tag: "before" | "after" | "other" | null;
+          caption: string | null;
+          uploaded_by_user_id: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          job_id: string;
+          company_id: string;
+          storage_path: string;
+          public_url: string;
+          thumbnail_url?: string | null;
+          file_name?: string | null;
+          file_size_bytes?: number | null;
+          mime_type?: string | null;
+          tag?: "before" | "after" | "other" | null;
+          caption?: string | null;
+          uploaded_by_user_id?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          job_id?: string;
+          company_id?: string;
+          storage_path?: string;
+          public_url?: string;
+          thumbnail_url?: string | null;
+          file_name?: string | null;
+          file_size_bytes?: number | null;
+          mime_type?: string | null;
+          tag?: "before" | "after" | "other" | null;
+          caption?: string | null;
+          uploaded_by_user_id?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      time_entries: {
+        Row: {
+          id: string;
+          job_id: string;
+          company_id: string;
+          user_id: string | null;
+          user_name: string | null;
+          started_at: string;
+          ended_at: string | null;
+          duration_seconds: number | null;
+          notes: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          job_id: string;
+          company_id: string;
+          user_id?: string | null;
+          user_name?: string | null;
+          started_at: string;
+          ended_at?: string | null;
+          duration_seconds?: number | null;
+          notes?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          job_id?: string;
+          company_id?: string;
+          user_id?: string | null;
+          user_name?: string | null;
+          started_at?: string;
+          ended_at?: string | null;
+          duration_seconds?: number | null;
+          notes?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      job_payment_line_items: {
+        Row: {
+          id: string;
+          job_id: string;
+          title: string;
+          price: number;
+          sort_order: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          job_id: string;
+          title: string;
+          price: number;
+          sort_order?: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          job_id?: string;
+          title?: string;
+          price?: number;
+          sort_order?: number;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      job_payment_revisions: {
+        Row: {
+          id: string;
+          job_id: string;
+          previous_amount: number;
+          new_amount: number;
+          revision_reason: string | null;
+          created_at: string;
+          created_by_user_id: string | null;
+        };
+        Insert: {
+          id?: string;
+          job_id: string;
+          previous_amount: number;
+          new_amount: number;
+          revision_reason?: string | null;
+          created_at?: string;
+          created_by_user_id?: string | null;
+        };
+        Update: {
+          id?: string;
+          job_id?: string;
+          previous_amount?: number;
+          new_amount?: number;
+          revision_reason?: string | null;
+          created_at?: string;
+          created_by_user_id?: string | null;
+        };
+        Relationships: [];
+      };
+      nudge_dismissals: {
+        Row: {
+          id: string;
+          user_id: string;
+          company_id: string;
+          nudge_type: string;
+          dismissed_at: string;
+          expires_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          company_id: string;
+          nudge_type: string;
+          dismissed_at?: string;
+          expires_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          company_id?: string;
+          nudge_type?: string;
+          dismissed_at?: string;
+          expires_at?: string | null;
+        };
+        Relationships: [];
+      };
+      customer_tags: {
+        Row: {
+          id: string;
+          customer_id: string;
+          company_id: string;
+          tag: string;
+          created_at: string;
+          created_by_user_id: string | null;
+        };
+        Insert: {
+          id?: string;
+          customer_id: string;
+          company_id: string;
+          tag: string;
+          created_at?: string;
+          created_by_user_id?: string | null;
+        };
+        Update: {
+          id?: string;
+          customer_id?: string;
+          company_id?: string;
+          tag?: string;
+          created_at?: string;
+          created_by_user_id?: string | null;
         };
         Relationships: [];
       };
@@ -552,6 +900,15 @@ export type PickupLocation = Tables<"pickup_locations">;
 export type InventoryItem = Tables<"inventory_items">;
 export type JobMaterial = Tables<"job_materials">;
 export type UserProfile = Tables<"user_profiles">;
+export type JobTemplate = Tables<"job_templates">;
+export type TemplateMaterial = Tables<"template_materials">;
+export type TemplateEstimateItem = Tables<"template_estimate_items">;
+export type JobPhoto = Tables<"job_photos">;
+export type TimeEntry = Tables<"time_entries">;
+export type JobPaymentLineItem = Tables<"job_payment_line_items">;
+export type JobPaymentRevision = Tables<"job_payment_revisions">;
+export type NudgeDismissal = Tables<"nudge_dismissals">;
+export type CustomerTag = Tables<"customer_tags">;
 
 // Extended types with relations
 export type JobWithCustomer = Job & {
@@ -568,4 +925,9 @@ export type InvoiceWithDetails = Invoice & {
   customer: Customer;
   job: Job;
   payments: InvoicePayment[];
+};
+
+export type JobTemplateWithRelations = JobTemplate & {
+  template_materials: TemplateMaterial[];
+  template_estimate_items: TemplateEstimateItem[];
 };

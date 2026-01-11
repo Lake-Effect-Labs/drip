@@ -48,8 +48,6 @@ export function BoardColumn({ id, title, jobs, count, onStatusChange, onDuplicat
             <JobCard
               key={job.id}
               job={job}
-              onStatusChange={onStatusChange}
-              onDuplicate={onDuplicate}
             />
           ))
         )}

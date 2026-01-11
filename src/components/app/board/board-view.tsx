@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -18,10 +18,11 @@ import type { Job, Customer } from "@/types/database";
 import { BoardColumn } from "./board-column";
 import { JobCard } from "./job-card";
 import { NewJobDialog } from "./new-job-dialog";
+import { NudgeBanners } from "./nudge-banners";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, X } from "lucide-react";
+import { Plus, Search, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 
 type JobWithCustomer = Job & { customer: Customer | null };
@@ -46,7 +47,33 @@ export function BoardView({
   const [filter, setFilter] = useState<FilterType>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [newJobOpen, setNewJobOpen] = useState(false);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const { addToast } = useToast();
+
+  // Check scroll position
+  const checkScroll = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (container) {
+      setCanScrollLeft(container.scrollLeft > 0);
+      setCanScrollRight(
+        container.scrollLeft < container.scrollWidth - container.clientWidth - 1
+      );
+    }
+  }, []);
+
+  // Scroll left/right
+  const scroll = useCallback((direction: "left" | "right") => {
+    const container = scrollContainerRef.current;
+    if (container) {
+      const scrollAmount = container.clientWidth * 0.8; // Scroll 80% of viewport
+      container.scrollBy({
+        left: direction === "left" ? -scrollAmount : scrollAmount,
+        behavior: "smooth",
+      });
+    }
+  }, []);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -149,8 +176,22 @@ export function BoardView({
     addToast("Job created!", "success");
   }, [addToast]);
 
+  // Check scroll on mount and when jobs change
+  useEffect(() => {
+    checkScroll();
+    // Add resize listener
+    const handleResize = () => checkScroll();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [checkScroll, jobs.length]);
+
   return (
     <div className="flex h-full flex-col">
+      {/* Nudge Banners */}
+      <div className="p-4 pb-0">
+        <NudgeBanners companyId={companyId} />
+      </div>
+      
       {/* Header */}
       <div className="flex flex-col gap-4 border-b bg-card p-4">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -199,8 +240,36 @@ export function BoardView({
       </div>
 
       {/* Board */}
-      <div className="flex-1 overflow-x-auto overflow-y-hidden p-4 min-h-0" style={{ maxHeight: 'calc(100vh - 14rem)' }}>
-        {jobs.length === 0 ? (
+      <div className="flex-1 relative min-h-0">
+        {/* Left scroll button */}
+        {canScrollLeft && (
+          <button
+            onClick={() => scroll("left")}
+            className="absolute left-2 top-1/2 -translate-y-1/2 z-10 bg-card border rounded-full p-2 shadow-lg hover:bg-muted transition-colors touch-target"
+            aria-label="Scroll left"
+          >
+            <ChevronLeft className="h-6 w-6" />
+          </button>
+        )}
+
+        {/* Right scroll button */}
+        {canScrollRight && (
+          <button
+            onClick={() => scroll("right")}
+            className="absolute right-2 top-1/2 -translate-y-1/2 z-10 bg-card border rounded-full p-2 shadow-lg hover:bg-muted transition-colors touch-target"
+            aria-label="Scroll right"
+          >
+            <ChevronRight className="h-6 w-6" />
+          </button>
+        )}
+
+        <div 
+          ref={scrollContainerRef}
+          onScroll={checkScroll}
+          className="h-full overflow-x-auto overflow-y-hidden p-4 scrollbar-hide" 
+          style={{ maxHeight: 'calc(100vh - 14rem)' }}
+        >
+          {jobs.length === 0 ? (
           <div className="flex h-full items-center justify-center">
             <div className="text-center max-w-md">
               <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
@@ -285,6 +354,7 @@ export function BoardView({
             </DragOverlay>
           </DndContext>
         )}
+        </div>
       </div>
 
       {/* New Job Dialog */}

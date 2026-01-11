@@ -4,7 +4,8 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import type { Invoice, Customer, Job, Company } from "@/types/database";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Droplet, MapPin, User } from "lucide-react";
+import { Paintbrush, MapPin, User } from "lucide-react";
+import { PaintChipAnimator } from "@/components/public/paint-chip-animator";
 
 type InvoiceWithDetails = Invoice & {
   customer: Customer;
@@ -22,7 +23,7 @@ export function PublicInvoiceView({ invoice }: PublicInvoiceViewProps) {
     .join(", ");
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-stone-100 via-stone-50 to-white">
+    <div className="min-h-screen bg-gradient-to-br from-stone-100 via-stone-50 to-white relative">
       {/* Header */}
       <header className="border-b bg-card/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
@@ -34,7 +35,7 @@ export function PublicInvoiceView({ invoice }: PublicInvoiceViewProps) {
             />
           ) : (
             <div className="w-8 h-8 rounded-lg bg-stone-800 flex items-center justify-center">
-              <Droplet className="w-5 h-5 text-white" />
+              <Paintbrush className="w-5 h-5 text-white" />
             </div>
           )}
           <div>
@@ -125,6 +126,8 @@ export function PublicInvoiceView({ invoice }: PublicInvoiceViewProps) {
           </div>
         )}
       </main>
+
+      <PaintChipAnimator />
     </div>
   );
 }

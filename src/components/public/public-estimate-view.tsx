@@ -14,7 +14,8 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Droplet, CheckCircle, MapPin, User } from "lucide-react";
+import { Paintbrush, CheckCircle, MapPin, User } from "lucide-react";
+import { PaintChipAnimator } from "@/components/public/paint-chip-animator";
 
 type EstimateWithDetails = Estimate & {
   line_items: EstimateLineItem[];
@@ -72,8 +73,9 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
 
   if (accepted) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-stone-100 via-stone-50 to-white flex items-center justify-center p-4">
-        <Card className="w-full max-w-md text-center">
+      <div className="min-h-screen bg-gradient-to-br from-stone-100 via-stone-50 to-white flex items-center justify-center p-4 relative">
+        <PaintChipAnimator />
+        <Card className="w-full max-w-md text-center relative z-20">
           <CardContent className="pt-8 pb-8">
             <div className="w-16 h-16 rounded-full bg-success/10 flex items-center justify-center mx-auto mb-4">
               <CheckCircle className="w-8 h-8 text-success" />
@@ -92,7 +94,7 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-stone-100 via-stone-50 to-white">
+    <div className="min-h-screen bg-gradient-to-br from-stone-100 via-stone-50 to-white relative">
       {/* Header */}
       <header className="border-b bg-card/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
@@ -104,7 +106,7 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
             />
           ) : (
             <div className="w-8 h-8 rounded-lg bg-stone-800 flex items-center justify-center">
-              <Droplet className="w-5 h-5 text-white" />
+              <Paintbrush className="w-5 h-5 text-white" />
             </div>
           )}
           <div>
@@ -239,6 +241,8 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <PaintChipAnimator />
     </div>
   );
 }

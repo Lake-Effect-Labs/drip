@@ -29,6 +29,15 @@ export function DateTimePicker({
   const dateValue = date || "";
   const timeValue = time || "";
 
+  const formattedDate = date
+    ? new Date(date + "T00:00").toLocaleDateString("en-US", {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+    : "";
+
   return (
     <div className={cn("space-y-2", className)}>
       {label && <Label className="text-sm font-medium">{label}</Label>}
@@ -54,14 +63,9 @@ export function DateTimePicker({
               className="pl-10 border-0 focus-visible:ring-0 focus-visible:ring-offset-0 min-h-[44px] cursor-pointer bg-transparent"
             />
           </div>
-          {date && (
-            <p className="text-xs text-muted-foreground mt-1 ml-1">
-              {new Date(date + "T00:00").toLocaleDateString("en-US", {
-                weekday: "short",
-                month: "short",
-                day: "numeric",
-                year: "numeric",
-              })}
+          {formattedDate && (
+            <p className="text-sm text-muted-foreground mt-1 ml-1">
+              {formattedDate}
             </p>
           )}
         </div>
@@ -86,15 +90,6 @@ export function DateTimePicker({
               className="pl-10 border-0 focus-visible:ring-0 focus-visible:ring-offset-0 min-h-[44px] cursor-pointer bg-transparent"
             />
           </div>
-          {time && (
-            <p className="text-xs text-muted-foreground mt-1 ml-1">
-              {new Date(`2000-01-01T${time}`).toLocaleTimeString("en-US", {
-                hour: "numeric",
-                minute: "2-digit",
-                hour12: true,
-              })}
-            </p>
-          )}
         </div>
       </div>
     </div>

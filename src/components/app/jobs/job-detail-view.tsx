@@ -16,9 +16,12 @@ import {
   JOB_STATUS_COLORS,
   type JobStatus,
 } from "@/lib/utils";
-import type { Job, Customer, Estimate, EstimateLineItem, Invoice, JobMaterial } from "@/types/database";
+import type { Job, Customer, Estimate, EstimateLineItem, Invoice, JobMaterial, EstimatingConfig } from "@/types/database";
 import { JobHistoryTimeline } from "./job-history-timeline";
 import { MessageTemplatesDialog } from "./message-templates-dialog";
+import { JobTemplatesDialog } from "./job-templates-dialog";
+import { PhotoGallery } from "./photo-gallery";
+import { UnifiedPayment } from "./unified-payment";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -34,6 +37,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   ArrowLeft,
   Calendar,
@@ -51,6 +60,11 @@ import {
   ExternalLink,
   X,
   Pencil,
+  Share2,
+  MoreVertical,
+  Archive,
+  Save,
+  CheckCircle,
 } from "lucide-react";
 
 type JobWithCustomer = Job & { customer: Customer | null };
@@ -73,6 +87,7 @@ interface JobDetailViewProps {
   jobHistory?: JobHistory[];
   teamMembers: { id: string; email: string; fullName: string }[];
   companyId: string;
+  estimatingConfig?: EstimatingConfig | null;
 }
 
 export function JobDetailView({
@@ -83,15 +98,52 @@ export function JobDetailView({
   jobHistory = [],
   teamMembers,
   companyId,
+  estimatingConfig,
 }: JobDetailViewProps) {
   const router = useRouter();
   const { addToast } = useToast();
   const supabase = createClient();
+  
+  // Get current user ID from Supabase auth
+  const [currentUserId, setCurrentUserId] = useState<string>("");
+  
+  useEffect(() => {
+    const fetchUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setCurrentUserId(user.id);
+      }
+    };
+    fetchUser();
+  }, [supabase]);
 
   const [job, setJob] = useState(initialJob);
   const [materials, setMaterials] = useState(initialMaterials);
   const [estimatesList, setEstimatesList] = useState(estimates);
   const [invoicesList, setInvoicesList] = useState(invoices);
+  const [pickupLocations, setPickupLocations] = useState<Array<{ id: string; name: string }>>([]);
+  const [selectedPickupLocation, setSelectedPickupLocation] = useState<string | null>(job.pickup_location_id || null);
+  const [timeEntries, setTimeEntries] = useState<Array<{
+    id: string;
+    user_id: string;
+    started_at: string;
+    ended_at: string | null;
+    duration_seconds: number | null;
+    user?: { full_name: string };
+  }>>([]);
+  const [loadingTimeEntries, setLoadingTimeEntries] = useState(false);
+  const [addingTimeEntry, setAddingTimeEntry] = useState(false);
+  const [editingTimeEntry, setEditingTimeEntry] = useState<string | null>(null);
+  const [newTimeEntry, setNewTimeEntry] = useState({
+    userId: currentUserId,
+    hours: "",
+    date: new Date().toISOString().split("T")[0],
+  });
+  const [paymentLineItems, setPaymentLineItems] = useState<Array<{
+    id: string;
+    title: string;
+    price: number;
+  }>>([]);
 
   // Sync state with props when they change (e.g., after navigation)
   useEffect(() => {
@@ -149,7 +201,24 @@ export function JobDetailView({
   const [selectedEstimate, setSelectedEstimate] = useState<EstimateWithLineItems | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [showMaterialForm, setShowMaterialForm] = useState(false);
+  const [showShareDialog, setShowShareDialog] = useState(false);
+  const [showShareScheduleDialog, setShowShareScheduleDialog] = useState(false);
+  const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
+  const [duplicating, setDuplicating] = useState(false);
+  const [showTemplateDialog, setShowTemplateDialog] = useState(false);
+  const [scheduleToken, setScheduleToken] = useState<string | null>((job as any).schedule_token || null);
+  const [loadingScheduleToken, setLoadingScheduleToken] = useState(false);
+  const [templateDialogMode, setTemplateDialogMode] = useState<"save" | "manage">("save");
+  const [showCopyDialog, setShowCopyDialog] = useState(false);
+  const [copyDialogType, setCopyDialogType] = useState<"estimate" | "invoice" | "materials" | "reminder" | "schedule-confirmation">("estimate");
   const [materialType, setMaterialType] = useState<"paint" | "generic">("generic");
+  const [editingCostId, setEditingCostId] = useState<string | null>(null);
+  const [editingSchedule, setEditingSchedule] = useState(false);
+  const [editingAssignment, setEditingAssignment] = useState(false);
+  const [editingTracking, setEditingTracking] = useState(false);
+  const [editingNotes, setEditingNotes] = useState(false);
+  const [editingMaterials, setEditingMaterials] = useState(false);
+  const [editingPhotos, setEditingPhotos] = useState(false);
   const [materialFormData, setMaterialFormData] = useState({ 
     name: "", 
     brand: "",
@@ -202,45 +271,453 @@ export function JobDetailView({
     }
   }
 
-  // Auto-save handlers
-  async function handleDateChange(date: string) {
-    setScheduledDate(date);
-    await autoSave({ scheduled_date: date || null });
-  }
-
-  async function handleTimeChange(time: string) {
-    setScheduledTime(time);
-    await autoSave({ scheduled_time: time || null });
-  }
-
-  async function handleAssignedUserChange(userId: string) {
-    setAssignedUserId(userId);
-    await autoSave({ assigned_user_id: userId || null });
-  }
-
-  // Debounced notes save
-  async function handleNotesChange(newNotes: string) {
-    setNotes(newNotes);
+  // Ensure schedule token exists
+  async function ensureScheduleToken() {
+    if (scheduleToken) return scheduleToken;
     
-    // Clear existing timeout
-    if (notesTimeoutRef.current) {
-      clearTimeout(notesTimeoutRef.current);
+    setLoadingScheduleToken(true);
+    try {
+      const token = generateToken(24);
+      
+      const { error } = await supabase
+        .from("jobs")
+        .update({
+          schedule_token: token,
+        })
+        .eq("id", job.id);
+
+      if (error) throw error;
+
+      setScheduleToken(token);
+      setJob((prev) => ({ ...prev, schedule_token: token } as any));
+      return token;
+    } catch (err) {
+      console.error("Failed to generate schedule token:", err);
+      addToast("Failed to generate schedule link", "error");
+      return null;
+    } finally {
+      setLoadingScheduleToken(false);
     }
-    
-    // Set new timeout for auto-save
-    notesTimeoutRef.current = setTimeout(async () => {
-      await autoSave({ notes: newNotes || null });
-    }, 1000); // Save after 1 second of no typing
   }
 
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (notesTimeoutRef.current) {
-        clearTimeout(notesTimeoutRef.current);
+  // Save handlers (no auto-save)
+  async function handleSaveSchedule() {
+    if (!scheduledDate || !scheduledTime) {
+      addToast("Please set both date and time", "error");
+      return;
+    }
+
+    try {
+      // Generate token if it doesn't exist
+      const token = scheduleToken || generateToken(24);
+      
+      const { error } = await supabase
+        .from("jobs")
+        .update({
+          scheduled_date: scheduledDate || null,
+          scheduled_time: scheduledTime || null,
+          schedule_state: "proposed",
+          schedule_token: token,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", job.id);
+
+      if (error) {
+        addToast("Failed to save schedule", "error");
+        return;
       }
+
+      setJob((prev) => ({
+        ...prev,
+        scheduled_date: scheduledDate || null,
+        scheduled_time: scheduledTime || null,
+        schedule_state: "proposed",
+        schedule_token: token,
+      } as any));
+      setScheduleToken(token);
+      setEditingSchedule(false);
+      addToast("Schedule saved and ready to share", "success");
+      router.refresh();
+    } catch (err) {
+      console.error("Save error:", err);
+      addToast("Failed to save schedule", "error");
+    }
+  }
+
+  async function handleAcceptSchedule() {
+    try {
+      const { error } = await supabase
+        .from("jobs")
+        .update({
+          schedule_state: "accepted",
+          schedule_accepted_at: new Date().toISOString(),
+          status: "scheduled",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", job.id);
+
+      if (error) {
+        addToast("Failed to accept schedule", "error");
+        return;
+      }
+
+      setJob((prev) => ({
+        ...prev,
+        schedule_state: "accepted",
+        schedule_accepted_at: new Date().toISOString(),
+        status: "scheduled",
+      } as any));
+      addToast("Schedule accepted!", "success");
+      router.refresh();
+    } catch (err) {
+      console.error("Accept error:", err);
+      addToast("Failed to accept schedule", "error");
+    }
+  }
+
+  async function handleSaveAssignment() {
+    try {
+      const { error } = await supabase
+        .from("jobs")
+        .update({
+          assigned_user_id: assignedUserId || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", job.id);
+
+      if (error) {
+        addToast("Failed to save assignment", "error");
+        return;
+      }
+
+      setJob((prev) => ({
+        ...prev,
+        assigned_user_id: assignedUserId || null,
+      }));
+      addToast("Assignment saved", "success");
+    } catch (err) {
+      console.error("Save error:", err);
+      addToast("Failed to save assignment", "error");
+    }
+  }
+
+  async function handleSaveNotes() {
+    try {
+      const { error } = await supabase
+        .from("jobs")
+        .update({
+          notes: notes || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", job.id);
+
+      if (error) {
+        addToast("Failed to save notes", "error");
+        return;
+      }
+
+      setJob((prev) => ({
+        ...prev,
+        notes: notes || null,
+      }));
+      setEditingNotes(false);
+      addToast("Notes saved", "success");
+    } catch (err) {
+      console.error("Save error:", err);
+      addToast("Failed to save notes", "error");
+    }
+  }
+
+  async function handlePickupLocationChange(locationId: string | null) {
+    setSelectedPickupLocation(locationId);
+    // Save immediately for pickup location as it's a simple select
+    try {
+      const { error } = await supabase
+        .from("jobs")
+        .update({
+          pickup_location_id: locationId,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", job.id);
+
+      if (error) {
+        addToast("Failed to save pickup location", "error");
+        return;
+      }
+
+      setJob((prev) => ({
+        ...prev,
+        pickup_location_id: locationId,
+      } as any));
+      addToast("Pickup location saved", "success");
+    } catch (err) {
+      console.error("Save error:", err);
+      addToast("Failed to save pickup location", "error");
+    }
+  }
+
+  async function handleAddTimeEntry() {
+    if (!newTimeEntry.hours || parseFloat(newTimeEntry.hours) <= 0) {
+      addToast("Please enter valid hours", "error");
+      return;
+    }
+    if (!newTimeEntry.userId) {
+      addToast("Please select a worker", "error");
+      return;
+    }
+
+    setAddingTimeEntry(true);
+    try {
+      const hours = parseFloat(newTimeEntry.hours);
+      const durationSeconds = Math.round(hours * 3600);
+      const startDateTime = `${newTimeEntry.date}T09:00:00`; // Default to 9 AM
+      const endDateTime = new Date(new Date(startDateTime).getTime() + durationSeconds * 1000).toISOString();
+
+      const { data, error } = await supabase
+        .from("time_entries")
+        .insert({
+          job_id: job.id,
+          company_id: companyId,
+          user_id: newTimeEntry.userId,
+          started_at: startDateTime,
+          ended_at: endDateTime,
+          duration_seconds: durationSeconds,
+        })
+        .select(`
+          id,
+          user_id,
+          started_at,
+          ended_at,
+          duration_seconds,
+          user:user_id (full_name)
+        `)
+        .single();
+
+      if (error) throw error;
+
+      // Refresh time entries to get updated user info
+      const { data: refreshedEntries } = await supabase
+        .from("time_entries")
+        .select(`
+          id,
+          user_id,
+          started_at,
+          ended_at,
+          duration_seconds
+        `)
+        .eq("job_id", job.id)
+        .order("started_at", { ascending: false });
+      
+      if (refreshedEntries) {
+        // Fetch user profiles
+        const userIds = [...new Set(refreshedEntries.map(e => e.user_id).filter(Boolean))];
+        let userMap: Record<string, { full_name: string }> = {};
+        
+        if (userIds.length > 0) {
+          const { data: profiles } = await supabase
+            .from("user_profiles")
+            .select("id, full_name")
+            .in("id", userIds);
+          
+          if (profiles) {
+            userMap = profiles.reduce((acc, p) => {
+              acc[p.id] = { full_name: p.full_name || "" };
+              return acc;
+            }, {} as Record<string, { full_name: string }>);
+          }
+        }
+        
+        // Combine entries with user data
+        const entriesWithUsers = refreshedEntries.map(entry => ({
+          ...entry,
+          user: entry.user_id ? userMap[entry.user_id] : null,
+        }));
+        
+        setTimeEntries(entriesWithUsers as any);
+      }
+      
+      setNewTimeEntry({
+        userId: currentUserId,
+        hours: "",
+        date: new Date().toISOString().split("T")[0],
+      });
+      addToast("Time entry added", "success");
+    } catch (err) {
+      console.error("Failed to add time entry:", err);
+      addToast("Failed to add time entry", "error");
+    } finally {
+      setAddingTimeEntry(false);
+    }
+  }
+
+  async function handleUpdateTimeEntry(entryId: string, hours: number) {
+    const durationSeconds = Math.round(hours * 3600);
+    const entry = timeEntries.find(e => e.id === entryId);
+    if (!entry) return;
+
+    const startDateTime = entry.started_at;
+    const endDateTime = new Date(new Date(startDateTime).getTime() + durationSeconds * 1000).toISOString();
+
+    const { error } = await supabase
+      .from("time_entries")
+      .update({
+        ended_at: endDateTime,
+        duration_seconds: durationSeconds,
+      })
+      .eq("id", entryId);
+
+    if (error) {
+      addToast("Failed to update time entry", "error");
+      return;
+    }
+
+    setTimeEntries((prev) =>
+      prev.map((e) =>
+        e.id === entryId
+          ? { ...e, ended_at: endDateTime, duration_seconds: durationSeconds }
+          : e
+      )
+    );
+    setEditingTimeEntry(null);
+    addToast("Time entry updated", "success");
+  }
+
+  async function handleDeleteTimeEntry(entryId: string) {
+    const { error } = await supabase
+      .from("time_entries")
+      .delete()
+      .eq("id", entryId);
+
+    if (error) {
+      addToast("Failed to delete time entry", "error");
+      return;
+    }
+
+    setTimeEntries((prev) => prev.filter((e) => e.id !== entryId));
+    addToast("Time entry deleted", "success");
+  }
+
+  // Notes change handler (no auto-save)
+  function handleNotesChange(newNotes: string) {
+    setNotes(newNotes);
+  }
+
+  // Fetch pickup locations
+  useEffect(() => {
+    async function fetchPickupLocations() {
+      const { data } = await supabase
+        .from("pickup_locations")
+        .select("id, name")
+        .eq("company_id", companyId)
+        .order("name");
+      
+      if (data) {
+        setPickupLocations(data);
+      }
+    }
+    fetchPickupLocations();
+  }, [companyId]);
+
+  // Fetch time entries
+  useEffect(() => {
+    async function fetchTimeEntries() {
+      setLoadingTimeEntries(true);
+      const { data: entries } = await supabase
+        .from("time_entries")
+        .select(`
+          id,
+          user_id,
+          started_at,
+          ended_at,
+          duration_seconds
+        `)
+        .eq("job_id", job.id)
+        .order("started_at", { ascending: false });
+      
+      if (entries) {
+        // Fetch user profiles for all unique user IDs
+        const userIds = [...new Set(entries.map(e => e.user_id).filter(Boolean))];
+        let userMap: Record<string, { full_name: string }> = {};
+        
+        if (userIds.length > 0) {
+          const { data: profiles } = await supabase
+            .from("user_profiles")
+            .select("id, full_name")
+            .in("id", userIds);
+          
+          if (profiles) {
+            userMap = profiles.reduce((acc, p) => {
+              acc[p.id] = { full_name: p.full_name || "" };
+              return acc;
+            }, {} as Record<string, { full_name: string }>);
+          }
+        }
+        
+        // Combine entries with user data
+        const entriesWithUsers = entries.map(entry => ({
+          ...entry,
+          user: entry.user_id ? userMap[entry.user_id] : null,
+        }));
+        
+        setTimeEntries(entriesWithUsers as any);
+      }
+      setLoadingTimeEntries(false);
+    }
+    fetchTimeEntries();
+  }, [job.id, supabase]);
+
+  // Update newTimeEntry userId when currentUserId changes
+  useEffect(() => {
+    if (currentUserId && !newTimeEntry.userId) {
+      setNewTimeEntry(prev => ({ ...prev, userId: currentUserId }));
+    }
+  }, [currentUserId]);
+
+  // Fetch payment line items and estimate token
+  useEffect(() => {
+    async function fetchPaymentLineItems() {
+      const { data } = await supabase
+        .from("job_payment_line_items")
+        .select("id, title, price")
+        .eq("job_id", job.id)
+        .order("sort_order");
+      
+      if (data) {
+        setPaymentLineItems(data);
+      }
+
+      // Also fetch estimate record for public token if payment state is proposed
+      if (job.payment_state === "proposed") {
+        const { data: estimateData } = await supabase
+          .from("estimates")
+          .select("public_token")
+          .eq("job_id", job.id)
+          .maybeSingle();
+        
+        if (estimateData?.public_token && estimatesList.length === 0) {
+          // Update estimatesList if we found an estimate
+          setEstimatesList([{ ...estimatesList[0] || {}, public_token: estimateData.public_token } as any]);
+        }
+      }
+    }
+    fetchPaymentLineItems();
+  }, [job.id, job.payment_state]);
+
+  // Sync schedule token from job
+  useEffect(() => {
+    if ((job as any).schedule_token && !scheduleToken) {
+      setScheduleToken((job as any).schedule_token);
+    }
+  }, [job, scheduleToken]);
+
+  // Refresh job data when window regains focus (catches external updates like customer acceptance)
+  useEffect(() => {
+    const handleFocus = () => {
+      router.refresh();
     };
-  }, []);
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [router]);
 
   async function handleStatusChange(newStatus: JobStatus) {
     const { error } = await supabase
@@ -255,6 +732,9 @@ export function JobDetailView({
 
     setJob((prev) => ({ ...prev, status: newStatus }));
     addToast("Status updated!", "success");
+    
+    // Force a refresh of the page to update the board view
+    router.refresh();
   }
 
   async function handleAddMaterial(materialName?: string) {
@@ -316,6 +796,10 @@ export function JobDetailView({
       }
       if (!materialFormData.sheen) {
         addToast("Please select a sheen", "error");
+        return;
+      }
+      if (!materialFormData.area) {
+        addToast("Please select an area", "error");
         return;
       }
     }
@@ -565,6 +1049,36 @@ export function JobDetailView({
     setMaterials((prev) => prev.filter((m) => m.id !== materialId));
   }
 
+  async function handleUpdateMaterialCost(
+    materialId: string, 
+    costPerUnit: number | null, 
+    quantityDecimal: number | null,
+    unit: string | null
+  ) {
+    const { error } = await supabase
+      .from("job_materials")
+      .update({ 
+        cost_per_unit: costPerUnit,
+        quantity_decimal: quantityDecimal,
+        unit: unit
+      })
+      .eq("id", materialId);
+
+    if (error) {
+      addToast("Failed to update cost", "error");
+      return;
+    }
+
+    setMaterials((prev) =>
+      prev.map((m) => 
+        m.id === materialId 
+          ? { ...m, cost_per_unit: costPerUnit, quantity_decimal: quantityDecimal, unit: unit }
+          : m
+      )
+    );
+    setEditingCostId(null);
+  }
+
   function copyScheduleConfirmationMessage() {
     const customerName = job.customer?.name || "there";
     const dateStr = scheduledDate ? formatDate(scheduledDate) : "[date]";
@@ -637,6 +1151,89 @@ export function JobDetailView({
     addToast("Invoice message copied!", "success");
   }
 
+  function getScheduleLink() {
+    const token = scheduleToken || (job as any).schedule_token;
+    if (!token) return "";
+    return `${typeof window !== "undefined" ? window.location.origin : ""}/s/${token}`;
+  }
+
+  function getScheduleMessage() {
+    const customerName = job.customer?.name || "there";
+    const companyName = ""; // You can add company name from context if needed
+    const dateStr = scheduledDate ? formatDate(scheduledDate) : "TBD";
+    const timeStr = scheduledTime ? formatTime(scheduledTime) : "TBD";
+    const link = getScheduleLink();
+    
+    return `Hi ${customerName}${companyName ? `, this is ${companyName}` : ""}. We're scheduled for ${dateStr} at ${timeStr}. Confirm your appointment here: ${link}`;
+  }
+
+  function copyScheduleLink() {
+    copyToClipboard(getScheduleLink());
+    addToast("Schedule link copied!", "success");
+  }
+
+  function copyScheduleMessage() {
+    copyToClipboard(getScheduleMessage());
+    addToast("Schedule message copied!", "success");
+  }
+
+  async function handleDuplicateJob() {
+    setDuplicating(true);
+
+    try {
+      // Create the duplicate job
+      const { data: newJob, error: jobError } = await supabase
+        .from("jobs")
+        .insert({
+          company_id: companyId,
+          customer_id: job.customer_id,
+          title: `${job.title} (Copy)`,
+          address1: job.address1,
+          address2: job.address2,
+          city: job.city,
+          state: job.state,
+          zip: job.zip,
+          notes: job.notes,
+          assigned_user_id: job.assigned_user_id,
+          status: "new",
+        })
+        .select()
+        .single();
+
+      if (jobError) throw jobError;
+
+      // Copy materials
+      if (materials.length > 0) {
+        const materialsToInsert = materials.map((m) => ({
+          job_id: newJob.id,
+          name: m.name,
+          notes: m.notes,
+          checked: false, // Reset checked status
+        }));
+
+        const { error: materialsError } = await supabase
+          .from("job_materials")
+          .insert(materialsToInsert);
+
+        if (materialsError) {
+          console.error("Error copying materials:", materialsError);
+          // Don't fail the whole operation, just warn
+          addToast("Job duplicated but materials may not have copied", "error");
+        }
+      }
+
+      addToast(`Job duplicated! New job ID: ${newJob.id}`, "success");
+      copyToClipboard(newJob.id);
+      setShowDuplicateDialog(false);
+      router.push(`/app/jobs/${newJob.id}`);
+    } catch (error) {
+      console.error("Error duplicating job:", error);
+      addToast("Failed to duplicate job", "error");
+    } finally {
+      setDuplicating(false);
+    }
+  }
+
   return (
     <div className="min-h-screen pb-20 lg:pb-0">
       {/* Header */}
@@ -650,28 +1247,165 @@ export function JobDetailView({
             Back
           </button>
 
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <h1 className="text-xl sm:text-2xl font-bold truncate">{job.title}</h1>
-              {job.customer && (
-                <p className="text-muted-foreground flex items-center gap-1 mt-1 text-sm sm:text-base min-w-0">
-                  <User className="h-4 w-4 shrink-0" />
-                  <span className="truncate">{job.customer.name}</span>
-                </p>
-              )}
+          <div className="flex flex-col gap-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <h1 className="text-xl sm:text-2xl font-bold truncate">{job.title}</h1>
+                {job.customer && (
+                  <p className="text-muted-foreground flex items-center gap-1 mt-1 text-sm sm:text-base min-w-0">
+                    <User className="h-4 w-4 shrink-0" />
+                    <span className="truncate">{job.customer.name}</span>
+                  </p>
+                )}
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <Badge className={cn("w-fit text-base px-4 py-2", JOB_STATUS_COLORS[job.status as JobStatus])}>
+                  {JOB_STATUS_LABELS[job.status as JobStatus]}
+                </Badge>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="sm" className="touch-target min-h-[44px]">
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    {job.status === "new" && (
+                      <DropdownMenuItem onClick={() => handleStatusChange("quoted")}>
+                        Mark as Quoted
+                      </DropdownMenuItem>
+                    )}
+                    {job.status === "quoted" && (
+                      <DropdownMenuItem onClick={() => handleStatusChange("scheduled")}>
+                        Mark as Scheduled
+                      </DropdownMenuItem>
+                    )}
+                    {job.status === "scheduled" && (
+                      <DropdownMenuItem onClick={() => handleStatusChange("in_progress")}>
+                        Start Job
+                      </DropdownMenuItem>
+                    )}
+                    {job.status === "in_progress" && (
+                      <DropdownMenuItem onClick={() => handleStatusChange("done")}>
+                        Mark Complete
+                      </DropdownMenuItem>
+                    )}
+                    {job.status === "done" && (
+                      <DropdownMenuItem onClick={() => handleStatusChange("paid")}>
+                        Mark as Paid
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem onClick={() => setShowDuplicateDialog(true)}>
+                      <Copy className="mr-2 h-4 w-4" />
+                      Duplicate Job
+                    </DropdownMenuItem>
+                    {scheduledDate && (
+                      <DropdownMenuItem onClick={async () => {
+                        await ensureScheduleToken();
+                        setShowShareScheduleDialog(true);
+                      }}>
+                        <Share2 className="mr-2 h-4 w-4" />
+                        Share Schedule
+                      </DropdownMenuItem>
+                    )}
+                    {timeEntries.length > 0 && (
+                      <DropdownMenuItem onClick={() => {
+                        const totalSeconds = timeEntries.reduce((sum, entry) => sum + (entry.duration_seconds || 0), 0);
+                        const totalHours = Math.floor(totalSeconds / 3600);
+                        const totalMinutes = Math.floor((totalSeconds % 3600) / 60);
+                        let workLog = `Work Log - ${job.title}\n\nTotal Time: ${totalHours}h ${totalMinutes}m\n\nTime Entries:\n`;
+                        timeEntries.forEach((entry) => {
+                          const date = new Date(entry.started_at).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+                          const hours = entry.duration_seconds ? (entry.duration_seconds / 3600).toFixed(1) : "0";
+                          const userName = entry.user?.full_name || "Unknown";
+                          workLog += `- ${date}: ${hours}h - ${userName}\n`;
+                        });
+                        copyToClipboard(workLog);
+                        addToast("Work log copied to clipboard", "success");
+                      }}>
+                        <Copy className="mr-2 h-4 w-4" />
+                        Copy Work Log
+                      </DropdownMenuItem>
+                    )}
+                    {scheduledDate && scheduledTime && job.status === "scheduled" && (
+                      <DropdownMenuItem onClick={() => {
+                        setCopyDialogType("reminder");
+                        setShowCopyDialog(true);
+                      }}>
+                        <Copy className="mr-2 h-4 w-4" />
+                        Copy Reminder
+                      </DropdownMenuItem>
+                    )}
+                    {estimatesList.length > 0 && estimatesList[0].public_token && (
+                      <>
+                        <DropdownMenuItem onClick={() => {
+                          const estimateUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/e/${estimatesList[0].public_token}`;
+                          copyToClipboard(estimateUrl);
+                          addToast("Estimate link copied!", "success");
+                        }}>
+                          <Share2 className="mr-2 h-4 w-4" />
+                          Share Estimate Link
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => {
+                          setCopyDialogType("estimate");
+                          setShowCopyDialog(true);
+                        }}>
+                          <Copy className="mr-2 h-4 w-4" />
+                          Copy Estimate Message
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                    {invoicesList.length > 0 && (
+                      <>
+                        <DropdownMenuItem onClick={() => {
+                          const invoiceUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/i/${invoicesList[0].public_token}`;
+                          copyToClipboard(invoiceUrl);
+                          addToast("Invoice link copied!", "success");
+                        }}>
+                          <Share2 className="mr-2 h-4 w-4" />
+                          Share Invoice Link
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => {
+                          setCopyDialogType("invoice");
+                          setShowCopyDialog(true);
+                        }}>
+                          <Copy className="mr-2 h-4 w-4" />
+                          Copy Invoice Message
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                    {materials.length > 0 && (
+                      <DropdownMenuItem onClick={() => {
+                        setCopyDialogType("materials");
+                        setShowCopyDialog(true);
+                      }}>
+                        <Copy className="mr-2 h-4 w-4" />
+                        Copy Materials List
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem onClick={() => setMessageTemplatesOpen(true)}>
+                      <FileText className="mr-2 h-4 w-4" />
+                      Message Templates
+                    </DropdownMenuItem>
+                    <DropdownMenuItem 
+                      onClick={() => handleStatusChange("archive")}
+                      className="text-destructive"
+                    >
+                      <Archive className="mr-2 h-4 w-4" />
+                      Archive Job
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             </div>
-            <Badge className={cn("w-fit", JOB_STATUS_COLORS[job.status as JobStatus])}>
-              {JOB_STATUS_LABELS[job.status as JobStatus]}
-            </Badge>
           </div>
         </div>
       </div>
 
       {/* Content */}
       <div className="max-w-4xl mx-auto p-4">
-        <div className="flex flex-col lg:grid lg:grid-cols-3 gap-6">
+        <div className="space-y-6">
           {/* Main content */}
-          <div className="lg:col-span-2 space-y-6 order-1">
+          <div className="space-y-6">
             {/* Quick Info */}
             <div className="rounded-lg border bg-card p-4 space-y-3">
               {address && (
@@ -715,666 +1449,783 @@ export function JobDetailView({
 
             {/* All sections in one view */}
             <div className="space-y-6">
-                <div className="rounded-lg border bg-card p-4 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-semibold">Scheduling</h3>
-                    {scheduledDate && scheduledTime && (
-                      <Badge variant="secondary" className="text-xs">
-                        <Clock className="mr-1 h-3 w-3" />
-                        {formatDate(scheduledDate)} at {formatTime(scheduledTime)}
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="space-y-4">
-                    <DateTimePicker
-                      date={scheduledDate || null}
-                      time={scheduledTime || null}
-                      onDateChange={handleDateChange}
-                      onTimeChange={handleTimeChange}
-                      label="When is this job scheduled?"
-                    />
-                    <div className="space-y-2">
-                      <Label htmlFor="assignedUser" className="text-sm font-medium">
-                        Who's working on this?
-                      </Label>
-                      <div className="relative">
-                        <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                        <Select
-                          id="assignedUser"
-                          value={assignedUserId}
-                          onChange={(e) => handleAssignedUserChange(e.target.value)}
-                          className="pl-10 min-h-[44px]"
-                        >
-                          <option value="">Unassigned</option>
-                          {teamMembers.map((member) => (
-                            <option key={member.id} value={member.id}>
-                              {member.fullName}
-                            </option>
-                          ))}
-                        </Select>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+              {/* Unified Payment Section (replaces Estimate + Invoice) */}
+              <UnifiedPayment
+                jobId={job.id}
+                companyId={companyId}
+                customerId={job.customer_id}
+                paymentState={(job.payment_state as any) || "none"}
+                paymentAmount={job.payment_amount || null}
+                paymentApprovedAt={job.payment_approved_at || null}
+                paymentPaidAt={job.payment_paid_at || null}
+                paymentMethod={job.payment_method || null}
+                publicToken={estimatesList[0]?.public_token}
+                lineItems={paymentLineItems}
+                estimatingConfig={estimatingConfig}
+                onUpdate={() => {
+                  router.refresh();
+                }}
+              />
 
-                <div className="rounded-lg border bg-card p-4 space-y-4">
-                  <h3 className="font-semibold">Notes</h3>
-                  <Textarea
-                    value={notes}
-                    onChange={(e) => handleNotesChange(e.target.value)}
-                    placeholder="Add notes about this job..."
-                    rows={4}
-                  />
-                </div>
-
-              {/* Estimates Section */}
+              {/* Scheduling Section */}
               <div className="rounded-lg border bg-card p-4 space-y-4">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                  <h3 className="font-semibold">Estimate</h3>
-                  {estimatesList.length === 0 && !showAddEstimate ? (
-                    <Button 
-                      size="sm" 
-                      className="w-full sm:w-auto touch-target min-h-[44px]"
-                      onClick={() => setShowAddEstimate(true)}
-                    >
-                      <Plus className="mr-2 h-4 w-4" />
-                      Create Estimate
-                    </Button>
-                  ) : estimatesList.length > 0 ? (
-                    <Button 
-                      size="sm"
-                      variant="outline"
-                      className="w-full sm:w-auto touch-target min-h-[44px]"
-                      onClick={() => setSelectedEstimate(estimatesList[0])}
-                    >
-                      View Details
-                    </Button>
-                  ) : null}
-                </div>
-
-                {showAddEstimate && (
-                  <div className="rounded-lg border bg-muted/50 p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <Label>Line Items</Label>
-                      <button
-                        onClick={() => {
-                          setShowAddEstimate(false);
-                          setEstimateLineItems([{ title: "", price: "" }]);
-                        }}
-                        className="text-muted-foreground hover:text-foreground"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                    <div className="space-y-3">
-                      {estimateLineItems.map((item, index) => (
-                        <div key={index} className="flex gap-2">
-                          <Input
-                            placeholder="Title"
-                            value={item.title}
-                            onChange={(e) => updateEstimateLineItem(index, "title", e.target.value)}
-                            className="flex-1 min-h-[44px]"
-                            autoFocus={index === estimateLineItems.length - 1}
-                          />
-                          <div className="relative w-32">
-                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                              $
-                            </span>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              min="0.01"
-                              placeholder="0.00"
-                              value={item.price}
-                              onChange={(e) => updateEstimateLineItem(index, "price", e.target.value)}
-                              className="pl-7 min-h-[44px]"
-                            />
-                          </div>
-                          {estimateLineItems.length > 1 && (
-                            <button
-                              onClick={() => removeEstimateLineItem(index)}
-                              className="text-muted-foreground hover:text-destructive touch-target min-h-[44px] min-w-[44px] flex items-center justify-center"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          )}
+                {!editingSchedule && scheduledDate && scheduledTime ? (
+                  <>
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <h3 className="font-semibold mb-1">Scheduling</h3>
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Clock className="h-4 w-4" />
+                          <span>{formatDate(scheduledDate)} at {formatTime(scheduledTime)}</span>
                         </div>
-                      ))}
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={addEstimateLineItem}
-                        className="w-full touch-target min-h-[44px]"
-                      >
-                        <Plus className="mr-2 h-4 w-4" />
-                        Add Line Item
-                      </Button>
-                    </div>
-                    <Button 
-                      onClick={handleAddEstimate}
-                      loading={addingEstimate}
-                      disabled={estimateLineItems.every(item => !item.title.trim() || !item.price.trim())}
-                      className="w-full touch-target min-h-[44px]"
-                    >
-                      Create Estimate
-                    </Button>
-                  </div>
-                )}
-
-                {estimatesList.length === 0 ? (
-                  <div className="p-8 text-center text-muted-foreground">
-                    <FileText className="mx-auto h-8 w-8 mb-2" />
-                    <p>No estimate yet</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {estimatesList.slice(0, 1).map((estimate) => {
-                      const total = estimate.line_items.reduce((sum, li) => sum + li.price, 0);
-                      return (
-                        <button
-                          key={estimate.id}
-                          onClick={() => setSelectedEstimate(estimate)}
-                          className="w-full text-left block rounded-lg border bg-muted/30 p-4 hover:bg-muted/50 transition-colors"
-                        >
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="font-medium">
-                                {formatCurrency(total)}
-                              </p>
-                              <p className="text-sm text-muted-foreground">
-                                {estimate.line_items.length} line items • {formatDate(estimate.created_at)}
-                              </p>
-                            </div>
-                            <Badge
-                              variant={
-                                estimate.status === "accepted"
-                                  ? "success"
-                                  : estimate.status === "sent"
-                                  ? "secondary"
-                                  : "outline"
-                              }
-                            >
-                              {estimate.status}
-                            </Badge>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Invoices Section */}
-              <div className="rounded-lg border bg-card p-4 space-y-4">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                  <h3 className="font-semibold">Invoice</h3>
-                  {invoicesList.length === 0 && !showAddInvoice ? (
-                    <div className="flex gap-2 w-full sm:w-auto">
-                      {estimatesList.some(e => e.status === "accepted") && (
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          className="flex-1 sm:flex-none touch-target min-h-[44px]"
-                          onClick={handleCreateInvoiceFromEstimate}
-                        >
-                          <Receipt className="mr-2 h-4 w-4" />
-                          From Estimate
-                        </Button>
-                      )}
-                      <Button 
-                        size="sm" 
-                        className="flex-1 sm:flex-none touch-target min-h-[44px]"
-                        onClick={() => setShowAddInvoice(true)}
-                      >
-                        <Plus className="mr-2 h-4 w-4" />
-                        Create Invoice
-                      </Button>
-                    </div>
-                  ) : invoicesList.length > 0 ? (
-                    <Button 
-                      size="sm"
-                      variant="outline"
-                      className="w-full sm:w-auto touch-target min-h-[44px]"
-                      onClick={() => setSelectedInvoice(invoicesList[0])}
-                    >
-                      View Details
-                    </Button>
-                  ) : null}
-                </div>
-
-                {showAddInvoice && (
-                  <div className="rounded-lg border bg-muted/50 p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="invoiceAmount">Amount</Label>
-                      <button
-                        onClick={() => {
-                          setShowAddInvoice(false);
-                          setNewInvoiceAmount("");
-                        }}
-                        className="text-muted-foreground hover:text-foreground"
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    </div>
-                    <div className="flex gap-2">
-                      <div className="relative flex-1">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                          $
-                        </span>
-                        <Input
-                          id="invoiceAmount"
-                          type="number"
-                          step="0.01"
-                          min="0.01"
-                          className="pl-7 min-h-[44px]"
-                          placeholder="0.00"
-                          value={newInvoiceAmount}
-                          onChange={(e) => setNewInvoiceAmount(e.target.value)}
-                          autoFocus
-                        />
+                        {(job as any).schedule_state === "proposed" && (
+                          <Badge variant="secondary" className="mt-2">Proposed</Badge>
+                        )}
+                        {(job as any).schedule_state === "accepted" && (
+                          <Badge variant="default" className="mt-2">Accepted</Badge>
+                        )}
                       </div>
-                      <Button 
-                        onClick={handleAddInvoice}
-                        loading={addingInvoice}
-                        disabled={!newInvoiceAmount.trim()}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setEditingSchedule(true)}
                         className="touch-target min-h-[44px]"
                       >
-                        Add
+                        <Pencil className="h-4 w-4" />
                       </Button>
                     </div>
-                  </div>
-                )}
-
-                {invoicesList.length === 0 ? (
-                  <div className="p-8 text-center text-muted-foreground">
-                    <Receipt className="mx-auto h-8 w-8 mb-2" />
-                    <p>No invoice yet</p>
-                  </div>
+                    {(job as any).schedule_state === "proposed" && (
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={async () => {
+                            await ensureScheduleToken();
+                            setShowShareScheduleDialog(true);
+                          }}
+                          className="flex-1"
+                        >
+                          <Share2 className="mr-2 h-4 w-4" />
+                          Share Schedule
+                        </Button>
+                        <Button
+                          onClick={handleAcceptSchedule}
+                          className="flex-1"
+                        >
+                          <CheckCircle className="mr-2 h-4 w-4" />
+                          Accept Schedule
+                        </Button>
+                      </div>
+                    )}
+                  </>
                 ) : (
-                  <div className="space-y-3">
-                    {invoicesList.slice(0, 1).map((invoice) => (
-                      <button
-                        key={invoice.id}
-                        onClick={() => setSelectedInvoice(invoice)}
-                        className="w-full text-left block rounded-lg border bg-muted/30 p-4 hover:bg-muted/50 transition-colors"
-                      >
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <p className="font-medium">
-                              {formatCurrency(invoice.amount_total)}
-                            </p>
-                            <p className="text-sm text-muted-foreground">
-                              {formatDate(invoice.created_at)}
-                            </p>
-                          </div>
-                          <Badge
-                            variant={
-                              invoice.status === "paid"
-                                ? "success"
-                                : invoice.status === "sent"
-                                ? "secondary"
-                                : "outline"
-                            }
-                          >
-                            {invoice.status}
-                          </Badge>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
+                  <>
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-semibold">Scheduling</h3>
+                      {editingSchedule && scheduledDate && scheduledTime && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setEditingSchedule(false)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                    <div className="space-y-4">
+                      <DateTimePicker
+                        date={scheduledDate || null}
+                        time={scheduledTime || null}
+                        onDateChange={(date) => setScheduledDate(date)}
+                        onTimeChange={(time) => setScheduledTime(time)}
+                        label="When is this job scheduled?"
+                      />
+                      <Button onClick={handleSaveSchedule} className="w-full">
+                        <Save className="mr-2 h-4 w-4" />
+                        Save Schedule
+                      </Button>
+                    </div>
+                  </>
                 )}
               </div>
 
               {/* Materials Section */}
-              <div className="rounded-lg border bg-card p-4 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-semibold">Materials Checklist ({materials.length})</h3>
-                  {materials.length > 0 && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={copyMaterialsList}
-                      className="touch-target min-h-[44px]"
-                    >
-                      <Copy className="mr-2 h-4 w-4" />
-                      Copy List
-                    </Button>
-                  )}
-                </div>
-
-                {/* Smart Presets - Quick Add */}
-                <div className="space-y-2">
-                  <Label className="text-sm text-muted-foreground">Quick Add</Label>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setMaterialType("paint");
-                        setMaterialFormData({
-                          name: "Interior Wall Paint",
-                          brand: "",
-                          color: "",
-                          sheen: "Eggshell",
-                          quantity: "",
-                          productLine: "",
-                          area: "Walls",
-                          notes: "",
-                          showAdvanced: false
-                        });
-                        setShowMaterialForm(true);
-                      }}
-                      className="touch-target min-h-[44px] justify-start"
-                    >
-                      <Plus className="mr-2 h-4 w-4" />
-                      Wall Paint
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setMaterialType("paint");
-                        setMaterialFormData({
-                          name: "Ceiling Paint",
-                          brand: "",
-                          color: "",
-                          sheen: "Flat",
-                          quantity: "",
-                          productLine: "",
-                          area: "Ceiling",
-                          notes: "",
-                          showAdvanced: false
-                        });
-                        setShowMaterialForm(true);
-                      }}
-                      className="touch-target min-h-[44px] justify-start"
-                    >
-                      <Plus className="mr-2 h-4 w-4" />
-                      Ceiling Paint
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setMaterialType("paint");
-                        setMaterialFormData({
-                          name: "Trim Paint",
-                          brand: "",
-                          color: "",
-                          sheen: "Semi-Gloss",
-                          quantity: "",
-                          productLine: "",
-                          area: "Trim",
-                          notes: "",
-                          showAdvanced: false
-                        });
-                        setShowMaterialForm(true);
-                      }}
-                      className="touch-target min-h-[44px] justify-start"
-                    >
-                      <Plus className="mr-2 h-4 w-4" />
-                      Trim Paint
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setMaterialType("generic");
-                        setMaterialFormData({
-                          name: "Roller Set",
-                          brand: "",
-                          color: "",
-                          sheen: "",
-                          quantity: "1 set",
-                          productLine: "",
-                          area: "",
-                          notes: "",
-                          showAdvanced: false
-                        });
-                        setShowMaterialForm(true);
-                      }}
-                      className="touch-target min-h-[44px] justify-start"
-                    >
-                      <Plus className="mr-2 h-4 w-4" />
-                      Roller Set
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setMaterialType("generic");
-                        setMaterialFormData({
-                          name: "Prep Kit",
-                          brand: "",
-                          color: "",
-                          sheen: "",
-                          quantity: "1 kit",
-                          productLine: "",
-                          area: "",
-                          notes: "Tape, spackle, sandpaper",
-                          showAdvanced: false
-                        });
-                        setShowMaterialForm(true);
-                      }}
-                      className="touch-target min-h-[44px] justify-start"
-                    >
-                      <Plus className="mr-2 h-4 w-4" />
-                      Prep Kit
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        setMaterialType("generic");
-                        setMaterialFormData({
-                          name: "",
-                          brand: "",
-                          color: "",
-                          sheen: "",
-                          quantity: "",
-                          productLine: "",
-                          area: "",
-                          notes: "",
-                          showAdvanced: false
-                        });
-                        setShowMaterialForm(true);
-                      }}
-                      className="touch-target min-h-[44px] justify-start"
-                    >
-                      <Plus className="mr-2 h-4 w-4" />
-                      Custom
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Materials List */}
-                <div className="rounded-lg border bg-muted/30 divide-y">
-                  {materials.length === 0 ? (
-                    <div className="p-8 text-center text-muted-foreground">
-                      <Package className="mx-auto h-8 w-8 mb-2" />
-                      <p className="text-sm">No materials yet</p>
-                      <p className="text-xs mt-1">Use Quick Add buttons above</p>
+                <div className="rounded-lg border bg-card p-4 space-y-6">
+                  {!editingMaterials && materials.length > 0 ? (
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="font-semibold text-lg">Materials ({materials.length})</h3>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setEditingMaterials(true)}
+                          className="touch-target min-h-[44px]"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      {/* Simplified view */}
+                      <div className="space-y-1">
+                        {materials.slice(0, 5).map((material) => (
+                          <div key={material.id} className="flex items-center gap-2 text-sm">
+                            {material.checked && <span className="text-muted-foreground">✓</span>}
+                            <span className={cn(material.checked && "line-through text-muted-foreground")}>
+                              {material.name}
+                            </span>
+                          </div>
+                        ))}
+                        {materials.length > 5 && (
+                          <p className="text-xs text-muted-foreground pt-1">
+                            +{materials.length - 5} more
+                          </p>
+                        )}
+                      </div>
                     </div>
                   ) : (
-                    materials.map((material) => (
-                      <div
-                        key={material.id}
-                        className="flex items-center gap-3 p-3"
-                      >
-                        <SimpleCheckbox
-                          checked={material.checked}
-                          onChange={(e) =>
-                            handleToggleMaterial(material.id, e.target.checked)
-                          }
-                        />
-                        <div className="flex-1">
-                          <span
-                            className={cn(
-                              "font-medium",
-                              material.checked && "line-through text-muted-foreground"
-                            )}
+                    <>
+                      <div className="flex items-center justify-between">
+                        <h3 className="font-semibold text-lg">Materials</h3>
+                        {editingMaterials && materials.length > 0 && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setEditingMaterials(false)}
                           >
-                            {material.name}
-                          </span>
-                          {material.notes && (
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              {material.notes}
-                            </p>
+                            <X className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
+                  
+                  {/* Checklist Subsection */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-medium text-sm">Checklist ({materials.length})</h4>
+                      {materials.length > 0 && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={copyMaterialsList}
+                          className="touch-target min-h-[44px]"
+                        >
+                          <Copy className="mr-2 h-4 w-4" />
+                          Copy List
+                        </Button>
+                      )}
+                    </div>
+
+                    {/* Smart Presets - Quick Add */}
+                    <div className="space-y-2">
+                      <Label className="text-sm text-muted-foreground">Quick Add</Label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setMaterialType("paint");
+                            setMaterialFormData({
+                              name: "Paint",
+                              brand: "",
+                              color: "",
+                              sheen: "",
+                              quantity: "",
+                              productLine: "",
+                              area: "",
+                              notes: "",
+                              showAdvanced: false
+                            });
+                            setShowMaterialForm(true);
+                          }}
+                          className="touch-target min-h-[44px] justify-start"
+                        >
+                          <Plus className="mr-2 h-4 w-4" />
+                          Paint
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setMaterialType("generic");
+                            setMaterialFormData({
+                              name: "",
+                              brand: "",
+                              color: "",
+                              sheen: "",
+                              quantity: "",
+                              productLine: "",
+                              area: "",
+                              notes: "",
+                              showAdvanced: false
+                            });
+                            setShowMaterialForm(true);
+                          }}
+                          className="touch-target min-h-[44px] justify-start"
+                        >
+                          <Plus className="mr-2 h-4 w-4" />
+                          Custom
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Materials List */}
+                    <div className="rounded-lg border bg-muted/30 divide-y">
+                      {materials.length === 0 ? (
+                        <div className="p-8 text-center text-muted-foreground">
+                          <Package className="mx-auto h-8 w-8 mb-2" />
+                          <p className="text-sm">No materials yet</p>
+                          <p className="text-xs mt-1">Use Quick Add buttons above</p>
+                        </div>
+                      ) : (
+                        materials.map((material) => (
+                          <div
+                            key={material.id}
+                            className="p-3 space-y-2"
+                          >
+                            <div className="flex items-center gap-3">
+                              <SimpleCheckbox
+                                checked={material.checked}
+                                onChange={(e) =>
+                                  handleToggleMaterial(material.id, e.target.checked)
+                                }
+                              />
+                              <div className="flex-1">
+                                <span
+                                  className={cn(
+                                    "font-medium",
+                                    material.checked && "line-through text-muted-foreground"
+                                  )}
+                                >
+                                  {material.name}
+                                </span>
+                                {material.notes && (
+                                  <p className="text-xs text-muted-foreground mt-0.5">
+                                    {material.notes}
+                                  </p>
+                                )}
+                              </div>
+                              <button
+                                onClick={() => handleDeleteMaterial(material.id)}
+                                className="text-muted-foreground hover:text-destructive touch-target min-h-[44px] min-w-[44px] flex items-center justify-center"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                            
+                            {/* Cost Tracking (Optional) */}
+                            {editingCostId === material.id ? (
+                              <div className="flex items-center gap-2 text-sm pl-8">
+                                <span className="text-muted-foreground">$</span>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  placeholder="0.00"
+                                  defaultValue={material.cost_per_unit || ''}
+                                  className="w-20 h-8 text-sm"
+                                  id={`cost-${material.id}`}
+                                />
+                                <span className="text-muted-foreground">per</span>
+                                <Input
+                                  type="text"
+                                  placeholder="unit"
+                                  defaultValue={material.unit || 'each'}
+                                  className="w-20 h-8 text-sm"
+                                  id={`unit-${material.id}`}
+                                />
+                                <span className="text-muted-foreground">×</span>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  min="0"
+                                  placeholder="qty"
+                                  defaultValue={material.quantity_decimal || ''}
+                                  className="w-16 h-8 text-sm"
+                                  id={`qty-${material.id}`}
+                                />
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-8"
+                                  onClick={() => {
+                                    const costInput = document.getElementById(`cost-${material.id}`) as HTMLInputElement;
+                                    const unitInput = document.getElementById(`unit-${material.id}`) as HTMLInputElement;
+                                    const qtyInput = document.getElementById(`qty-${material.id}`) as HTMLInputElement;
+                                    handleUpdateMaterialCost(
+                                      material.id,
+                                      costInput.value ? parseFloat(costInput.value) : null,
+                                      qtyInput.value ? parseFloat(qtyInput.value) : null,
+                                      unitInput.value || null
+                                    );
+                                  }}
+                                >
+                                  Save
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-8"
+                                  onClick={() => setEditingCostId(null)}
+                                >
+                                  Cancel
+                                </Button>
+                              </div>
+                            ) : material.cost_per_unit ? (
+                              <div className="flex items-center justify-between text-sm pl-8">
+                                <span className="text-muted-foreground">
+                                  {formatCurrency(Math.round(material.cost_per_unit * 100))} per {material.unit || 'each'}
+                                  {material.quantity_decimal && ` × ${material.quantity_decimal}`}
+                                  {material.quantity_decimal && material.cost_per_unit && (
+                                    <span className="font-medium ml-2">
+                                      = {formatCurrency(Math.round(material.cost_per_unit * material.quantity_decimal * 100))}
+                                    </span>
+                                  )}
+                                </span>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-6 text-xs"
+                                  onClick={() => setEditingCostId(material.id)}
+                                >
+                                  Edit
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="pl-8">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-6 text-xs text-muted-foreground"
+                                  onClick={() => setEditingCostId(material.id)}
+                                >
+                                  + Add cost
+                                </Button>
+                              </div>
+                            )}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                    
+                    {/* Materials Cost Summary */}
+                    {(() => {
+                      const materialsWithCost = materials.filter(m => m.cost_per_unit && m.quantity_decimal);
+                      if (materialsWithCost.length === 0) return null;
+                      
+                      const totalCost = materialsWithCost.reduce(
+                        (sum, m) => sum + ((m.cost_per_unit || 0) * (m.quantity_decimal || 0)),
+                        0
+                      );
+                      const allHaveCosts = materials.length === materialsWithCost.length;
+                      const invoice = invoicesList[0];
+                      
+                      return (
+                        <div className="rounded-lg border bg-muted/50 p-3 space-y-2 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">
+                              Materials Total{!allHaveCosts && <span className="text-xs ml-1">(partial)</span>}
+                            </span>
+                            <span className="font-medium">{formatCurrency(Math.round(totalCost * 100))}</span>
+                          </div>
+                          
+                          {invoice && (
+                            <>
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground">Invoice Total</span>
+                                <span className="font-medium">{formatCurrency(invoice.amount_total)}</span>
+                              </div>
+                              <div className="h-px bg-border" />
+                              <div className="flex justify-between font-semibold">
+                                <span>Estimated Margin</span>
+                                <span className={cn(
+                                  (invoice.amount_total - Math.round(totalCost * 100)) > 0 
+                                    ? 'text-success' 
+                                    : 'text-destructive'
+                                )}>
+                                  {formatCurrency(invoice.amount_total - Math.round(totalCost * 100))}
+                                  <span className="text-xs ml-1 font-normal">
+                                    ({Math.round(((invoice.amount_total - Math.round(totalCost * 100)) / invoice.amount_total) * 100)}%)
+                                  </span>
+                                </span>
+                              </div>
+                              <p className="text-xs text-muted-foreground">
+                                ⚠️ Materials only - doesn't include labor or overhead
+                              </p>
+                            </>
                           )}
                         </div>
-                        <button
-                          onClick={() => handleDeleteMaterial(material.id)}
-                          className="text-muted-foreground hover:text-destructive touch-target min-h-[44px] min-w-[44px] flex items-center justify-center"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    ))
+                      );
+                    })()}
+                    
+                    {/* Pickup Location Subsection */}
+                    <div className="space-y-3 pt-4 border-t">
+                      <h4 className="font-medium text-sm">Pickup Location</h4>
+                      <p className="text-xs text-muted-foreground">Optional - Select where to pick up materials</p>
+                      <Select
+                        value={selectedPickupLocation || ""}
+                        onChange={(e) => handlePickupLocationChange(e.target.value || null)}
+                        className="w-full"
+                      >
+                        <option value="">None selected</option>
+                        {pickupLocations.map((location) => (
+                          <option key={location.id} value={location.id}>
+                            {location.name}
+                          </option>
+                        ))}
+                      </Select>
+                      {pickupLocations.length === 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          Add pickup locations in Settings → Locations
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                    </>
                   )}
                 </div>
+
+              {/* Assign To Section */}
+              <div className="rounded-lg border bg-card p-4">
+                {!editingAssignment ? (
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="font-semibold mb-1">Assign To</h3>
+                      <div className="text-sm text-muted-foreground">
+                        {assignedUserId ? (
+                          <span>{teamMembers.find(m => m.id === assignedUserId)?.fullName || 'Unknown'}</span>
+                        ) : (
+                          <span>Unassigned</span>
+                        )}
+                      </div>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setEditingAssignment(true)}
+                      className="touch-target min-h-[44px]"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Label htmlFor="assignedUser" className="text-sm font-medium whitespace-nowrap shrink-0">
+                      Who's working on this?
+                    </Label>
+                    <Select
+                      id="assignedUser"
+                      value={assignedUserId}
+                      onChange={(e) => setAssignedUserId(e.target.value)}
+                      className="flex-1 h-9"
+                    >
+                      <option value="">Unassigned</option>
+                      {teamMembers.map((member) => (
+                        <option key={member.id} value={member.id}>
+                          {member.fullName}
+                        </option>
+                      ))}
+                    </Select>
+                    <Button 
+                      onClick={async () => {
+                        await handleSaveAssignment();
+                        setEditingAssignment(false);
+                      }} 
+                      className="shrink-0 h-9"
+                    >
+                      Save
+                    </Button>
+                  </div>
+                )}
               </div>
 
-              {/* Job History Timeline */}
-              {jobHistory.length > 0 && (
+              {/* Notes Section */}
+              <div className="rounded-lg border bg-card p-4 space-y-4">
+                {!editingNotes && notes ? (
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="font-semibold">Notes</h3>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setEditingNotes(true)}
+                        className="touch-target min-h-[44px]"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    <p className="text-sm whitespace-pre-wrap">{notes}</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-semibold">Notes</h3>
+                      {editingNotes && notes && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setEditingNotes(false)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                    <Textarea
+                      value={notes}
+                      onChange={(e) => handleNotesChange(e.target.value)}
+                      placeholder="Add notes about this job..."
+                      rows={4}
+                    />
+                    <Button onClick={handleSaveNotes} className="w-full">
+                      <Save className="mr-2 h-4 w-4" />
+                      Save Notes
+                    </Button>
+                  </>
+                )}
+              </div>
+
+              {/* Tracking Section */}
+              <div className="rounded-lg border bg-card p-4 space-y-4">
+                {!editingTracking && timeEntries.length > 0 ? (
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="font-semibold">Tracking</h3>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setEditingTracking(true)}
+                        className="touch-target min-h-[44px]"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    </div>
+                    {/* Simplified view - show workers and total hours */}
+                    <div className="space-y-2">
+                      {(() => {
+                        // Group entries by user
+                        const groupedByUser = timeEntries.reduce((acc, entry) => {
+                          const userId = entry.user_id || 'unknown';
+                          const userName = entry.user?.full_name || 'Unknown';
+                          if (!acc[userId]) {
+                            acc[userId] = { name: userName, totalHours: 0, entries: [] };
+                          }
+                          const hours = entry.duration_seconds ? entry.duration_seconds / 3600 : 0;
+                          acc[userId].totalHours += hours;
+                          acc[userId].entries.push(entry);
+                          return acc;
+                        }, {} as Record<string, { name: string; totalHours: number; entries: typeof timeEntries }>);
+
+                        return Object.entries(groupedByUser).map(([userId, data]) => (
+                          <div key={userId} className="flex items-center justify-between rounded-lg border bg-muted/30 p-2">
+                            <span className="text-sm font-medium">{data.name}</span>
+                            <span className="text-sm text-muted-foreground">{data.totalHours.toFixed(1)}h</span>
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-semibold">Tracking</h3>
+                      {editingTracking && timeEntries.length > 0 && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setEditingTracking(false)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                    {/* Time Tracking */}
+                    <div className="space-y-3">
+                      <Label className="text-sm font-medium">Time Logs</Label>
+                      
+                      {/* Add Time Entry Form */}
+                      <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
+                        <div className="grid gap-2 sm:grid-cols-3">
+                          <div className="space-y-1">
+                            <Label htmlFor="timeWorker" className="text-xs">Worker</Label>
+                            <Select
+                              id="timeWorker"
+                              value={newTimeEntry.userId}
+                              onChange={(e) => setNewTimeEntry({ ...newTimeEntry, userId: e.target.value })}
+                              className="h-9"
+                            >
+                              <option value="">Select worker</option>
+                              {teamMembers.map((member) => (
+                                <option key={member.id} value={member.id}>
+                                  {member.fullName}
+                                </option>
+                              ))}
+                            </Select>
+                          </div>
+                          <div className="space-y-1">
+                            <Label htmlFor="timeDate" className="text-xs">Date</Label>
+                            <Input
+                              id="timeDate"
+                              type="date"
+                              value={newTimeEntry.date}
+                              onChange={(e) => setNewTimeEntry({ ...newTimeEntry, date: e.target.value })}
+                              className="h-9"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <Label htmlFor="timeHours" className="text-xs">Hours</Label>
+                            <Input
+                              id="timeHours"
+                              type="number"
+                              step="0.25"
+                              min="0"
+                              placeholder="0.0"
+                              value={newTimeEntry.hours}
+                              onChange={(e) => setNewTimeEntry({ ...newTimeEntry, hours: e.target.value })}
+                              className="h-9"
+                            />
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={handleAddTimeEntry}
+                          loading={addingTimeEntry}
+                          disabled={!newTimeEntry.hours || !newTimeEntry.userId}
+                          className="w-full"
+                        >
+                          <Plus className="mr-2 h-4 w-4" />
+                          Add Hours
+                        </Button>
+                      </div>
+
+                      {/* Time Entries List */}
+                      {loadingTimeEntries ? (
+                        <p className="text-sm text-muted-foreground text-center py-4">Loading...</p>
+                      ) : timeEntries.length === 0 ? (
+                        <p className="text-sm text-muted-foreground text-center py-4">No time entries yet</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {timeEntries.map((entry) => {
+                            const hours = entry.duration_seconds ? (entry.duration_seconds / 3600).toFixed(1) : "0";
+                            const date = new Date(entry.started_at).toLocaleDateString([], { month: "short", day: "numeric" });
+                            const userName = entry.user?.full_name || "Unknown";
+
+                            return (
+                              <div key={entry.id} className="flex items-center justify-between rounded-lg border bg-muted/30 p-3">
+                                <div className="flex-1">
+                                  <p className="text-sm font-medium">{userName}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {date} • {hours}h
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  {editingTimeEntry === entry.id ? (
+                                    <>
+                                      <Input
+                                        type="number"
+                                        step="0.25"
+                                        min="0"
+                                        defaultValue={hours}
+                                        className="w-20 h-8 text-sm"
+                                        onBlur={(e) => {
+                                          const newHours = parseFloat(e.target.value);
+                                          if (!isNaN(newHours) && newHours > 0) {
+                                            handleUpdateTimeEntry(entry.id, newHours);
+                                          } else {
+                                            setEditingTimeEntry(null);
+                                          }
+                                        }}
+                                        onKeyDown={(e) => {
+                                          if (e.key === 'Enter') {
+                                            const newHours = parseFloat((e.target as HTMLInputElement).value);
+                                            if (!isNaN(newHours) && newHours > 0) {
+                                              handleUpdateTimeEntry(entry.id, newHours);
+                                            } else {
+                                              setEditingTimeEntry(null);
+                                            }
+                                          } else if (e.key === 'Escape') {
+                                            setEditingTimeEntry(null);
+                                          }
+                                        }}
+                                        autoFocus
+                                      />
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={() => setEditingTimeEntry(null)}
+                                        className="h-8"
+                                      >
+                                        <X className="h-3 w-3" />
+                                      </Button>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <button
+                                        onClick={() => setEditingTimeEntry(entry.id)}
+                                        className="text-muted-foreground hover:text-foreground"
+                                        title="Edit hours"
+                                      >
+                                        <Pencil className="h-4 w-4" />
+                                      </button>
+                                      <button
+                                        onClick={() => handleDeleteTimeEntry(entry.id)}
+                                        className="text-muted-foreground hover:text-destructive"
+                                        title="Delete entry"
+                                      >
+                                        <Trash2 className="h-4 w-4" />
+                                      </button>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+
+                {/* Photos Section */}
                 <div className="rounded-lg border bg-card p-4 space-y-4">
-                  <h3 className="font-semibold">History</h3>
-                  <JobHistoryTimeline history={jobHistory} />
+                  {!editingPhotos ? (
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="font-semibold">Photos</h3>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setEditingPhotos(true)}
+                          className="touch-target min-h-[44px]"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <PhotoGallery jobId={job.id} companyId={companyId} compact />
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <h3 className="font-semibold">Photos</h3>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setEditingPhotos(false)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <PhotoGallery jobId={job.id} companyId={companyId} />
+                    </>
+                  )}
                 </div>
-              )}
-            </div>
-          </div>
 
-          {/* Sidebar */}
-          <div className="space-y-4 order-2 lg:order-2">
-            {/* Status Actions */}
-            <div className="rounded-lg border bg-card p-4 space-y-3">
-              <h3 className="font-semibold">Actions</h3>
-              {job.status === "new" && (
-                <Button
-                  variant="outline"
-                  className="w-full justify-start touch-target min-h-[44px]"
-                  onClick={() => handleStatusChange("quoted")}
-                >
-                  Mark as Quoted
-                </Button>
-              )}
-              {job.status === "quoted" && (
-                <Button
-                  variant="outline"
-                  className="w-full justify-start touch-target min-h-[44px]"
-                  onClick={() => handleStatusChange("scheduled")}
-                >
-                  Mark as Scheduled
-                </Button>
-              )}
-              {job.status === "scheduled" && (
-                <Button
-                  variant="outline"
-                  className="w-full justify-start touch-target min-h-[44px]"
-                  onClick={() => handleStatusChange("in_progress")}
-                >
-                  Start Job
-                </Button>
-              )}
-              {job.status === "in_progress" && (
-                <Button
-                  variant="outline"
-                  className="w-full justify-start touch-target min-h-[44px]"
-                  onClick={() => handleStatusChange("done")}
-                >
-                  Mark Complete
-                </Button>
-              )}
-              {job.status === "done" && (
-                <Button
-                  variant="outline"
-                  className="w-full justify-start touch-target min-h-[44px]"
-                  onClick={() => handleStatusChange("paid")}
-                >
-                  Mark as Paid
-                </Button>
-              )}
-              <Button
-                variant="ghost"
-                className="w-full justify-start text-muted-foreground touch-target min-h-[44px]"
-                onClick={() => handleStatusChange("archive")}
-              >
-                Archive Job
-              </Button>
-            </div>
-
-            {/* Copy Messages */}
-            <div className="rounded-lg border bg-card p-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="font-semibold">Copy Messages</h3>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setMessageTemplatesOpen(true)}
-                  className="touch-target min-h-[36px]"
-                >
-                  Templates
-                </Button>
+                {/* Job History Timeline */}
+                {jobHistory.length > 0 && (
+                  <div className="rounded-lg border bg-card p-4 space-y-4">
+                    <h3 className="font-semibold">History</h3>
+                    <JobHistoryTimeline history={jobHistory} />
+                  </div>
+                )}
               </div>
-              {scheduledDate && scheduledTime && job.status === "quoted" && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full justify-start touch-target min-h-[44px]"
-                  onClick={copyScheduleConfirmationMessage}
-                >
-                  <Copy className="mr-2 h-4 w-4" />
-                  Copy schedule confirmation
-                </Button>
-              )}
-              {scheduledDate && scheduledTime && job.status === "scheduled" && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full justify-start touch-target min-h-[44px]"
-                  onClick={copyReminderMessage}
-                >
-                  <Copy className="mr-2 h-4 w-4" />
-                  Copy reminder message
-                </Button>
-              )}
-              {invoicesList.length > 0 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full justify-start touch-target min-h-[44px]"
-                  onClick={copyPaymentRequestMessage}
-                >
-                  <Copy className="mr-2 h-4 w-4" />
-                  Copy invoice message
-                </Button>
-              )}
-              {estimatesList.length > 0 && estimatesList[0].public_token && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full justify-start touch-target min-h-[44px]"
-                  onClick={copyEstimateMessage}
-                >
-                  <Copy className="mr-2 h-4 w-4" />
-                  Copy estimate message
-                </Button>
-              )}
-              {materials.length > 0 && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="w-full justify-start touch-target min-h-[44px]"
-                  onClick={copyMaterialsList}
-                >
-                  <Copy className="mr-2 h-4 w-4" />
-                  Copy materials list
-                </Button>
-              )}
             </div>
 
-          </div>
         </div>
       </div>
 
@@ -1506,6 +2357,22 @@ export function JobDetailView({
                   />
                 </div>
 
+                <div className="space-y-2">
+                  <Label htmlFor="paintArea">Area / Use *</Label>
+                  <Select
+                    id="paintArea"
+                    value={materialFormData.area}
+                    onChange={(e) => setMaterialFormData({ ...materialFormData, area: e.target.value })}
+                    className="min-h-[44px]"
+                  >
+                    <option value="">Select area...</option>
+                    <option value="Walls">Walls</option>
+                    <option value="Ceiling">Ceiling</option>
+                    <option value="Trim">Trim</option>
+                    <option value="Doors">Doors</option>
+                  </Select>
+                </div>
+
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="paintBrand">Brand (Optional)</Label>
@@ -1576,32 +2443,15 @@ export function JobDetailView({
 
                 {materialFormData.showAdvanced && (
                   <div className="rounded-lg border bg-muted/30 p-4 space-y-4">
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <div className="space-y-2">
-                        <Label htmlFor="paintProductLine">Product Line</Label>
-                        <Input
-                          id="paintProductLine"
-                          value={materialFormData.productLine}
-                          onChange={(e) => setMaterialFormData({ ...materialFormData, productLine: e.target.value })}
-                          placeholder="e.g., Duration, Emerald"
-                          className="min-h-[44px]"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="paintArea">Area / Use</Label>
-                        <Select
-                          id="paintArea"
-                          value={materialFormData.area}
-                          onChange={(e) => setMaterialFormData({ ...materialFormData, area: e.target.value })}
-                          className="min-h-[44px]"
-                        >
-                          <option value="">Select area...</option>
-                          <option value="Walls">Walls</option>
-                          <option value="Ceiling">Ceiling</option>
-                          <option value="Trim">Trim</option>
-                          <option value="Doors">Doors</option>
-                        </Select>
-                      </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="paintProductLine">Product Line</Label>
+                      <Input
+                        id="paintProductLine"
+                        value={materialFormData.productLine}
+                        onChange={(e) => setMaterialFormData({ ...materialFormData, productLine: e.target.value })}
+                        placeholder="e.g., Duration, Emerald"
+                        className="min-h-[44px]"
+                      />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="paintNotes">Notes</Label>
@@ -1678,7 +2528,7 @@ export function JobDetailView({
               </Button>
               <Button 
                 onClick={handleSubmitMaterialForm} 
-                disabled={!materialFormData.name.trim() || (materialType === "paint" && (!materialFormData.color.trim() || !materialFormData.sheen))}
+                disabled={!materialFormData.name.trim() || (materialType === "paint" && (!materialFormData.color.trim() || !materialFormData.sheen || !materialFormData.area))}
               >
                 Add {materialType === "paint" ? "Paint" : "Material"}
               </Button>
@@ -1686,7 +2536,289 @@ export function JobDetailView({
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Share Schedule Dialog */}
+      <Dialog open={showShareScheduleDialog} onOpenChange={async (open) => {
+        setShowShareScheduleDialog(open);
+        if (open) {
+          await ensureScheduleToken();
+        }
+      }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Share Schedule</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {!scheduledDate || !scheduledTime ? (
+              <div className="rounded-lg border bg-muted/50 p-4 text-center text-muted-foreground">
+                <Calendar className="mx-auto h-8 w-8 mb-2" />
+                <p>This job hasn't been scheduled yet.</p>
+                <p className="text-sm mt-1">Add a scheduled date and time first.</p>
+              </div>
+            ) : loadingScheduleToken ? (
+              <div className="text-center py-4">
+                <p className="text-sm text-muted-foreground">Generating link...</p>
+              </div>
+            ) : !getScheduleLink() ? (
+              <div className="text-center py-4">
+                <p className="text-sm text-destructive">No token available</p>
+              </div>
+            ) : (
+              <>
+                <div className="rounded-lg border bg-card p-4">
+                  <p className="text-sm text-muted-foreground mb-2">Scheduled for</p>
+                  <p className="font-semibold text-lg">
+                    {formatDate(scheduledDate)} at {formatTime(scheduledTime)}
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <div>
+                    <Label className="text-sm text-muted-foreground">Schedule Link</Label>
+                    <div className="flex gap-2 mt-2">
+                      <Input 
+                        value={getScheduleLink()} 
+                        readOnly 
+                        className="font-mono text-sm"
+                      />
+                      <Button 
+                        variant="outline"
+                        onClick={copyScheduleLink}
+                        disabled={loadingScheduleToken}
+                        className="shrink-0"
+                      >
+                        <Copy className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label className="text-sm text-muted-foreground">Pre-written Message</Label>
+                    <Textarea 
+                      value={getScheduleMessage()} 
+                      readOnly 
+                      rows={4}
+                      className="mt-2 font-sans"
+                    />
+                    <Button 
+                      onClick={copyScheduleMessage}
+                      className="w-full mt-2"
+                    >
+                      <Copy className="mr-2 h-4 w-4" />
+                      Copy Message
+                    </Button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Duplicate Job Dialog */}
+      <Dialog open={showDuplicateDialog} onOpenChange={setShowDuplicateDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Duplicate Job?</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              This will create a new job with the same customer, address, and materials.
+            </p>
+            <div className="rounded-lg border bg-muted/50 p-3 space-y-2">
+              <p className="text-sm font-medium">Will be copied:</p>
+              <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
+                <li>Customer & address</li>
+                <li>Notes</li>
+                <li>Assigned team member</li>
+                <li>Materials ({materials.length} items)</li>
+              </ul>
+            </div>
+            <div className="rounded-lg border bg-warning/10 p-3 space-y-2">
+              <p className="text-sm font-medium text-warning">Will NOT be copied:</p>
+              <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
+                <li>Schedule (will be unscheduled)</li>
+                <li>Status (will reset to "new")</li>
+                <li>Estimates & invoices</li>
+              </ul>
+            </div>
+            <div className="flex gap-3 justify-end pt-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowDuplicateDialog(false)}
+                disabled={duplicating}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleDuplicateJob}
+                loading={duplicating}
+              >
+                <Copy className="mr-2 h-4 w-4" />
+                Duplicate
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Job Templates Dialog */}
+      <JobTemplatesDialog
+        open={showTemplateDialog}
+        onOpenChange={setShowTemplateDialog}
+        mode={templateDialogMode}
+        jobId={job.id}
+        companyId={companyId}
+        onRefresh={() => router.refresh()}
+      />
+
+      {/* Copy Message Dialog */}
+      <Dialog open={showCopyDialog} onOpenChange={setShowCopyDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {copyDialogType === "estimate" && "Estimate Message"}
+              {copyDialogType === "invoice" && "Invoice Message"}
+              {copyDialogType === "materials" && "Materials List"}
+              {copyDialogType === "reminder" && "Reminder Message"}
+              {copyDialogType === "schedule-confirmation" && "Schedule Confirmation"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            {copyDialogType === "estimate" && estimatesList[0] && (
+              <>
+                <div className="rounded-lg border bg-card p-4">
+                  <p className="text-sm text-muted-foreground mb-2">Estimate Link</p>
+                  <div className="flex gap-2 mt-2">
+                    <Input 
+                      value={`${typeof window !== "undefined" ? window.location.origin : ""}/e/${estimatesList[0].public_token}`}
+                      readOnly 
+                      className="font-mono text-sm"
+                    />
+                    <Button 
+                      variant="outline"
+                      onClick={() => {
+                        copyToClipboard(`${typeof window !== "undefined" ? window.location.origin : ""}/e/${estimatesList[0].public_token}`);
+                        addToast("Link copied!", "success");
+                      }}
+                      className="shrink-0"
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-sm text-muted-foreground">Message Template</Label>
+                  <Textarea 
+                    value={`Hey ${job.customer?.name || "there"} — here's your estimate for ${formatCurrency(estimatesList[0].line_items.reduce((sum, li) => sum + li.price, 0))}: ${typeof window !== "undefined" ? window.location.origin : ""}/e/${estimatesList[0].public_token}. Let me know if you have any questions!`}
+                    readOnly 
+                    rows={4}
+                    className="mt-2 font-sans"
+                  />
+                  <Button 
+                    onClick={() => {
+                      copyEstimateMessage();
+                      setShowCopyDialog(false);
+                    }}
+                    className="w-full mt-2"
+                  >
+                    <Copy className="mr-2 h-4 w-4" />
+                    Copy Message
+                  </Button>
+                </div>
+              </>
+            )}
+
+            {copyDialogType === "invoice" && invoicesList[0] && (
+              <>
+                <div className="rounded-lg border bg-card p-4">
+                  <p className="text-sm text-muted-foreground mb-2">Invoice Link</p>
+                  <div className="flex gap-2 mt-2">
+                    <Input 
+                      value={`${typeof window !== "undefined" ? window.location.origin : ""}/i/${invoicesList[0].public_token}`}
+                      readOnly 
+                      className="font-mono text-sm"
+                    />
+                    <Button 
+                      variant="outline"
+                      onClick={() => {
+                        copyToClipboard(`${typeof window !== "undefined" ? window.location.origin : ""}/i/${invoicesList[0].public_token}`);
+                        addToast("Link copied!", "success");
+                      }}
+                      className="shrink-0"
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-sm text-muted-foreground">Message Template</Label>
+                  <Textarea 
+                    value={`Hey ${job.customer?.name || "there"} — thanks again for letting us work on your project! Here's your invoice for ${formatCurrency(invoicesList[0].amount_total)}: ${typeof window !== "undefined" ? window.location.origin : ""}/i/${invoicesList[0].public_token}. Let us know if you have any questions!`}
+                    readOnly 
+                    rows={4}
+                    className="mt-2 font-sans"
+                  />
+                  <Button 
+                    onClick={() => {
+                      copyPaymentRequestMessage();
+                      setShowCopyDialog(false);
+                    }}
+                    className="w-full mt-2"
+                  >
+                    <Copy className="mr-2 h-4 w-4" />
+                    Copy Message
+                  </Button>
+                </div>
+              </>
+            )}
+
+            {copyDialogType === "materials" && (
+              <div>
+                <Label className="text-sm text-muted-foreground">Materials List</Label>
+                <Textarea 
+                  value={`Materials needed for ${job.title} (${job.customer?.name || "Customer"}):\n\n${materials.map((m, i) => `${i + 1}. ${m.name}${m.notes ? ` - ${m.notes}` : ""}`).join("\n")}\n\nTotal items: ${materials.length}`}
+                  readOnly 
+                  rows={Math.min(materials.length + 4, 12)}
+                  className="mt-2 font-mono text-sm"
+                />
+                <Button 
+                  onClick={() => {
+                    copyMaterialsList();
+                    setShowCopyDialog(false);
+                  }}
+                  className="w-full mt-2"
+                >
+                  <Copy className="mr-2 h-4 w-4" />
+                  Copy List
+                </Button>
+              </div>
+            )}
+
+            {copyDialogType === "reminder" && scheduledDate && scheduledTime && (
+              <div>
+                <Label className="text-sm text-muted-foreground">Reminder Message</Label>
+                <Textarea 
+                  value={`Hey ${job.customer?.name || "there"} — just a reminder that we're scheduled for ${formatDate(scheduledDate)} at ${formatTime(scheduledTime)} at ${address || "[address]"}. Reply here if anything changes. See you then!`}
+                  readOnly 
+                  rows={4}
+                  className="mt-2 font-sans"
+                />
+                <Button 
+                  onClick={() => {
+                    copyReminderMessage();
+                    setShowCopyDialog(false);
+                  }}
+                  className="w-full mt-2"
+                >
+                  <Copy className="mr-2 h-4 w-4" />
+                  Copy Message
+                </Button>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
-

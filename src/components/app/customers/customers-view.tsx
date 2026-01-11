@@ -8,6 +8,7 @@ import type { Customer } from "@/types/database";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -41,6 +42,7 @@ export function CustomersView({
 }: CustomersViewProps) {
   const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
   const [searchQuery, setSearchQuery] = useState("");
+  const [tagFilter, setTagFilter] = useState<string>("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -58,15 +60,29 @@ export function CustomersView({
   const [state, setState] = useState("");
   const [zip, setZip] = useState("");
 
-  // Filter customers by search query
+  // Filter customers by search query and tag
   const filteredCustomers = customers.filter((customer) => {
     const query = searchQuery.toLowerCase();
-    return (
+    const matchesSearch =
       customer.name.toLowerCase().includes(query) ||
       customer.phone?.toLowerCase().includes(query) ||
       customer.email?.toLowerCase().includes(query) ||
-      customer.city?.toLowerCase().includes(query)
-    );
+      customer.city?.toLowerCase().includes(query);
+    
+    if (!matchesSearch) return false;
+    
+    // Filter by tag if selected
+    if (tagFilter !== "all") {
+      const customerTags = (customer as any).tags || [];
+      // Handle both array of objects and array of strings
+      if (customerTags.length === 0) return false;
+      return customerTags.some((t: any) => {
+        if (typeof t === "string") return t === tagFilter;
+        return t.tag === tagFilter;
+      });
+    }
+    
+    return true;
   });
 
   function resetForm() {
@@ -198,6 +214,18 @@ export function CustomersView({
               className="pl-9 w-full sm:w-64"
             />
           </div>
+          <Select
+            value={tagFilter}
+            onChange={(e) => setTagFilter(e.target.value)}
+            className="w-full sm:w-40"
+          >
+            <option value="all">All Tags</option>
+            <option value="good_payer">Good Payer</option>
+            <option value="repeat_customer">Repeat Customer</option>
+            <option value="referral">Referral</option>
+            <option value="vip">VIP</option>
+            <option value="needs_followup">Needs Follow-up</option>
+          </Select>
           <div className="flex gap-2">
             <Button
               variant="outline"

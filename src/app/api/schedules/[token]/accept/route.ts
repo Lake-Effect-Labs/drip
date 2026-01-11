@@ -3,46 +3,48 @@ import { createAdminClient } from "@/lib/supabase/server";
 
 export async function POST(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ token: string }> }
 ) {
-  const { id } = await params;
+  const { token } = await params;
   const supabase = createAdminClient();
 
   try {
-    // Get job by ID
+    // Get job by schedule_token
     const { data: job, error: jobError } = await supabase
       .from("jobs")
       .select("*")
-      .eq("id", id)
+      .eq("schedule_token", token)
       .single();
 
     if (jobError || !job) {
       return NextResponse.json(
-        { error: "Job not found" },
+        { error: "Schedule not found" },
         { status: 404 }
       );
     }
 
-    // Check if already scheduled (idempotent)
-    if (job.status === "scheduled") {
-      return NextResponse.json({ success: true, message: "Already scheduled" });
+    // Check if already accepted (idempotent)
+    if (job.schedule_state === "accepted") {
+      return NextResponse.json({ success: true, message: "Already accepted" });
     }
 
-    // Update job status to scheduled
+    // Update job schedule state to accepted and status to scheduled
     const { error: updateError } = await supabase
       .from("jobs")
       .update({
+        schedule_state: "accepted",
+        schedule_accepted_at: new Date().toISOString(),
         status: "scheduled",
         updated_at: new Date().toISOString(),
       })
-      .eq("id", id);
+      .eq("id", job.id);
 
     if (updateError) {
       if (process.env.NODE_ENV === "development") {
-        console.error("Error updating job:", updateError);
+        console.error("Error updating schedule:", updateError);
       }
       return NextResponse.json(
-        { error: "Failed to confirm schedule" },
+        { error: "Failed to accept schedule" },
         { status: 500 }
       );
     }
@@ -50,7 +52,7 @@ export async function POST(
     return NextResponse.json({ success: true });
   } catch (error) {
     if (process.env.NODE_ENV === "development") {
-      console.error("Error confirming schedule:", error);
+      console.error("Error accepting schedule:", error);
     }
     return NextResponse.json(
       { error: "Internal server error" },

@@ -28,7 +28,7 @@ export default async function SettingsPage() {
   // Get company separately
   const { data: companyData } = await adminSupabase
     .from("companies")
-    .select("id, name, theme_id, owner_user_id, created_at")
+    .select("id, name, theme_id, owner_user_id, stripe_account_id, stripe_enabled, stripe_onboarding_complete, created_at")
     .eq("id", companyUser.company_id)
     .maybeSingle();
 

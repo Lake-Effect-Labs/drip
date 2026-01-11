@@ -6,6 +6,7 @@ import type { Job, Customer, Company } from "@/types/database";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CheckCircle, Calendar, Clock, MapPin } from "lucide-react";
+import { PaintChipAnimator } from "@/components/public/paint-chip-animator";
 
 type JobWithCustomer = Job & { 
   customer: Customer | null;
@@ -14,13 +15,13 @@ type JobWithCustomer = Job & {
 
 interface PublicScheduleViewProps {
   job: JobWithCustomer;
-  jobId: string;
+  token: string;
 }
 
-export function PublicScheduleView({ job: initialJob, jobId }: PublicScheduleViewProps) {
+export function PublicScheduleView({ job: initialJob, token }: PublicScheduleViewProps) {
   const [job, setJob] = useState(initialJob);
   const [confirming, setConfirming] = useState(false);
-  const [confirmed, setConfirmed] = useState(job.status === "scheduled");
+  const [confirmed, setConfirmed] = useState((job as any).schedule_state === "accepted" || job.status === "scheduled");
   const [error, setError] = useState("");
 
   const address = [job.address1, job.city, job.state, job.zip]
@@ -32,7 +33,7 @@ export function PublicScheduleView({ job: initialJob, jobId }: PublicScheduleVie
     setError("");
 
     try {
-      const response = await fetch(`/api/jobs/${jobId}/schedule/accept`, {
+      const response = await fetch(`/api/schedules/${token}/accept`, {
         method: "POST",
       });
 
@@ -45,7 +46,9 @@ export function PublicScheduleView({ job: initialJob, jobId }: PublicScheduleVie
       setJob((prev) => ({
         ...prev,
         status: "scheduled",
-      }));
+        schedule_state: "accepted",
+        schedule_accepted_at: new Date().toISOString(),
+      } as any));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -55,15 +58,16 @@ export function PublicScheduleView({ job: initialJob, jobId }: PublicScheduleVie
 
   if (confirmed) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-stone-100 via-stone-50 to-white flex items-center justify-center p-4">
-        <Card className="w-full max-w-md text-center">
+      <div className="min-h-screen bg-gradient-to-br from-stone-100 via-stone-50 to-white flex items-center justify-center p-4 relative">
+        <PaintChipAnimator />
+        <Card className="w-full max-w-md text-center relative z-20">
           <CardContent className="pt-8 pb-8">
             <div className="w-16 h-16 rounded-full bg-success/10 flex items-center justify-center mx-auto mb-4">
               <CheckCircle className="w-8 h-8 text-success" />
             </div>
             <h1 className="text-2xl font-bold mb-2">Schedule Confirmed!</h1>
             <p className="text-muted-foreground mb-6">
-              Thank you for confirming. We'll see you on{" "}
+              Thank you for confirming. {job.company?.name} will see you on{" "}
               {job.scheduled_date && formatDate(job.scheduled_date)}
               {job.scheduled_time && ` at ${formatTime(job.scheduled_time)}`}.
             </p>
@@ -78,7 +82,7 @@ export function PublicScheduleView({ job: initialJob, jobId }: PublicScheduleVie
 
   if (!job.scheduled_date) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-stone-100 via-stone-50 to-white flex items-center justify-center p-4">
+      <div className="min-h-screen bg-gradient-to-br from-stone-100 via-stone-50 to-white flex items-center justify-center p-4 relative">
         <Card className="w-full max-w-md text-center">
           <CardContent className="pt-8 pb-8">
             <h1 className="text-2xl font-bold mb-2">Schedule Not Set</h1>
@@ -87,12 +91,13 @@ export function PublicScheduleView({ job: initialJob, jobId }: PublicScheduleVie
             </p>
           </CardContent>
         </Card>
+        <PaintChipAnimator />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-stone-100 via-stone-50 to-white">
+    <div className="min-h-screen bg-gradient-to-br from-stone-100 via-stone-50 to-white relative">
       <main className="max-w-2xl mx-auto p-4 py-8 space-y-6">
         {/* Summary Card */}
         <Card>
@@ -168,6 +173,8 @@ export function PublicScheduleView({ job: initialJob, jobId }: PublicScheduleVie
           </p>
         </div>
       </main>
+
+      <PaintChipAnimator />
     </div>
   );
 }
