@@ -510,7 +510,7 @@ export function JobDetailView({
       
       if (refreshedEntries) {
         // Fetch user profiles
-        const userIds = [...new Set(refreshedEntries.map(e => e.user_id).filter(Boolean))];
+        const userIds = [...new Set(refreshedEntries.map(e => e.user_id).filter((id): id is string => id !== null))];
         let userMap: Record<string, { full_name: string }> = {};
         
         if (userIds.length > 0) {
@@ -636,7 +636,7 @@ export function JobDetailView({
       
       if (entries) {
         // Fetch user profiles for all unique user IDs
-        const userIds = [...new Set(entries.map(e => e.user_id).filter(Boolean))];
+        const userIds = [...new Set(entries.map(e => e.user_id).filter((id): id is string => id !== null))];
         let userMap: Record<string, { full_name: string }> = {};
         
         if (userIds.length > 0) {

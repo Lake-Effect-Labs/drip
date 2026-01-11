@@ -358,8 +358,8 @@ export function SettingsView({
       if (error) throw error;
 
       // Fetch customers and jobs for the invoices
-      const customerIds = [...new Set((invoices || []).map(i => i.customer_id).filter(Boolean))];
-      const jobIds = [...new Set((invoices || []).map(i => i.job_id).filter(Boolean))];
+      const customerIds = [...new Set((invoices || []).map(i => i.customer_id).filter((id): id is string => id !== null))];
+      const jobIds = [...new Set((invoices || []).map(i => i.job_id).filter((id): id is string => id !== null))];
 
       const { data: customers } = customerIds.length > 0 
         ? await supabase.from("customers").select("id, name").in("id", customerIds)
@@ -426,13 +426,13 @@ export function SettingsView({
         ? await supabase.from("invoices").select("id, customer_id, job_id").in("id", invoiceIds)
         : { data: [] };
 
-      const customerIds = [...new Set((invoices || []).map(i => i.customer_id).filter(Boolean))];
-      const jobIds = [...new Set((invoices || []).map(i => i.job_id).filter(Boolean))];
+      const customerIds = [...new Set((invoices || []).map(i => i.customer_id).filter((id): id is string => id !== null))];
+      const jobIds = [...new Set((invoices || []).map(i => i.job_id).filter((id): id is string => id !== null))];
 
       const { data: customers } = customerIds.length > 0
         ? await supabase.from("customers").select("id, name").in("id", customerIds)
         : { data: [] };
-
+      
       const { data: jobs } = jobIds.length > 0
         ? await supabase.from("jobs").select("id, title").in("id", jobIds)
         : { data: [] };
