@@ -22,11 +22,13 @@ export default async function PublicPaymentPage({
   }
 
   // Fetch related data
-  const { data: customer } = await supabase
-    .from("customers")
-    .select("*")
-    .eq("id", job.customer_id)
-    .single();
+  const { data: customer } = job.customer_id
+    ? await supabase
+        .from("customers")
+        .select("*")
+        .eq("id", job.customer_id)
+        .single()
+    : { data: null };
 
   const { data: company } = await supabase
     .from("companies")
