@@ -93,6 +93,7 @@ export function SettingsViewLite({
         walls_rate_per_sqft: rate,
         ceilings_rate_per_sqft: rate * 0.25, // Auto-calculate others
         trim_rate_per_sqft: rate * 0.375,
+        labor_rate_per_hour: config?.labor_rate_per_hour ?? null,
         updated_at: new Date().toISOString(),
       };
 

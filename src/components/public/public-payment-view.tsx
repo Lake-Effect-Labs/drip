@@ -12,7 +12,11 @@ import { useRouter } from "next/navigation";
 
 type JobWithDetails = Job & {
   customer: Customer | null;
-  company: Pick<Company, "name" | "logo_url" | "contact_phone" | "contact_email"> | null;
+  company: (Pick<Company, "name"> & {
+    logo_url?: string | null;
+    contact_phone?: string | null;
+    contact_email?: string | null;
+  }) | null;
   payment_line_items: Array<{
     id: string;
     title: string;
