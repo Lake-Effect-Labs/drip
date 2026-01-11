@@ -13,6 +13,7 @@ import { formatCurrency, formatDate, copyToClipboard, generateToken } from "@/li
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/toast";
 import { useRouter } from "next/navigation";
+import type { EstimatingConfig } from "@/types/database";
 
 type PaymentState = "none" | "proposed" | "approved" | "due" | "paid";
 
@@ -47,6 +48,7 @@ interface UnifiedPaymentProps {
     title: string;
     price: number; // in cents
   }>;
+  estimatingConfig?: EstimatingConfig | null;
   onUpdate: () => void;
 }
 
