@@ -6,6 +6,14 @@ import type { Estimate, EstimateLineItem, Customer, Job, Company } from "@/types
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { Droplet, CheckCircle, MapPin, User } from "lucide-react";
 
 type EstimateWithDetails = Estimate & {
@@ -25,6 +33,7 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
   const [accepting, setAccepting] = useState(false);
   const [accepted, setAccepted] = useState(estimate.status === "accepted");
   const [error, setError] = useState("");
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
 
   const total = estimate.line_items.reduce((sum, li) => sum + li.price, 0);
   const address = estimate.job
@@ -36,6 +45,7 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
   async function handleAccept() {
     setAccepting(true);
     setError("");
+    setShowConfirmDialog(false);
 
     try {
       const response = await fetch(`/api/estimates/${token}/accept`, {
@@ -180,14 +190,12 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
           <Button
             size="lg"
             className="w-full"
-            onClick={handleAccept}
-            loading={accepting}
+            onClick={() => setShowConfirmDialog(true)}
           >
             Accept Estimate
           </Button>
           <p className="text-xs text-center text-muted-foreground">
-            By accepting, you agree to proceed with this estimate.
-            {estimate.company?.name} will contact you to schedule.
+            Click to review and accept this {formatCurrency(total)} estimate.
           </p>
         </div>
 
@@ -204,6 +212,33 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
           </div>
         )}
       </main>
+
+      {/* Confirmation Dialog */}
+      <Dialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Accept This Estimate?</DialogTitle>
+            <DialogDescription>
+              By accepting this {formatCurrency(total)} estimate, you agree to proceed with the project.
+              {estimate.company?.name} will contact you to schedule the work.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowConfirmDialog(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAccept}
+              loading={accepting}
+            >
+              Yes, Accept Estimate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

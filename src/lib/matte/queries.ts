@@ -17,7 +17,17 @@ interface JobsData {
 }
 
 interface MaterialsData {
-  materials: Array<{ name: string; jobTitle: string; customerName: string }>;
+  materials: Array<{
+    name: string;
+    jobTitle?: string;
+    customerName?: string;
+    paintColor?: string;
+    sheen?: string;
+    productLine?: string;
+    gallons?: number | null;
+    checked?: boolean;
+    notes?: string | null;
+  }>;
 }
 
 interface PaymentsData {
@@ -412,6 +422,7 @@ interface EstimateData {
     sqft: number | null;
     acceptedAt: string | null;
     lineItems: Array<{ name: string; price: number; paintColor?: string; sheen?: string }>;
+    total: number;
   }>;
 }
 
