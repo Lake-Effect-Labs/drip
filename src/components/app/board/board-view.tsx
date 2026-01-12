@@ -156,8 +156,8 @@ export function BoardView({
       } else {
         // Dropped on a card - find that card's status
         const overJob = jobs.find((j) => j.id === overId);
-        if (overJob) {
-          targetStatus = overJob.status;
+        if (overJob && JOB_STATUSES.includes(overJob.status as JobStatus)) {
+          targetStatus = overJob.status as JobStatus;
         }
       }
 
