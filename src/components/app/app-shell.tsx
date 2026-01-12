@@ -14,6 +14,7 @@ import {
   UserCircle,
   Calendar,
   MessageSquare,
+  Package,
 } from "lucide-react";
 
 interface AppShellProps {
@@ -36,6 +37,7 @@ const allNavItems = [
   { href: "/app/board", label: "Board", icon: LayoutGrid, ownerOnly: false },
   { href: "/app/schedule", label: "Schedule", icon: Calendar, ownerOnly: false },
   { href: "/app/customers", label: "Customers", icon: UserCircle, ownerOnly: false },
+  { href: "/app/inventory", label: "Inventory", icon: Package, ownerOnly: false },
   { href: "/app/matte", label: "Matte", icon: MessageSquare, ownerOnly: false },
   { href: "/app/settings", label: "Settings", icon: Settings, ownerOnly: true },
 ];

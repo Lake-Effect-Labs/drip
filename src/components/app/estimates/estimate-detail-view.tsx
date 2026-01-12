@@ -52,6 +52,42 @@ export function EstimateDetailView({ estimate: initialEstimate }: EstimateDetail
   const total = estimate.line_items.reduce((sum, li) => sum + li.price, 0);
   const publicUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/e/${estimate.public_token}`;
 
+  // Refresh estimate data to ensure we have the latest status
+  async function refreshEstimate() {
+    const { data: refreshedEstimate } = await supabase
+      .from("estimates")
+      .select("*")
+      .eq("id", estimate.id)
+      .single();
+
+    if (refreshedEstimate) {
+      // Fetch line items, customer, and job
+      const [lineItemsResult, customerResult, jobResult] = await Promise.all([
+        supabase.from("estimate_line_items").select("*").eq("estimate_id", estimate.id),
+        refreshedEstimate.customer_id
+          ? supabase.from("customers").select("*").eq("id", refreshedEstimate.customer_id).single()
+          : Promise.resolve({ data: null }),
+        refreshedEstimate.job_id
+          ? supabase.from("jobs").select("*").eq("id", refreshedEstimate.job_id).single()
+          : Promise.resolve({ data: null }),
+      ]);
+
+      setEstimate({
+        ...refreshedEstimate,
+        line_items: lineItemsResult.data || [],
+        customer: customerResult.data,
+        job: jobResult.data,
+      });
+    }
+  }
+
+  // Refresh estimate when component mounts to ensure we have the latest data
+  useEffect(() => {
+    const estimateId = estimate.id;
+    refreshEstimate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const address = estimate.job
     ? [estimate.job.address1, estimate.job.city, estimate.job.state]
         .filter(Boolean)
@@ -78,11 +114,25 @@ export function EstimateDetailView({ estimate: initialEstimate }: EstimateDetail
     checkExistingInvoice();
   }, [estimate.id, estimate.status, supabase]);
 
-  function copyEstimateMessage() {
+  async function copyEstimateMessage() {
     const customerName = estimate.customer?.name || "there";
     const message = `Hey ${customerName} — here's your estimate for ${address || "your project"}: ${publicUrl}`;
     copyToClipboard(message);
     addToast("Message copied!", "success");
+    
+    // Mark estimate as "sent" if it's still in "draft" status
+    if (estimate.status === "draft") {
+      const { data: updatedEstimate, error } = await supabase
+        .from("estimates")
+        .update({ status: "sent", updated_at: new Date().toISOString() })
+        .eq("id", estimate.id)
+        .select()
+        .single();
+      
+      if (!error && updatedEstimate) {
+        setEstimate((prev) => ({ ...prev, status: "sent" }));
+      }
+    }
   }
 
   function getExpirationStatus() {
@@ -141,10 +191,24 @@ export function EstimateDetailView({ estimate: initialEstimate }: EstimateDetail
     setShowFollowUpDialog(false);
   }
 
-  function textEstimate() {
+  async function textEstimate() {
     const customerName = estimate.customer?.name || "there";
     const message = `Hey ${customerName} — here's your estimate for ${address || "your project"}: ${publicUrl}`;
     const phone = estimate.customer?.phone;
+    
+    // Mark estimate as "sent" if it's still in "draft" status
+    if (estimate.status === "draft") {
+      const { data: updatedEstimate, error } = await supabase
+        .from("estimates")
+        .update({ status: "sent", updated_at: new Date().toISOString() })
+        .eq("id", estimate.id)
+        .select()
+        .single();
+      
+      if (!error && updatedEstimate) {
+        setEstimate((prev) => ({ ...prev, status: "sent" }));
+      }
+    }
     
     if (phone && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
       // Mobile device - open SMS app

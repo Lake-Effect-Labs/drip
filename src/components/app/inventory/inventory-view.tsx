@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import type { InventoryItem, PickupLocation, JobMaterial, Job } from "@/types/database";
@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Package, AlertTriangle, ShoppingCart, Pencil, Trash2, CheckCircle, Briefcase, Store } from "lucide-react";
+import { Plus, Package, ShoppingCart, Pencil, Trash2, CheckCircle, Briefcase, Store } from "lucide-react";
 
 type ItemWithLocation = InventoryItem & {
   pickup_location: PickupLocation | null;
@@ -71,6 +71,64 @@ export function InventoryView({
   const { addToast } = useToast();
   const supabase = createClient();
 
+  // Subscribe to real-time updates for job_materials
+  useEffect(() => {
+    async function refreshMaterials() {
+      const { data: refreshedMaterials } = await supabase
+        .from("job_materials")
+        .select(`
+          *,
+          job:jobs!inner(
+            id,
+            title,
+            status,
+            company_id
+          )
+        `)
+        .eq("job.company_id", companyId)
+        .in("job.status", ["new", "quoted", "scheduled", "in_progress"])
+        .is("purchased_at", null);
+
+      if (refreshedMaterials) {
+        setMaterials(refreshedMaterials as any);
+      }
+    }
+
+    // Subscribe to job_materials changes
+    const channel = supabase
+      .channel(`inventory-job-materials-${companyId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "job_materials",
+        },
+        () => {
+          // Refresh materials when any job_material changes
+          refreshMaterials();
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "jobs",
+          filter: `company_id=eq.${companyId}`,
+        },
+        () => {
+          // Refresh materials when job status changes (might affect which materials show)
+          refreshMaterials();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [companyId, supabase]);
+
   // Form state
   const [name, setName] = useState("");
   const [category, setCategory] = useState("sundries");
@@ -83,12 +141,6 @@ export function InventoryView({
   const [pickupLocationId, setPickupLocationId] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
-
-  const lowStockItems = items.filter((item) => item.on_hand <= item.reorder_at);
-  const buyListItems = lowStockItems.map((item) => ({
-    ...item,
-    needed: Math.max(item.reorder_at * 2 - item.on_hand, 1),
-  }));
 
   // Calculate "Materials Needed for Jobs"
   const materialsNeeded = useMemo(() => {
@@ -157,6 +209,13 @@ export function InventoryView({
 
     return grouped;
   }, [materials, items]);
+
+  // Buy List: Items needed for jobs that aren't in inventory
+  const buyListItems = useMemo(() => {
+    const needsArray = Object.values(materialsNeeded).flat();
+    // Filter to only items that aren't linked to inventory (don't exist in inventory)
+    return needsArray.filter((need) => !need.inventoryItemId);
+  }, [materialsNeeded]);
 
   function resetForm() {
     setName("");
@@ -334,7 +393,6 @@ export function InventoryView({
           <h1 className="text-2xl font-bold">Inventory</h1>
           <p className="text-sm text-muted-foreground">
             {items.length} item{items.length !== 1 ? "s" : ""} •{" "}
-            {lowStockItems.length} low stock •{" "}
             {materialCount} needed for jobs
           </p>
         </div>
@@ -351,17 +409,13 @@ export function InventoryView({
             <TabsTrigger value="all">
               All Items ({items.length})
             </TabsTrigger>
-            <TabsTrigger value="low">
-              <AlertTriangle className="mr-1.5 h-3.5 w-3.5" />
-              Low Stock ({lowStockItems.length})
-            </TabsTrigger>
             <TabsTrigger value="needed">
               <Briefcase className="mr-1.5 h-3.5 w-3.5" />
               Needed for Jobs ({materialCount})
             </TabsTrigger>
             <TabsTrigger value="buy">
               <ShoppingCart className="mr-1.5 h-3.5 w-3.5" />
-              Buy List
+              Buy List ({buyListItems.length})
             </TabsTrigger>
             <TabsTrigger value="stores">
               <Store className="mr-1.5 h-3.5 w-3.5" />
@@ -388,28 +442,6 @@ export function InventoryView({
                     onEdit={() => openEditDialog(item)}
                     onDelete={() => handleDelete(item.id)}
                     onUpdateQuantity={(qty) => handleUpdateQuantity(item.id, qty)}
-                  />
-                ))}
-              </div>
-            )}
-          </TabsContent>
-
-          {/* Low Stock */}
-          <TabsContent value="low" className="mt-4">
-            {lowStockItems.length === 0 ? (
-              <div className="rounded-lg border bg-card p-8 text-center">
-                <p className="text-muted-foreground">All items are stocked!</p>
-              </div>
-            ) : (
-              <div className="rounded-lg border bg-card divide-y">
-                {lowStockItems.map((item) => (
-                  <InventoryItemRow
-                    key={item.id}
-                    item={item}
-                    onEdit={() => openEditDialog(item)}
-                    onDelete={() => handleDelete(item.id)}
-                    onUpdateQuantity={(qty) => handleUpdateQuantity(item.id, qty)}
-                    showWarning
                   />
                 ))}
               </div>
@@ -448,35 +480,40 @@ export function InventoryView({
             )}
           </TabsContent>
 
-          {/* Buy List */}
+          {/* Buy List - Items needed for jobs that aren't in inventory */}
           <TabsContent value="buy" className="mt-4">
             {buyListItems.length === 0 ? (
               <div className="rounded-lg border bg-card p-8 text-center">
                 <p className="text-muted-foreground">Nothing to buy!</p>
+                <p className="text-sm text-muted-foreground mt-2">
+                  All materials needed for jobs are already in your inventory.
+                </p>
               </div>
             ) : (
               <div className="space-y-4">
                 <div className="rounded-lg border bg-card divide-y">
-                  {buyListItems.map((item) => (
-                    <div key={item.id} className="p-4 flex items-center justify-between">
+                  {buyListItems.map((need, index) => (
+                    <div key={need.inventoryItemId || need.name || index} className="p-4 flex items-center justify-between">
                       <div>
-                        <p className="font-medium">{item.name}</p>
+                        <p className="font-medium">{need.name}</p>
                         <p className="text-sm text-muted-foreground">
-                          Need {item.needed} {item.unit}
-                          {item.vendor_sku && ` • SKU: ${item.vendor_sku}`}
+                          Need {need.quantityStillNeeded.toFixed(2)} {need.unit}
                         </p>
-                        {item.pickup_location && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          For {need.jobTitles.length} job{need.jobTitles.length !== 1 ? "s" : ""}: {need.jobTitles.join(", ")}
+                        </p>
+                        {need.storeName && (
                           <p className="text-xs text-muted-foreground">
-                            Pickup: {item.pickup_location.name}
+                            Store: {need.storeName}
                           </p>
                         )}
                       </div>
-                      <Badge variant="warning">{item.needed} {item.unit}</Badge>
+                      <Badge variant="warning">{need.quantityStillNeeded.toFixed(2)} {need.unit}</Badge>
                     </div>
                   ))}
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  This is a manual buy list. Copy items to your shopping list or order from your vendor.
+                  These items are needed for jobs but aren't in your inventory. Add them to your inventory or purchase them directly.
                 </p>
               </div>
             )}

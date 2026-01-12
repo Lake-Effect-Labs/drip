@@ -38,12 +38,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
   ArrowLeft,
   Calendar,
   Clock,
@@ -61,7 +55,6 @@ import {
   X,
   Pencil,
   Share2,
-  MoreVertical,
   Archive,
   Save,
   CheckCircle,
@@ -528,8 +521,11 @@ export function JobDetailView({
     try {
       const hours = parseFloat(newTimeEntry.hours);
       const durationSeconds = Math.round(hours * 3600);
-      const startDateTime = `${newTimeEntry.date}T09:00:00`; // Default to 9 AM
-      const endDateTime = new Date(new Date(startDateTime).getTime() + durationSeconds * 1000).toISOString();
+      // Create start time as local date at 9 AM, then convert to ISO (UTC)
+      // Use local timezone to create the date, then convert to UTC
+      const localDate = new Date(`${newTimeEntry.date}T09:00:00`);
+      const startDateTime = localDate.toISOString();
+      const endDateTime = new Date(localDate.getTime() + durationSeconds * 1000).toISOString();
 
       const { data, error } = await supabase
         .from("time_entries")
@@ -1391,141 +1387,6 @@ export function JobDetailView({
                 <Badge className={cn("w-fit text-base px-4 py-2", JOB_STATUS_COLORS[job.status as JobStatus])}>
                   {JOB_STATUS_LABELS[job.status as JobStatus]}
                 </Badge>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm" className="touch-target min-h-[44px]">
-                      <MoreVertical className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-56">
-                    {job.status === "new" && (
-                      <DropdownMenuItem onClick={() => handleStatusChange("quoted")}>
-                        Mark as Quoted
-                      </DropdownMenuItem>
-                    )}
-                    {job.status === "quoted" && (
-                      <DropdownMenuItem onClick={() => handleStatusChange("scheduled")}>
-                        Mark as Scheduled
-                      </DropdownMenuItem>
-                    )}
-                    {job.status === "scheduled" && (
-                      <DropdownMenuItem onClick={() => handleStatusChange("in_progress")}>
-                        Start Job
-                      </DropdownMenuItem>
-                    )}
-                    {job.status === "in_progress" && (
-                      <DropdownMenuItem onClick={() => handleStatusChange("done")}>
-                        Mark Complete
-                      </DropdownMenuItem>
-                    )}
-                    {job.status === "done" && (
-                      <DropdownMenuItem onClick={() => handleStatusChange("paid")}>
-                        Mark as Paid
-                      </DropdownMenuItem>
-                    )}
-                    <DropdownMenuItem onClick={() => setShowDuplicateDialog(true)}>
-                      <Copy className="mr-2 h-4 w-4" />
-                      Duplicate Job
-                    </DropdownMenuItem>
-                    {scheduledDate && (
-                      <DropdownMenuItem onClick={async () => {
-                        await ensureScheduleToken();
-                        setShowShareScheduleDialog(true);
-                      }}>
-                        <Share2 className="mr-2 h-4 w-4" />
-                        Share Schedule
-                      </DropdownMenuItem>
-                    )}
-                    {timeEntries.length > 0 && (
-                      <DropdownMenuItem onClick={() => {
-                        const totalSeconds = timeEntries.reduce((sum, entry) => sum + (entry.duration_seconds || 0), 0);
-                        const totalHours = Math.floor(totalSeconds / 3600);
-                        const totalMinutes = Math.floor((totalSeconds % 3600) / 60);
-                        let workLog = `Work Log - ${job.title}\n\nTotal Time: ${totalHours}h ${totalMinutes}m\n\nTime Entries:\n`;
-                        timeEntries.forEach((entry) => {
-                          const date = new Date(entry.started_at).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
-                          const hours = entry.duration_seconds ? (entry.duration_seconds / 3600).toFixed(1) : "0";
-                          const userName = entry.user_id 
-                            ? (teamMembers.find(m => m.id === entry.user_id)?.fullName || entry.user?.full_name || "Unknown")
-                            : "Unknown";
-                          workLog += `- ${date}: ${hours}h - ${userName}\n`;
-                        });
-                        copyToClipboard(workLog);
-                        addToast("Work log copied to clipboard", "success");
-                      }}>
-                        <Copy className="mr-2 h-4 w-4" />
-                        Copy Work Log
-                      </DropdownMenuItem>
-                    )}
-                    {scheduledDate && scheduledTime && job.status === "scheduled" && (
-                      <DropdownMenuItem onClick={() => {
-                        setCopyDialogType("reminder");
-                        setShowCopyDialog(true);
-                      }}>
-                        <Copy className="mr-2 h-4 w-4" />
-                        Copy Reminder
-                      </DropdownMenuItem>
-                    )}
-                    {estimatesList.length > 0 && estimatesList[0].public_token && (
-                      <>
-                        <DropdownMenuItem onClick={() => {
-                          const estimateUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/e/${estimatesList[0].public_token}`;
-                          copyToClipboard(estimateUrl);
-                          addToast("Estimate link copied!", "success");
-                        }}>
-                          <Share2 className="mr-2 h-4 w-4" />
-                          Share Estimate Link
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => {
-                          setCopyDialogType("estimate");
-                          setShowCopyDialog(true);
-                        }}>
-                          <Copy className="mr-2 h-4 w-4" />
-                          Copy Estimate Message
-                        </DropdownMenuItem>
-                      </>
-                    )}
-                    {invoicesList.length > 0 && (
-                      <>
-                        <DropdownMenuItem onClick={() => {
-                          const invoiceUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/i/${invoicesList[0].public_token}`;
-                          copyToClipboard(invoiceUrl);
-                          addToast("Invoice link copied!", "success");
-                        }}>
-                          <Share2 className="mr-2 h-4 w-4" />
-                          Share Invoice Link
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => {
-                          setCopyDialogType("invoice");
-                          setShowCopyDialog(true);
-                        }}>
-                          <Copy className="mr-2 h-4 w-4" />
-                          Copy Invoice Message
-                        </DropdownMenuItem>
-                      </>
-                    )}
-                    {materials.length > 0 && (
-                      <DropdownMenuItem onClick={() => {
-                        setCopyDialogType("materials");
-                        setShowCopyDialog(true);
-                      }}>
-                        <Copy className="mr-2 h-4 w-4" />
-                        Copy Materials List
-                      </DropdownMenuItem>
-                    )}
-                    <DropdownMenuItem onClick={() => setMessageTemplatesOpen(true)}>
-                      <FileText className="mr-2 h-4 w-4" />
-                      Message Templates
-                    </DropdownMenuItem>
-                    <DropdownMenuItem 
-                      onClick={() => handleStatusChange("archive")}
-                      className="text-destructive"
-                    >
-                      <Archive className="mr-2 h-4 w-4" />
-                      Archive Job
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
               </div>
             </div>
           </div>
@@ -1685,27 +1546,65 @@ export function JobDetailView({
                     <div>
                       <div className="flex items-center justify-between mb-3">
                         <h3 className="font-semibold text-lg">Materials ({materials.length})</h3>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setEditingMaterials(true)}
-                          className="touch-target min-h-[44px]"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setCopyDialogType("materials");
+                              setShowCopyDialog(true);
+                            }}
+                            className="touch-target min-h-[44px]"
+                          >
+                            <Share2 className="mr-2 h-4 w-4" />
+                            Share List
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setEditingMaterials(true)}
+                            className="touch-target min-h-[44px]"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </div>
                       {/* Simplified view */}
-                      <div className="space-y-1">
+                      <div className="space-y-2">
                         {materials.slice(0, 5).map((material) => (
-                          <div key={material.id} className="flex items-center gap-2 text-sm">
-                            {material.checked && <span className="text-muted-foreground">✓</span>}
-                            <span className={cn(material.checked && "line-through text-muted-foreground")}>
-                              {material.name}
-                            </span>
+                          <div key={material.id} className="flex items-start gap-3 p-2 rounded-lg hover:bg-muted/50">
+                            <SimpleCheckbox
+                              checked={material.checked}
+                              onChange={(e) =>
+                                handleToggleMaterial(material.id, e.target.checked)
+                              }
+                              className="mt-0.5"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <span
+                                className={cn(
+                                  "font-medium text-sm",
+                                  material.checked && "line-through text-muted-foreground"
+                                )}
+                              >
+                                {material.name}
+                              </span>
+                              {material.notes && (
+                                <p className="text-xs text-muted-foreground mt-0.5">
+                                  {material.notes}
+                                </p>
+                              )}
+                              {(material.quantity_decimal || material.unit) && (
+                                <p className="text-xs text-muted-foreground">
+                                  {material.quantity_decimal && `${material.quantity_decimal} `}
+                                  {material.unit || 'each'}
+                                </p>
+                              )}
+                            </div>
                           </div>
                         ))}
                         {materials.length > 5 && (
-                          <p className="text-xs text-muted-foreground pt-1">
+                          <p className="text-xs text-muted-foreground pt-1 pl-2">
                             +{materials.length - 5} more
                           </p>
                         )}
@@ -1715,15 +1614,31 @@ export function JobDetailView({
                     <>
                       <div className="flex items-center justify-between">
                         <h3 className="font-semibold text-lg">Materials</h3>
-                        {editingMaterials && materials.length > 0 && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setEditingMaterials(false)}
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {materials.length > 0 && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setCopyDialogType("materials");
+                                setShowCopyDialog(true);
+                              }}
+                              className="touch-target min-h-[44px]"
+                            >
+                              <Share2 className="mr-2 h-4 w-4" />
+                              Share List
+                            </Button>
+                          )}
+                          {editingMaterials && materials.length > 0 && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setEditingMaterials(false)}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
                       </div>
                   
                   {/* Checklist Subsection */}
