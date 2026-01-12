@@ -72,6 +72,25 @@ export function NewJobDialog({
     }
   }, [open]);
 
+  // Handle initialCustomerId when it changes or when customers are loaded
+  useEffect(() => {
+    if (initialCustomerId && customers.length > 0 && !selectedCustomerId) {
+      const customer = customers.find((c) => c.id === initialCustomerId);
+      if (customer) {
+        setSelectedCustomerId(customer.id);
+        setCustomerName(customer.name);
+        setCustomerPhone(customer.phone || "");
+        setCustomerEmail(customer.email || "");
+        setAddress1(customer.address1 || "");
+        setAddress2(customer.address2 || "");
+        setCity(customer.city || "");
+        setState(customer.state || "");
+        setZip(customer.zip || "");
+        setCustomerSearchQuery(customer.name);
+      }
+    }
+  }, [initialCustomerId, customers, selectedCustomerId]);
+
   async function loadTemplates() {
     try {
       const response = await fetch("/api/job-templates");
@@ -94,7 +113,18 @@ export function NewJobDialog({
       if (initialCustomerId) {
         const customer = data.find((c: Customer) => c.id === initialCustomerId);
         if (customer) {
-          handleCustomerSelect(customer.id);
+          // Use the customer object directly instead of calling handleCustomerSelect
+          // which depends on the customers state that hasn't been set yet
+          setSelectedCustomerId(customer.id);
+          setCustomerName(customer.name);
+          setCustomerPhone(customer.phone || "");
+          setCustomerEmail(customer.email || "");
+          setAddress1(customer.address1 || "");
+          setAddress2(customer.address2 || "");
+          setCity(customer.city || "");
+          setState(customer.state || "");
+          setZip(customer.zip || "");
+          setCustomerSearchQuery(customer.name);
         }
       }
     } catch (error) {

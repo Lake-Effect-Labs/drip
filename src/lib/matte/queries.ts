@@ -392,12 +392,34 @@ export async function getJobsByNameOrCustomer(
   companyId: string,
   searchTerm: string
 ): Promise<JobsData> {
-  // Search by job title or customer name (case-insensitive)
-  const { data: jobs } = await supabase
+  // Clean up search term - remove common words
+  const cleanedTerm = searchTerm.toLowerCase().trim();
+  
+  // If search term is too generic, return empty
+  if (cleanedTerm === 'my' || cleanedTerm === 'all' || cleanedTerm.length < 2) {
+    return { count: 0, jobs: [] };
+  }
+  
+  // Search by job title or customer name (case-insensitive, partial match)
+  // Split search term into words and search for any word matching
+  const words = cleanedTerm.split(/\s+/).filter(w => w.length > 1);
+  
+  let query = supabase
     .from("jobs")
     .select("id, title, status, scheduled_date, customer:customers(name)")
-    .eq("company_id", companyId)
-    .or(`title.ilike.%${searchTerm}%,customer.name.ilike.%${searchTerm}%`);
+    .eq("company_id", companyId);
+  
+  // Build OR conditions for each word
+  if (words.length > 0) {
+    const conditions = words.map(word => 
+      `title.ilike.%${word}%,customer.name.ilike.%${word}%`
+    ).join(',');
+    query = query.or(conditions);
+  } else {
+    query = query.or(`title.ilike.%${cleanedTerm}%,customer.name.ilike.%${cleanedTerm}%`);
+  }
+
+  const { data: jobs } = await query;
 
   const jobsList = (jobs || []).map((job) => ({
     id: job.id,

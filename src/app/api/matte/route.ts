@@ -219,17 +219,68 @@ Respond concisely about what to work on today.`;
 
       case "GENERAL_SUMMARY": {
         const result = await getGeneralSummary(adminSupabase, companyId);
-        data = result;
+        
+        // Also fetch recent jobs and invoices for context
+        const { data: recentJobs } = await adminSupabase
+          .from("jobs")
+          .select("id, title, status, customer:customers(name)")
+          .eq("company_id", companyId)
+          .order("created_at", { ascending: false })
+          .limit(20);
+
+        const { data: recentInvoices } = await adminSupabase
+          .from("invoices")
+          .select("id, amount_total, status, created_at, customer:customers(name)")
+          .eq("company_id", companyId)
+          .order("created_at", { ascending: false })
+          .limit(10);
+
+        const { data: customers } = await adminSupabase
+          .from("customers")
+          .select("id, name")
+          .eq("company_id", companyId)
+          .order("name")
+          .limit(50);
+
+        const generalData = result;
         const invoicedDollars = (result.totalInvoiced / 100).toFixed(2);
         const paidDollars = (result.totalPaid / 100).toFixed(2);
-        userPrompt = `The user asked for a summary. Here's the data:
-- Total jobs: ${result.totalJobs}
-- Active jobs: ${result.activeJobs}
+        
+        const recentJobsList = (recentJobs || []).map((j: any) => ({
+          id: j.id,
+          title: j.title,
+          status: j.status,
+          customerName: j.customer?.name || "Unknown",
+        }));
+
+        const recentInvoicesList = (recentInvoices || []).map((inv: any) => ({
+          id: inv.id,
+          amount: inv.amount_total,
+          status: inv.status,
+          customerName: inv.customer?.name || "Unknown",
+          created: inv.created_at,
+        }));
+
+        data = { generalData, recentJobs: recentJobsList, recentInvoices: recentInvoicesList, customers };
+        userPrompt = `The user asked: "${message}"
+
+Here's what I know about the business:
+- Total jobs: ${generalData.totalJobs}
+- Active jobs: ${generalData.activeJobs}
 - Total invoiced: $${invoicedDollars}
 - Total paid: $${paidDollars}
-- Unpaid invoices: ${result.unpaidCount}
+- Unpaid invoices: ${generalData.unpaidCount}
 
-Respond concisely with a brief summary.`;
+Recent jobs (last 20):
+${JSON.stringify(recentJobsList)}
+
+Recent invoices (last 10):
+${JSON.stringify(recentInvoicesList)}
+
+Customers:
+${JSON.stringify(customers?.map((c: any) => ({ name: c.name })) || [])}
+
+Use this data to answer the user's question. Be specific and helpful. If the question is about a specific job, customer, invoice, or material, provide details from the data above.`;
         break;
       }
 
@@ -308,11 +359,37 @@ Respond concisely with a breakdown of jobs by status.`;
           break;
         }
 
+        // Handle queries like "my jobs" or "all jobs" - fall back to general summary
+        const identifierLower = entities.jobIdentifier.toLowerCase();
+        if (identifierLower === 'my' || identifierLower === 'all' || identifierLower.includes('my ') || identifierLower.includes('all ')) {
+          // Fall back to general summary with jobs list
+          const result = await getGeneralSummary(adminSupabase, companyId);
+          const { data: recentJobs } = await adminSupabase
+            .from("jobs")
+            .select("id, title, status, customer:customers(name)")
+            .eq("company_id", companyId)
+            .order("created_at", { ascending: false })
+            .limit(20);
+          
+          data = { jobs: recentJobs || [] };
+          const jobsList = (recentJobs || []).map((j: any) => ({
+            title: j.title,
+            customer: j.customer?.name || "Unknown",
+            status: j.status,
+          }));
+          
+          userPrompt = `The user asked about their jobs. Here are their recent jobs:
+${JSON.stringify(jobsList)}
+
+Respond concisely about their jobs.`;
+          break;
+        }
+
         // First, find the job(s)
         const jobsResult = await getJobsByNameOrCustomer(adminSupabase, companyId, entities.jobIdentifier);
 
         if (jobsResult.count === 0) {
-          specificRefusal = `I don't see any jobs matching "${entities.jobIdentifier}".`;
+          specificRefusal = `I don't see any jobs matching "${entities.jobIdentifier}". Try asking about a specific customer name or job title.`;
           break;
         }
 
@@ -457,9 +534,16 @@ Respond concisely about which jobs need invoices created.`;
       }
 
       case "OUT_OF_SCOPE": {
-        return NextResponse.json({
-          response: "I can only answer questions about your jobs, invoices, estimates, materials, and customers.",
-        });
+        // Even if out of scope, if it mentions business terms, try to answer with available data
+        const normalized = message.toLowerCase();
+        if (/(job|material|invoice|customer|payment|estimate|paint|revenue|money|paid|unpaid)/i.test(normalized)) {
+          // Fall through to default case to fetch and answer with available data
+          // (intentionally no break)
+        } else {
+          return NextResponse.json({
+            response: "I can only answer questions about your jobs, invoices, estimates, materials, and customers.",
+          });
+        }
       }
 
       default: {
@@ -507,7 +591,31 @@ Respond concisely about which jobs need invoices created.`;
           phone: c.phone
         }));
 
-        data = { generalData, recentJobs, recentInvoices, customers };
+        // Also fetch materials for better context
+        // First get job IDs for this company
+        const { data: companyJobs } = await adminSupabase
+          .from("jobs")
+          .select("id")
+          .eq("company_id", companyId);
+        
+        const jobIds = companyJobs?.map(j => j.id) || [];
+        
+        const { data: materialsData } = jobIds.length > 0 ? await adminSupabase
+          .from("job_materials")
+          .select("name, notes, quantity_decimal, unit, job:jobs(title, customer:customers(name))")
+          .in("job_id", jobIds)
+          .limit(50) : { data: null };
+
+        const materials = (materialsData || []).map((m: any) => ({
+          name: m.name,
+          notes: m.notes,
+          quantity: m.quantity_decimal,
+          unit: m.unit,
+          jobTitle: m.job?.title || "Unknown",
+          customerName: m.job?.customer?.name || "Unknown",
+        }));
+
+        data = { generalData, recentJobs, recentInvoices, customers, materials };
         userPrompt = `The user asked: "${message}"
 
 Here's what I know about the business:
@@ -526,7 +634,10 @@ ${JSON.stringify(recentInvoices)}
 Customers:
 ${JSON.stringify(customers)}
 
-Use this data to answer the user's question. Be specific and helpful. If the question is about a specific job, customer, invoice, or material, provide details from the data above.`;
+Materials (last 50):
+${JSON.stringify(materials)}
+
+Use this data to answer the user's question. Be specific and helpful. If the question is about a specific job, customer, invoice, or material, search through the data above and provide details. If asking about paint or materials, look through the materials list. If asking about a customer or job name, search through the jobs and customers lists.`;
         break;
       }
     }
@@ -548,10 +659,16 @@ Use this data to answer the user's question. Be specific and helpful. If the que
       "JOBS_TODAY",
       "JOBS_TOMORROW",
       "MATERIALS_TODAY",
-      "MATERIALS_TOMORROW"
+      "MATERIALS_TOMORROW",
+      "GENERAL_SUMMARY"
     ].includes(intent);
+    
+    // Don't refuse if we have general data (jobs, invoices, customers) even if specific query returned empty
+    const hasGeneralData = data.generalData || data.recentJobs || data.recentInvoices || data.customers || data.materials;
+    
     if (
       !skipEmptyCheck &&
+      !hasGeneralData &&
       (
         (data.count !== undefined && data.count === 0) ||
         (data.jobs && data.jobs.length === 0) ||

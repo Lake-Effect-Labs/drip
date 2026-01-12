@@ -156,8 +156,8 @@ const intentPatterns: IntentPattern[] = [
   },
   {
     intent: "GENERAL_SUMMARY",
-    keywords: ["summary", "overview"],
-    patterns: [/summary/i, /overview/i],
+    keywords: ["summary", "overview", "tell me about", "tell me", "about my"],
+    patterns: [/summary/i, /overview/i, /tell.*me.*about/i, /tell.*me/i, /about.*my/i],
   },
   // New flexible intents
   {
@@ -209,6 +209,11 @@ export function classifyIntent(userInput: string): MatteIntent {
     return "INVOICE_LOOKUP";
   }
 
+  // If query mentions jobs/materials/invoices but no specific intent matched, use general summary
+  if (/(job|material|invoice|customer|payment|estimate)/i.test(normalized)) {
+    return "GENERAL_SUMMARY";
+  }
+
   // Default to out of scope if no match
   return "OUT_OF_SCOPE";
 }
@@ -254,16 +259,36 @@ export function detectEntities(userInput: string): DetectedEntities {
   }
 
   // Detect job identifier (customer name, job keyword)
-  // Look for proper nouns or quoted strings
-  const properNounMatch = normalized.match(/(?:for|job|customer)\s+(?:the\s+)?([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/i);
-  if (properNounMatch) {
-    entities.jobIdentifier = properNounMatch[1];
+  // More flexible: look for words that might be customer names or job identifiers
+  // Remove common stop words first
+  const stopWords = ['the', 'my', 'a', 'an', 'for', 'about', 'tell', 'me', 'what', 'how', 'many', 'much', 'is', 'are', 'do', 'does', 'have', 'has', 'need', 'needs', 'all', 'some', 'any'];
+  const words = normalized.split(/\s+/).filter(w => w.length > 2 && !stopWords.includes(w));
+  
+  // Look for patterns like "johnsons house", "smith job", "customer name"
+  const jobPatterns = [
+    /(?:for|job|customer|about)\s+([a-z]+(?:\s+[a-z]+)?)/i,
+    /([a-z]+)\s+(?:house|job|exterior|interior|property|project)/i,
+    /([a-z]+(?:\s+[a-z]+)?)\s+(?:how much|how many|paint|materials|estimate|invoice)/i,
+  ];
+  
+  for (const pattern of jobPatterns) {
+    const match = normalized.match(pattern);
+    if (match && match[1] && match[1].length > 2) {
+      entities.jobIdentifier = match[1].trim();
+      break;
+    }
   }
-
-  // Also check for common patterns like "Smith job" or "Johnson exterior"
-  const jobNameMatch = normalized.match(/([A-Z][a-z]+)\s+(job|exterior|interior|house|property)/i);
-  if (jobNameMatch) {
-    entities.jobIdentifier = jobNameMatch[1];
+  
+  // If no pattern match, try to extract meaningful words (likely customer/job names)
+  // Take words that aren't common query words
+  if (!entities.jobIdentifier && words.length > 0) {
+    // Filter out common query words
+    const queryWords = ['jobs', 'job', 'materials', 'material', 'paint', 'invoices', 'invoice', 'customers', 'customer', 'payments', 'payment', 'estimates', 'estimate', 'today', 'tomorrow', 'week', 'month', 'year'];
+    const potentialIdentifiers = words.filter(w => !queryWords.includes(w));
+    if (potentialIdentifiers.length > 0) {
+      // Take first 1-2 words as potential identifier
+      entities.jobIdentifier = potentialIdentifiers.slice(0, 2).join(' ');
+    }
   }
 
   return entities;
