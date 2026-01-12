@@ -942,132 +942,134 @@ export function UnifiedPayment({
                   : parseFloat(item.price) || 0;
 
                 return (
-                  <div key={index} className="flex items-center gap-1.5 py-1.5 px-2 rounded-lg border bg-card">
-                    <Select
-                      value={item.type}
-                      onChange={(e) => updateLineItem(index, "type", e.target.value as LineItemType)}
-                      className="w-24 h-9 shrink-0"
-                    >
-                      <option value="area">Area</option>
-                      <option value="labor">Labor</option>
-                      <option value="other">Other</option>
-                    </Select>
+                  <div key={index} className="p-3 sm:p-4 rounded-lg border bg-card space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <Select
+                        value={item.type}
+                        onChange={(e) => updateLineItem(index, "type", e.target.value as LineItemType)}
+                        className="flex-1 min-h-[44px]"
+                      >
+                        <option value="area">Area</option>
+                        <option value="labor">Labor</option>
+                        <option value="other">Other</option>
+                      </Select>
+                      {lineItems.length > 1 && (
+                        <button
+                          onClick={() => removeLineItem(index)}
+                          className="text-muted-foreground hover:text-destructive min-h-[44px] w-11 flex items-center justify-center shrink-0 touch-target"
+                          aria-label="Remove line item"
+                        >
+                          <Trash2 className="h-5 w-5" />
+                        </button>
+                      )}
+                    </div>
 
                     {item.type === "area" ? (
-                      <>
-                        <Select
-                          value={item.areaType || "walls"}
-                          onChange={(e) => updateLineItem(index, "areaType", e.target.value)}
-                          className="w-36 h-9 shrink-0"
-                        >
-                          <option value="walls">Interior Walls</option>
-                          <option value="ceilings">Ceilings</option>
-                          <option value="trim">Trim</option>
-                          <option value="doors">Doors</option>
-                        </Select>
-                        <div className="relative w-24 shrink-0">
-                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">sqft</span>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            placeholder="0"
-                            value={item.sqft || ""}
-                            onChange={(e) => updateLineItem(index, "sqft", e.target.value)}
-                            className="pl-10 h-9 text-sm"
-                          />
-                        </div>
-                        <div className="relative w-28 shrink-0">
-                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$/sqft</span>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            placeholder="0.00"
-                            value={item.ratePerSqft || ""}
-                            onChange={(e) => updateLineItem(index, "ratePerSqft", e.target.value)}
-                            className="pl-12 h-9 text-sm"
-                          />
-                        </div>
-                        <div className="flex items-center justify-end w-20 shrink-0">
-                          <span className="font-semibold text-sm">{formatCurrency(Math.round(itemTotal * 100))}</span>
-                        </div>
-                        {lineItems.length > 1 && (
-                          <button
-                            onClick={() => removeLineItem(index)}
-                            className="text-muted-foreground hover:text-destructive h-9 w-9 flex items-center justify-center shrink-0"
+                      <div className="space-y-3">
+                        <div>
+                          <Label className="text-xs text-muted-foreground mb-1">Area Type</Label>
+                          <Select
+                            value={item.areaType || "walls"}
+                            onChange={(e) => updateLineItem(index, "areaType", e.target.value)}
+                            className="w-full min-h-[44px]"
                           >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        )}
-                      </>
+                            <option value="walls">Interior Walls</option>
+                            <option value="ceilings">Ceilings</option>
+                            <option value="trim">Trim</option>
+                            <option value="doors">Doors</option>
+                          </Select>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <Label className="text-xs text-muted-foreground mb-1">Square Feet</Label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              placeholder="0"
+                              value={item.sqft || ""}
+                              onChange={(e) => updateLineItem(index, "sqft", e.target.value)}
+                              className="min-h-[44px]"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground mb-1">Rate ($/sqft)</Label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              placeholder="0.00"
+                              value={item.ratePerSqft || ""}
+                              onChange={(e) => updateLineItem(index, "ratePerSqft", e.target.value)}
+                              className="min-h-[44px]"
+                            />
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between pt-2 border-t">
+                          <span className="text-sm font-medium text-muted-foreground">Total</span>
+                          <span className="text-lg font-bold">{formatCurrency(Math.round(itemTotal * 100))}</span>
+                        </div>
+                      </div>
                     ) : item.type === "labor" ? (
-                      <>
-                        <div className="relative w-24 shrink-0">
-                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">hrs</span>
-                          <Input
-                            type="number"
-                            step="0.25"
-                            min="0"
-                            placeholder="0"
-                            value={item.hours || ""}
-                            onChange={(e) => updateLineItem(index, "hours", e.target.value)}
-                            className="pl-10 h-9 text-sm"
-                          />
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <Label className="text-xs text-muted-foreground mb-1">Hours</Label>
+                            <Input
+                              type="number"
+                              step="0.25"
+                              min="0"
+                              placeholder="0"
+                              value={item.hours || ""}
+                              onChange={(e) => updateLineItem(index, "hours", e.target.value)}
+                              className="min-h-[44px]"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground mb-1">Rate ($/hr)</Label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              placeholder="0.00"
+                              value={item.ratePerHour || ""}
+                              onChange={(e) => updateLineItem(index, "ratePerHour", e.target.value)}
+                              className="min-h-[44px]"
+                            />
+                          </div>
                         </div>
-                        <div className="relative w-28 shrink-0">
-                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$/hr</span>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            placeholder="0.00"
-                            value={item.ratePerHour || ""}
-                            onChange={(e) => updateLineItem(index, "ratePerHour", e.target.value)}
-                            className="pl-10 h-9 text-sm"
-                          />
+                        <div className="flex items-center justify-between pt-2 border-t">
+                          <span className="text-sm font-medium text-muted-foreground">Total</span>
+                          <span className="text-lg font-bold">{formatCurrency(Math.round(itemTotal * 100))}</span>
                         </div>
-                        <div className="flex items-center justify-end w-20 shrink-0">
-                          <span className="font-semibold text-sm">{formatCurrency(Math.round(itemTotal * 100))}</span>
-                        </div>
-                        {lineItems.length > 1 && (
-                          <button
-                            onClick={() => removeLineItem(index)}
-                            className="text-muted-foreground hover:text-destructive h-9 w-9 flex items-center justify-center shrink-0"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        )}
-                      </>
+                      </div>
                     ) : (
-                      <>
-                        <Input
-                          placeholder="Description"
-                          value={item.title}
-                          onChange={(e) => updateLineItem(index, "title", e.target.value)}
-                          className="flex-1 min-w-[150px] h-9 text-sm"
-                        />
-                        <div className="relative w-28 shrink-0">
-                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">$</span>
+                      <div className="space-y-3">
+                        <div>
+                          <Label className="text-xs text-muted-foreground mb-1">Description</Label>
                           <Input
-                            type="number"
-                            step="0.01"
-                            min="0.01"
-                            placeholder="0.00"
-                            value={item.price}
-                            onChange={(e) => updateLineItem(index, "price", e.target.value)}
-                            className="pl-6 h-9 text-sm"
+                            placeholder="e.g., Materials, Travel, etc."
+                            value={item.title}
+                            onChange={(e) => updateLineItem(index, "title", e.target.value)}
+                            className="w-full min-h-[44px]"
                           />
                         </div>
-                        {lineItems.length > 1 && (
-                          <button
-                            onClick={() => removeLineItem(index)}
-                            className="text-muted-foreground hover:text-destructive h-9 w-9 flex items-center justify-center shrink-0"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        )}
-                      </>
+                        <div>
+                          <Label className="text-xs text-muted-foreground mb-1">Amount</Label>
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0.01"
+                              placeholder="0.00"
+                              value={item.price}
+                              onChange={(e) => updateLineItem(index, "price", e.target.value)}
+                              className="pl-7 min-h-[44px]"
+                            />
+                          </div>
+                        </div>
+                      </div>
                     )}
                   </div>
                 );

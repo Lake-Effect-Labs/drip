@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Package, AlertTriangle, ShoppingCart, Pencil, Trash2, CheckCircle, Briefcase } from "lucide-react";
+import { Plus, Package, AlertTriangle, ShoppingCart, Pencil, Trash2, CheckCircle, Briefcase, Store } from "lucide-react";
 
 type ItemWithLocation = InventoryItem & {
   pickup_location: PickupLocation | null;
@@ -363,6 +363,10 @@ export function InventoryView({
               <ShoppingCart className="mr-1.5 h-3.5 w-3.5" />
               Buy List
             </TabsTrigger>
+            <TabsTrigger value="stores">
+              <Store className="mr-1.5 h-3.5 w-3.5" />
+              Stores ({pickupLocations.length})
+            </TabsTrigger>
           </TabsList>
 
           {/* All Items */}
@@ -474,6 +478,66 @@ export function InventoryView({
                 <p className="text-sm text-muted-foreground">
                   This is a manual buy list. Copy items to your shopping list or order from your vendor.
                 </p>
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Stores */}
+          <TabsContent value="stores" className="mt-4">
+            {pickupLocations.length === 0 ? (
+              <div className="rounded-lg border bg-card p-8 text-center">
+                <Store className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
+                <p className="text-muted-foreground">No pickup locations configured yet</p>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Add stores or pickup locations in Settings to track where you purchase materials.
+                </p>
+              </div>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {pickupLocations.map((location) => {
+                  const itemsForLocation = items.filter(
+                    (item) => item.preferred_pickup_location_id === location.id
+                  );
+                  return (
+                    <div key={location.id} className="rounded-lg border bg-card p-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <div>
+                          <h3 className="font-semibold">{location.name}</h3>
+                          {location.address1 && (
+                            <p className="text-sm text-muted-foreground mt-1">
+                              {location.address1}
+                              {location.city && `, ${location.city}`}
+                              {location.state && `, ${location.state}`}
+                            </p>
+                          )}
+                        </div>
+                        <Badge variant="default">{itemsForLocation.length}</Badge>
+                      </div>
+                      {location.notes && (
+                        <p className="text-xs text-muted-foreground mb-2">{location.notes}</p>
+                      )}
+                      {itemsForLocation.length > 0 && (
+                        <div className="mt-3 pt-3 border-t">
+                          <p className="text-xs font-medium text-muted-foreground mb-2">
+                            Items from this store:
+                          </p>
+                          <div className="space-y-1">
+                            {itemsForLocation.slice(0, 5).map((item) => (
+                              <p key={item.id} className="text-xs truncate">
+                                • {item.name}
+                              </p>
+                            ))}
+                            {itemsForLocation.length > 5 && (
+                              <p className="text-xs text-muted-foreground">
+                                +{itemsForLocation.length - 5} more
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </TabsContent>

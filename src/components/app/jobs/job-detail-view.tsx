@@ -172,10 +172,67 @@ export function JobDetailView({
               est.id === payload.new.id ? { ...est, ...payload.new } : est
             )
           );
-          
+
           // If estimate was accepted, update job status to quoted
           if (payload.new.status === 'accepted' && job.status === 'new') {
             setJob((prev) => ({ ...prev, status: 'quoted' }));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [job.id, job.status, supabase]);
+
+  // Real-time subscription for job updates (schedule acceptance, payment updates, etc.)
+  useEffect(() => {
+    const channel = supabase
+      .channel(`job-${job.id}-updates`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'jobs',
+          filter: `id=eq.${job.id}`,
+        },
+        (payload) => {
+          // Update job with new data
+          setJob((prev) => ({ ...prev, ...payload.new }));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [job.id, supabase]);
+
+  // Real-time subscription for invoice updates (payments, status changes)
+  useEffect(() => {
+    const channel = supabase
+      .channel(`job-${job.id}-invoices`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'invoices',
+          filter: `job_id=eq.${job.id}`,
+        },
+        (payload) => {
+          // Update the invoice in the list
+          setInvoicesList((prev) =>
+            prev.map((inv) =>
+              inv.id === payload.new.id ? { ...inv, ...payload.new } : inv
+            )
+          );
+
+          // If invoice was paid, update job status
+          if (payload.new.status === 'paid' && job.status !== 'paid') {
+            setJob((prev) => ({ ...prev, status: 'paid' }));
           }
         }
       )
@@ -219,12 +276,13 @@ export function JobDetailView({
   const [editingNotes, setEditingNotes] = useState(false);
   const [editingMaterials, setEditingMaterials] = useState(false);
   const [editingPhotos, setEditingPhotos] = useState(false);
-  const [materialFormData, setMaterialFormData] = useState({ 
-    name: "", 
+  const [materialFormData, setMaterialFormData] = useState({
+    name: "",
     brand: "",
-    color: "", 
+    color: "",
     sheen: "",
     quantity: "",
+    quantityUnit: "gal",
     productLine: "",
     area: "",
     notes: "",
@@ -806,22 +864,42 @@ export function JobDetailView({
 
     // Build notes based on material type
     const notesParts = [];
-    
+    let quantityDecimal: number = 1; // Default to 1 if not specified
+    let unit: string | null = null;
+
     if (materialType === "paint") {
       // Paint: Brand, Color, Sheen, Quantity, Product Line, Area, Notes
       if (materialFormData.brand) notesParts.push(materialFormData.brand);
       notesParts.push(materialFormData.color);
       notesParts.push(materialFormData.sheen);
-      if (materialFormData.quantity) notesParts.push(materialFormData.quantity);
+      if (materialFormData.quantity) {
+        const quantityWithUnit = `${materialFormData.quantity} ${materialFormData.quantityUnit}`;
+        notesParts.push(quantityWithUnit);
+        quantityDecimal = parseFloat(materialFormData.quantity);
+        unit = materialFormData.quantityUnit;
+      } else {
+        // Default unit for paint
+        unit = materialFormData.quantityUnit;
+      }
       if (materialFormData.productLine) notesParts.push(`(${materialFormData.productLine})`);
       if (materialFormData.area) notesParts.push(`- ${materialFormData.area}`);
       if (materialFormData.notes) notesParts.push(`| ${materialFormData.notes}`);
     } else {
       // Generic: Quantity, Notes
-      if (materialFormData.quantity) notesParts.push(materialFormData.quantity);
+      if (materialFormData.quantity) {
+        notesParts.push(materialFormData.quantity);
+        // Try to parse quantity for generic materials
+        const parsedQty = parseFloat(materialFormData.quantity);
+        if (!isNaN(parsedQty)) {
+          quantityDecimal = parsedQty;
+        }
+        unit = "each"; // Default unit for generic materials
+      } else {
+        unit = "each";
+      }
       if (materialFormData.notes) notesParts.push(materialFormData.notes);
     }
-    
+
     const notes = notesParts.length > 0 ? notesParts.join(" • ") : null;
 
     try {
@@ -832,6 +910,8 @@ export function JobDetailView({
           name,
           checked: false,
           notes,
+          quantity_decimal: quantityDecimal,
+          unit,
         })
         .select()
         .single();
@@ -844,11 +924,12 @@ export function JobDetailView({
       }
 
       setMaterials((prev) => [...prev, data]);
-      setMaterialFormData({ 
-        name: "", 
+      setMaterialFormData({
+        name: "",
         brand: "",
-        quantity: "", 
-        color: "", 
+        quantity: "",
+        quantityUnit: "gal",
+        color: "",
         sheen: "",
         productLine: "",
         area: "",
@@ -1675,6 +1756,7 @@ export function JobDetailView({
                               color: "",
                               sheen: "",
                               quantity: "",
+                              quantityUnit: "gal",
                               productLine: "",
                               area: "",
                               notes: "",
@@ -1698,6 +1780,7 @@ export function JobDetailView({
                               color: "",
                               sheen: "",
                               quantity: "",
+                              quantityUnit: "gal",
                               productLine: "",
                               area: "",
                               notes: "",
@@ -2470,13 +2553,28 @@ export function JobDetailView({
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="paintQuantity">Quantity</Label>
-                    <Input
-                      id="paintQuantity"
-                      value={materialFormData.quantity}
-                      onChange={(e) => setMaterialFormData({ ...materialFormData, quantity: e.target.value })}
-                      placeholder="e.g., 3 gal, 1 quart"
-                      className="min-h-[44px]"
-                    />
+                    <div className="flex gap-2">
+                      <Input
+                        id="paintQuantity"
+                        type="number"
+                        min="0"
+                        step="0.25"
+                        value={materialFormData.quantity}
+                        onChange={(e) => setMaterialFormData({ ...materialFormData, quantity: e.target.value })}
+                        placeholder="e.g., 3"
+                        className="min-h-[44px] flex-1"
+                      />
+                      <Select
+                        value={materialFormData.quantityUnit}
+                        onChange={(e) => setMaterialFormData({ ...materialFormData, quantityUnit: e.target.value })}
+                        className="min-h-[44px] w-28"
+                      >
+                        <option value="gal">Gallons</option>
+                        <option value="qt">Quarts</option>
+                        <option value="pt">Pints</option>
+                        <option value="oz">Oz</option>
+                      </Select>
+                    </div>
                   </div>
                 </div>
 
