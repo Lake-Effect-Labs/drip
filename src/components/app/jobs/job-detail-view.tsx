@@ -722,7 +722,7 @@ export function JobDetailView({
       setLoadingTimeEntries(false);
     }
     fetchTimeEntries();
-  }, [job.id, supabase]);
+  }, [job.id, supabase, teamMembers]);
 
   // Update newTimeEntry userId when currentUserId changes
   useEffect(() => {
@@ -1445,7 +1445,9 @@ export function JobDetailView({
                         timeEntries.forEach((entry) => {
                           const date = new Date(entry.started_at).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
                           const hours = entry.duration_seconds ? (entry.duration_seconds / 3600).toFixed(1) : "0";
-                          const userName = entry.user?.full_name || "Unknown";
+                          const userName = entry.user_id 
+                            ? (teamMembers.find(m => m.id === entry.user_id)?.fullName || entry.user?.full_name || "Unknown")
+                            : "Unknown";
                           workLog += `- ${date}: ${hours}h - ${userName}\n`;
                         });
                         copyToClipboard(workLog);
@@ -2116,7 +2118,7 @@ export function JobDetailView({
                 {!editingTracking && timeEntries.length > 0 ? (
                   <div>
                     <div className="flex items-center justify-between mb-3">
-                      <h3 className="font-semibold">Tracking</h3>
+                      <h3 className="font-semibold">Time Tracking</h3>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -2132,7 +2134,9 @@ export function JobDetailView({
                         // Group entries by user
                         const groupedByUser = timeEntries.reduce((acc, entry) => {
                           const userId = entry.user_id || 'unknown';
-                          const userName = entry.user?.full_name || 'Unknown';
+                          const userName = userId !== 'unknown' 
+                            ? (teamMembers.find(m => m.id === userId)?.fullName || entry.user?.full_name || 'Unknown')
+                            : 'Unknown';
                           if (!acc[userId]) {
                             acc[userId] = { name: userName, totalHours: 0, entries: [] };
                           }
@@ -2154,7 +2158,7 @@ export function JobDetailView({
                 ) : (
                   <>
                     <div className="flex items-center justify-between">
-                      <h3 className="font-semibold">Tracking</h3>
+                      <h3 className="font-semibold">Time Tracking</h3>
                       {editingTracking && timeEntries.length > 0 && (
                         <Button
                           variant="ghost"
@@ -2234,7 +2238,9 @@ export function JobDetailView({
                           {timeEntries.map((entry) => {
                             const hours = entry.duration_seconds ? (entry.duration_seconds / 3600).toFixed(1) : "0";
                             const date = new Date(entry.started_at).toLocaleDateString([], { month: "short", day: "numeric" });
-                            const userName = entry.user?.full_name || "Unknown";
+                            const userName = entry.user_id 
+                              ? (teamMembers.find(m => m.id === entry.user_id)?.fullName || entry.user?.full_name || "Unknown")
+                              : "Unknown";
 
                             return (
                               <div key={entry.id} className="flex items-center justify-between rounded-lg border bg-muted/30 p-3">
@@ -2661,6 +2667,7 @@ export function JobDetailView({
                     name: "", 
                     brand: "",
                     quantity: "", 
+                    quantityUnit: "gal",
                     color: "", 
                     sheen: "",
                     productLine: "",
