@@ -219,12 +219,13 @@ export function JobDetailView({
   const [editingNotes, setEditingNotes] = useState(false);
   const [editingMaterials, setEditingMaterials] = useState(false);
   const [editingPhotos, setEditingPhotos] = useState(false);
-  const [materialFormData, setMaterialFormData] = useState({ 
-    name: "", 
+  const [materialFormData, setMaterialFormData] = useState({
+    name: "",
     brand: "",
-    color: "", 
+    color: "",
     sheen: "",
     quantity: "",
+    quantityUnit: "gal",
     productLine: "",
     area: "",
     notes: "",
@@ -806,22 +807,42 @@ export function JobDetailView({
 
     // Build notes based on material type
     const notesParts = [];
-    
+    let quantityDecimal: number = 1; // Default to 1 if not specified
+    let unit: string | null = null;
+
     if (materialType === "paint") {
       // Paint: Brand, Color, Sheen, Quantity, Product Line, Area, Notes
       if (materialFormData.brand) notesParts.push(materialFormData.brand);
       notesParts.push(materialFormData.color);
       notesParts.push(materialFormData.sheen);
-      if (materialFormData.quantity) notesParts.push(materialFormData.quantity);
+      if (materialFormData.quantity) {
+        const quantityWithUnit = `${materialFormData.quantity} ${materialFormData.quantityUnit}`;
+        notesParts.push(quantityWithUnit);
+        quantityDecimal = parseFloat(materialFormData.quantity);
+        unit = materialFormData.quantityUnit;
+      } else {
+        // Default unit for paint
+        unit = materialFormData.quantityUnit;
+      }
       if (materialFormData.productLine) notesParts.push(`(${materialFormData.productLine})`);
       if (materialFormData.area) notesParts.push(`- ${materialFormData.area}`);
       if (materialFormData.notes) notesParts.push(`| ${materialFormData.notes}`);
     } else {
       // Generic: Quantity, Notes
-      if (materialFormData.quantity) notesParts.push(materialFormData.quantity);
+      if (materialFormData.quantity) {
+        notesParts.push(materialFormData.quantity);
+        // Try to parse quantity for generic materials
+        const parsedQty = parseFloat(materialFormData.quantity);
+        if (!isNaN(parsedQty)) {
+          quantityDecimal = parsedQty;
+        }
+        unit = "each"; // Default unit for generic materials
+      } else {
+        unit = "each";
+      }
       if (materialFormData.notes) notesParts.push(materialFormData.notes);
     }
-    
+
     const notes = notesParts.length > 0 ? notesParts.join(" • ") : null;
 
     try {
@@ -832,6 +853,8 @@ export function JobDetailView({
           name,
           checked: false,
           notes,
+          quantity_decimal: quantityDecimal,
+          unit,
         })
         .select()
         .single();
@@ -844,11 +867,12 @@ export function JobDetailView({
       }
 
       setMaterials((prev) => [...prev, data]);
-      setMaterialFormData({ 
-        name: "", 
+      setMaterialFormData({
+        name: "",
         brand: "",
-        quantity: "", 
-        color: "", 
+        quantity: "",
+        quantityUnit: "gal",
+        color: "",
         sheen: "",
         productLine: "",
         area: "",
@@ -2470,13 +2494,28 @@ export function JobDetailView({
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="paintQuantity">Quantity</Label>
-                    <Input
-                      id="paintQuantity"
-                      value={materialFormData.quantity}
-                      onChange={(e) => setMaterialFormData({ ...materialFormData, quantity: e.target.value })}
-                      placeholder="e.g., 3 gal, 1 quart"
-                      className="min-h-[44px]"
-                    />
+                    <div className="flex gap-2">
+                      <Input
+                        id="paintQuantity"
+                        type="number"
+                        min="0"
+                        step="0.25"
+                        value={materialFormData.quantity}
+                        onChange={(e) => setMaterialFormData({ ...materialFormData, quantity: e.target.value })}
+                        placeholder="e.g., 3"
+                        className="min-h-[44px] flex-1"
+                      />
+                      <Select
+                        value={materialFormData.quantityUnit}
+                        onChange={(e) => setMaterialFormData({ ...materialFormData, quantityUnit: e.target.value })}
+                        className="min-h-[44px] w-28"
+                      >
+                        <option value="gal">Gallons</option>
+                        <option value="qt">Quarts</option>
+                        <option value="pt">Pints</option>
+                        <option value="oz">Oz</option>
+                      </Select>
+                    </div>
                   </div>
                 </div>
 

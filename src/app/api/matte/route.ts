@@ -21,18 +21,20 @@ import {
 } from "@/lib/matte/queries";
 
 // System prompt for Matte
-const SYSTEM_PROMPT = `You are Matte, a helpful assistant for a painting contractor. You answer questions about their business using only the data provided.
+const SYSTEM_PROMPT = `You are Matte, a helpful assistant for a painting contractor. You answer questions about their business using only the data provided. You have access to comprehensive data about jobs, customers, estimates, invoices, payments, and materials.
 
 Rules:
 - Be concise (1-3 sentences max)
 - Use bullet points for lists
-- Never invent numbers or facts
+- Never invent numbers or facts - only use the data provided
 - Never ask follow-up questions
 - Never say "as an AI" or explain how you work
-- If no data: "I don't see any data for that right now."
-- If out of scope: "I can only answer questions about your jobs, invoices, and materials."
+- If no data: "I don't have that information right now."
+- If out of scope: "I can only answer questions about your jobs, customers, invoices, estimates, payments, and materials."
 - Use natural, conversational language
-- Format currency as dollars (e.g., "$1,200" not "1200 cents")`;
+- Format currency as dollars (e.g., "$1,200" not "1200 cents")
+- When showing job details, include relevant information like customer, status, and dates
+- Be helpful and specific with your answers`;
 
 export async function POST(request: NextRequest) {
   try {
@@ -458,6 +460,74 @@ Respond concisely about which jobs need invoices created.`;
         return NextResponse.json({
           response: "I can only answer questions about your jobs, invoices, estimates, materials, and customers.",
         });
+      }
+
+      default: {
+        // Fallback: fetch comprehensive data for general questions
+        const [generalData, jobsData, invoicesData, customersData] = await Promise.all([
+          getGeneralSummary(adminSupabase, companyId),
+          adminSupabase
+            .from("jobs")
+            .select("id, title, status, scheduled_date, scheduled_time, customer:customers(name)")
+            .eq("company_id", companyId)
+            .limit(20)
+            .order("created_at", { ascending: false }),
+          adminSupabase
+            .from("invoices")
+            .select("id, amount_total, status, created_at, customer:customers(name), job:jobs(title)")
+            .eq("company_id", companyId)
+            .limit(10)
+            .order("created_at", { ascending: false }),
+          adminSupabase
+            .from("customers")
+            .select("id, name, email, phone")
+            .eq("company_id", companyId)
+            .limit(10)
+            .order("name")
+        ]);
+
+        const recentJobs = (jobsData.data || []).map(j => ({
+          title: j.title,
+          status: j.status,
+          customer: (j.customer as any)?.name || "Unknown",
+          scheduledDate: j.scheduled_date,
+          scheduledTime: j.scheduled_time
+        }));
+
+        const recentInvoices = (invoicesData.data || []).map(i => ({
+          customer: (i.customer as any)?.name || "Unknown",
+          job: (i.job as any)?.title || "Unknown",
+          amount: `$${(i.amount_total / 100).toFixed(2)}`,
+          status: i.status
+        }));
+
+        const customers = (customersData.data || []).map(c => ({
+          name: c.name,
+          email: c.email,
+          phone: c.phone
+        }));
+
+        data = { generalData, recentJobs, recentInvoices, customers };
+        userPrompt = `The user asked: "${message}"
+
+Here's what I know about the business:
+- Total jobs: ${generalData.totalJobs}
+- Active jobs: ${generalData.activeJobs}
+- Total invoiced: $${(generalData.totalInvoiced / 100).toFixed(2)}
+- Total paid: $${(generalData.totalPaid / 100).toFixed(2)}
+- Unpaid invoices: ${generalData.unpaidCount}
+
+Recent jobs (last 20):
+${JSON.stringify(recentJobs)}
+
+Recent invoices (last 10):
+${JSON.stringify(recentInvoices)}
+
+Customers:
+${JSON.stringify(customers)}
+
+Use this data to answer the user's question. Be specific and helpful. If the question is about a specific job, customer, invoice, or material, provide details from the data above.`;
+        break;
       }
     }
 
