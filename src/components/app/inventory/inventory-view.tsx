@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
-import type { InventoryItem, PickupLocation } from "@/types/database";
+import type { InventoryItem, PickupLocation, JobMaterial, Job } from "@/types/database";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,26 +18,54 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { useToast } from "@/components/ui/toast";
-import { Plus, Package, AlertTriangle, ShoppingCart, Pencil, Trash2 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Plus, Package, AlertTriangle, ShoppingCart, Pencil, Trash2, CheckCircle, Briefcase } from "lucide-react";
 
 type ItemWithLocation = InventoryItem & {
   pickup_location: PickupLocation | null;
+};
+
+type JobMaterialWithJob = JobMaterial & {
+  job: Job;
 };
 
 interface InventoryViewProps {
   initialItems: ItemWithLocation[];
   pickupLocations: PickupLocation[];
   companyId: string;
+  jobMaterials: JobMaterialWithJob[];
 }
 
 const UNITS = ["each", "gal", "box", "roll", "pack", "can", "tube"];
+const CATEGORIES = [
+  { value: "paint", label: "Paint" },
+  { value: "primer", label: "Primer" },
+  { value: "sundries", label: "Sundries" },
+  { value: "tools", label: "Tools" },
+];
+
+interface MaterialNeed {
+  inventoryItemId: string | null;
+  name: string;
+  totalNeeded: number;
+  unit: string;
+  storeId: string | null;
+  storeName: string | null;
+  onHand: number;
+  quantityStillNeeded: number;
+  jobIds: string[];
+  jobTitles: string[];
+  jobMaterialIds: string[];
+}
 
 export function InventoryView({
   initialItems,
   pickupLocations,
   companyId,
+  jobMaterials,
 }: InventoryViewProps) {
   const [items, setItems] = useState<ItemWithLocation[]>(initialItems);
+  const [materials, setMaterials] = useState<JobMaterialWithJob[]>(jobMaterials);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<ItemWithLocation | null>(null);
   const { addToast } = useToast();
@@ -45,6 +73,7 @@ export function InventoryView({
 
   // Form state
   const [name, setName] = useState("");
+  const [category, setCategory] = useState("sundries");
   const [unit, setUnit] = useState("each");
   const [onHand, setOnHand] = useState("");
   const [reorderAt, setReorderAt] = useState("");
@@ -52,6 +81,7 @@ export function InventoryView({
   const [vendorName, setVendorName] = useState("Sherwin-Williams");
   const [vendorSku, setVendorSku] = useState("");
   const [pickupLocationId, setPickupLocationId] = useState("");
+  const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
 
   const lowStockItems = items.filter((item) => item.on_hand <= item.reorder_at);
@@ -60,8 +90,77 @@ export function InventoryView({
     needed: Math.max(item.reorder_at * 2 - item.on_hand, 1),
   }));
 
+  // Calculate "Materials Needed for Jobs"
+  const materialsNeeded = useMemo(() => {
+    const needsMap = new Map<string, MaterialNeed>();
+
+    materials.forEach((material) => {
+      // Use inventory_item_id as key if linked, otherwise use the material name
+      const key = material.inventory_item_id || `unlinked_${material.name.toLowerCase()}`;
+
+      const existing = needsMap.get(key);
+      const quantity = material.quantity_decimal || 0;
+
+      if (existing) {
+        existing.totalNeeded += quantity;
+        existing.jobIds.push(material.job.id);
+        existing.jobTitles.push(material.job.title);
+        existing.jobMaterialIds.push(material.id);
+      } else {
+        // Find the inventory item if linked
+        const inventoryItem = material.inventory_item_id
+          ? items.find(i => i.id === material.inventory_item_id)
+          : null;
+
+        const onHand = inventoryItem?.on_hand || 0;
+        const storeId = inventoryItem?.preferred_pickup_location_id || null;
+        const storeName = inventoryItem?.pickup_location?.name || null;
+
+        needsMap.set(key, {
+          inventoryItemId: material.inventory_item_id,
+          name: material.name,
+          totalNeeded: quantity,
+          unit: material.unit || inventoryItem?.unit || "each",
+          storeId,
+          storeName,
+          onHand,
+          quantityStillNeeded: Math.max(quantity - onHand, 0),
+          jobIds: [material.job.id],
+          jobTitles: [material.job.title],
+          jobMaterialIds: [material.id],
+        });
+      }
+    });
+
+    // Calculate final quantities still needed
+    Array.from(needsMap.values()).forEach((need) => {
+      need.quantityStillNeeded = Math.max(need.totalNeeded - need.onHand, 0);
+    });
+
+    // Filter to only show items where quantity is still needed
+    const needsArray = Array.from(needsMap.values()).filter(
+      (need) => need.quantityStillNeeded > 0
+    );
+
+    // Group by store
+    const grouped: { [key: string]: MaterialNeed[] } = {
+      "No Store": [],
+    };
+
+    needsArray.forEach((need) => {
+      const storeName = need.storeName || "No Store";
+      if (!grouped[storeName]) {
+        grouped[storeName] = [];
+      }
+      grouped[storeName].push(need);
+    });
+
+    return grouped;
+  }, [materials, items]);
+
   function resetForm() {
     setName("");
+    setCategory("sundries");
     setUnit("each");
     setOnHand("");
     setReorderAt("");
@@ -69,12 +168,14 @@ export function InventoryView({
     setVendorName("Sherwin-Williams");
     setVendorSku("");
     setPickupLocationId("");
+    setNotes("");
     setEditingItem(null);
   }
 
   function openEditDialog(item: ItemWithLocation) {
     setEditingItem(item);
     setName(item.name);
+    setCategory(item.category);
     setUnit(item.unit);
     setOnHand(item.on_hand.toString());
     setReorderAt(item.reorder_at.toString());
@@ -82,6 +183,7 @@ export function InventoryView({
     setVendorName(item.vendor_name || "Sherwin-Williams");
     setVendorSku(item.vendor_sku || "");
     setPickupLocationId(item.preferred_pickup_location_id || "");
+    setNotes(item.notes || "");
     setDialogOpen(true);
   }
 
@@ -100,6 +202,7 @@ export function InventoryView({
       const itemData = {
         company_id: companyId,
         name: name.trim(),
+        category,
         unit,
         on_hand: parseInt(onHand) || 0,
         reorder_at: parseInt(reorderAt) || 0,
@@ -107,6 +210,7 @@ export function InventoryView({
         vendor_name: vendorName || null,
         vendor_sku: vendorSku || null,
         preferred_pickup_location_id: pickupLocationId || null,
+        notes: notes || null,
       };
 
       if (editingItem) {
@@ -191,6 +295,37 @@ export function InventoryView({
     );
   }
 
+  async function handleMarkAsPurchased(jobMaterialIds: string[], inventoryItemId: string | null, quantityPurchased: number) {
+    try {
+      // Mark job materials as purchased
+      const { error: materialsError } = await supabase
+        .from("job_materials")
+        .update({ purchased_at: new Date().toISOString() })
+        .in("id", jobMaterialIds);
+
+      if (materialsError) throw materialsError;
+
+      // If linked to inventory item, increase on_hand quantity
+      if (inventoryItemId) {
+        const item = items.find(i => i.id === inventoryItemId);
+        if (item) {
+          const newQuantity = item.on_hand + quantityPurchased;
+          await handleUpdateQuantity(inventoryItemId, newQuantity);
+        }
+      }
+
+      // Remove from materials list
+      setMaterials((prev) => prev.filter((m) => !jobMaterialIds.includes(m.id)));
+
+      addToast("Marked as purchased!", "success");
+    } catch (error) {
+      console.error("Error marking as purchased:", error);
+      addToast("Failed to mark as purchased", "error");
+    }
+  }
+
+  const materialCount = Object.values(materialsNeeded).flat().length;
+
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
@@ -199,7 +334,8 @@ export function InventoryView({
           <h1 className="text-2xl font-bold">Inventory</h1>
           <p className="text-sm text-muted-foreground">
             {items.length} item{items.length !== 1 ? "s" : ""} •{" "}
-            {lowStockItems.length} low stock
+            {lowStockItems.length} low stock •{" "}
+            {materialCount} needed for jobs
           </p>
         </div>
         <Button onClick={openNewDialog}>
@@ -218,6 +354,10 @@ export function InventoryView({
             <TabsTrigger value="low">
               <AlertTriangle className="mr-1.5 h-3.5 w-3.5" />
               Low Stock ({lowStockItems.length})
+            </TabsTrigger>
+            <TabsTrigger value="needed">
+              <Briefcase className="mr-1.5 h-3.5 w-3.5" />
+              Needed for Jobs ({materialCount})
             </TabsTrigger>
             <TabsTrigger value="buy">
               <ShoppingCart className="mr-1.5 h-3.5 w-3.5" />
@@ -267,6 +407,38 @@ export function InventoryView({
                     onUpdateQuantity={(qty) => handleUpdateQuantity(item.id, qty)}
                     showWarning
                   />
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Materials Needed for Jobs */}
+          <TabsContent value="needed" className="mt-4">
+            {materialCount === 0 ? (
+              <div className="rounded-lg border bg-card p-8 text-center">
+                <p className="text-muted-foreground">No materials needed for active jobs!</p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {Object.entries(materialsNeeded).map(([storeName, needs]) => (
+                  needs.length > 0 && (
+                    <div key={storeName}>
+                      <h3 className="text-sm font-medium text-muted-foreground mb-2">
+                        {storeName}
+                      </h3>
+                      <div className="rounded-lg border bg-card divide-y">
+                        {needs.map((need) => (
+                          <MaterialNeedRow
+                            key={need.inventoryItemId || need.name}
+                            need={need}
+                            onMarkAsPurchased={(qty) =>
+                              handleMarkAsPurchased(need.jobMaterialIds, need.inventoryItemId, qty)
+                            }
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )
                 ))}
               </div>
             )}
@@ -334,6 +506,21 @@ export function InventoryView({
               </div>
 
               <div className="space-y-2">
+                <Label htmlFor="category">Category</Label>
+                <Select
+                  id="category"
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                >
+                  {CATEGORIES.map((cat) => (
+                    <option key={cat.value} value={cat.value}>
+                      {cat.label}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+
+              <div className="space-y-2">
                 <Label htmlFor="unit">Unit</Label>
                 <Select
                   id="unit"
@@ -372,7 +559,7 @@ export function InventoryView({
                 />
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="costPerUnit">Cost per Unit ($)</Label>
                 <Input
                   id="costPerUnit"
@@ -426,6 +613,17 @@ export function InventoryView({
                     ))}
                   </Select>
                 </div>
+
+                <div className="space-y-2 sm:col-span-2">
+                  <Label htmlFor="notes">Notes</Label>
+                  <Textarea
+                    id="notes"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Optional notes about this item"
+                    rows={2}
+                  />
+                </div>
               </div>
             </div>
 
@@ -473,6 +671,9 @@ function InventoryItemRow({
               Low
             </Badge>
           )}
+          <Badge variant="default" className="shrink-0 text-xs">
+            {item.category}
+          </Badge>
         </div>
         <p className="text-sm text-muted-foreground">
           {item.on_hand} {item.unit} on hand
@@ -517,3 +718,44 @@ function InventoryItemRow({
   );
 }
 
+function MaterialNeedRow({
+  need,
+  onMarkAsPurchased,
+}: {
+  need: MaterialNeed;
+  onMarkAsPurchased: (quantity: number) => void;
+}) {
+  return (
+    <div className="p-4 flex items-start gap-4">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2">
+          <p className="font-medium">{need.name}</p>
+          {!need.inventoryItemId && (
+            <Badge variant="default" className="shrink-0 text-xs">
+              Not Linked
+            </Badge>
+          )}
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Total needed: {need.totalNeeded.toFixed(2)} {need.unit}
+          {" • "}
+          On hand: {need.onHand} {need.unit}
+          {" • "}
+          Still need: {need.quantityStillNeeded.toFixed(2)} {need.unit}
+        </p>
+        <p className="text-xs text-muted-foreground mt-1">
+          For {need.jobTitles.length} job{need.jobTitles.length !== 1 ? "s" : ""}: {need.jobTitles.join(", ")}
+        </p>
+      </div>
+
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => onMarkAsPurchased(need.quantityStillNeeded)}
+      >
+        <CheckCircle className="mr-2 h-4 w-4" />
+        Mark as Purchased
+      </Button>
+    </div>
+  );
+}

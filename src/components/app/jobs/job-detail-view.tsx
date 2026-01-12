@@ -1020,9 +1020,57 @@ export function JobDetailView({
   }
 
   async function handleToggleMaterial(materialId: string, checked: boolean) {
+    const material = materials.find(m => m.id === materialId);
+    if (!material) return;
+
+    const updates: any = { checked };
+
+    // Handle inventory consumption for jobs in progress or done
+    if (material.inventory_item_id && material.quantity_decimal) {
+      const shouldConsumeInventory = ["in_progress", "done"].includes(job.status);
+
+      if (shouldConsumeInventory) {
+        if (checked && !material.consumed_at) {
+          // Consume: decrement inventory
+          const { data: inventoryItem, error: fetchError } = await supabase
+            .from("inventory_items")
+            .select("on_hand")
+            .eq("id", material.inventory_item_id)
+            .single();
+
+          if (!fetchError && inventoryItem) {
+            const newQuantity = Math.max(0, inventoryItem.on_hand - (material.quantity_decimal || 0));
+            await supabase
+              .from("inventory_items")
+              .update({ on_hand: newQuantity })
+              .eq("id", material.inventory_item_id);
+
+            updates.consumed_at = new Date().toISOString();
+          }
+        } else if (!checked && material.consumed_at) {
+          // Unconsume: increment inventory back
+          const { data: inventoryItem, error: fetchError } = await supabase
+            .from("inventory_items")
+            .select("on_hand")
+            .eq("id", material.inventory_item_id)
+            .single();
+
+          if (!fetchError && inventoryItem) {
+            const newQuantity = inventoryItem.on_hand + (material.quantity_decimal || 0);
+            await supabase
+              .from("inventory_items")
+              .update({ on_hand: newQuantity })
+              .eq("id", material.inventory_item_id);
+
+            updates.consumed_at = null;
+          }
+        }
+      }
+    }
+
     const { error } = await supabase
       .from("job_materials")
-      .update({ checked })
+      .update(updates)
       .eq("id", materialId);
 
     if (error) {
@@ -1031,7 +1079,7 @@ export function JobDetailView({
     }
 
     setMaterials((prev) =>
-      prev.map((m) => (m.id === materialId ? { ...m, checked } : m))
+      prev.map((m) => (m.id === materialId ? { ...m, ...updates } : m))
     );
   }
 
