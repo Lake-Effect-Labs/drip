@@ -172,10 +172,67 @@ export function JobDetailView({
               est.id === payload.new.id ? { ...est, ...payload.new } : est
             )
           );
-          
+
           // If estimate was accepted, update job status to quoted
           if (payload.new.status === 'accepted' && job.status === 'new') {
             setJob((prev) => ({ ...prev, status: 'quoted' }));
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [job.id, job.status, supabase]);
+
+  // Real-time subscription for job updates (schedule acceptance, payment updates, etc.)
+  useEffect(() => {
+    const channel = supabase
+      .channel(`job-${job.id}-updates`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'jobs',
+          filter: `id=eq.${job.id}`,
+        },
+        (payload) => {
+          // Update job with new data
+          setJob((prev) => ({ ...prev, ...payload.new }));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [job.id, supabase]);
+
+  // Real-time subscription for invoice updates (payments, status changes)
+  useEffect(() => {
+    const channel = supabase
+      .channel(`job-${job.id}-invoices`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'invoices',
+          filter: `job_id=eq.${job.id}`,
+        },
+        (payload) => {
+          // Update the invoice in the list
+          setInvoicesList((prev) =>
+            prev.map((inv) =>
+              inv.id === payload.new.id ? { ...inv, ...payload.new } : inv
+            )
+          );
+
+          // If invoice was paid, update job status
+          if (payload.new.status === 'paid' && job.status !== 'paid') {
+            setJob((prev) => ({ ...prev, status: 'paid' }));
           }
         }
       )
@@ -1699,6 +1756,7 @@ export function JobDetailView({
                               color: "",
                               sheen: "",
                               quantity: "",
+                              quantityUnit: "gal",
                               productLine: "",
                               area: "",
                               notes: "",
@@ -1722,6 +1780,7 @@ export function JobDetailView({
                               color: "",
                               sheen: "",
                               quantity: "",
+                              quantityUnit: "gal",
                               productLine: "",
                               area: "",
                               notes: "",

@@ -61,6 +61,7 @@ export function NewJobDialog({
   const [zip, setZip] = useState("");
   const [notes, setNotes] = useState("");
   const [assignedUserId, setAssignedUserId] = useState("");
+  const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const { addToast} = useToast();
   const supabase = createClient();
 
@@ -279,42 +280,13 @@ export function NewJobDialog({
           {/* Customer Section */}
           <div className="space-y-3 rounded-lg border p-4">
             <h4 className="font-medium text-sm">Customer</h4>
-            <div className="space-y-2">
-              <Label htmlFor="customerSearch">Search Existing Customer (Optional)</Label>
-              <div className="relative">
-                <Input
-                  id="customerSearch"
-                  placeholder="Type to search customers..."
-                  value={customerSearchQuery}
-                  onChange={(e) => {
-                    setCustomerSearchQuery(e.target.value);
-                    setSelectedCustomerId(null);
-                  }}
-                  className="min-h-[44px]"
-                />
-                {customerSearchQuery && filteredCustomers.length > 0 && !selectedCustomerId && (
-                  <div className="absolute z-10 w-full mt-1 max-h-60 overflow-auto rounded-md border bg-popover shadow-lg">
-                    {filteredCustomers.slice(0, 5).map((customer) => (
-                      <button
-                        key={customer.id}
-                        type="button"
-                        onClick={() => handleCustomerSelect(customer.id)}
-                        className="w-full text-left px-4 py-2 hover:bg-muted transition-colors"
-                      >
-                        <div className="font-medium">{customer.name}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {customer.phone && <span>{customer.phone} </span>}
-                          {customer.email && <span>• {customer.email}</span>}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
+
             {selectedCustomerId ? (
-              <div className="rounded-md bg-muted/50 p-3">
-                <p className="text-sm font-medium text-green-700">✓ Using existing customer</p>
+              <div className="rounded-md bg-green-50 border border-green-200 p-3">
+                <p className="text-sm font-medium text-green-800">✓ Using existing customer</p>
+                <p className="text-xs text-green-700 mt-1">
+                  {customers.find(c => c.id === selectedCustomerId)?.name}
+                </p>
                 <button
                   type="button"
                   onClick={() => {
@@ -323,45 +295,118 @@ export function NewJobDialog({
                     setCustomerName("");
                     setCustomerPhone("");
                     setCustomerEmail("");
+                    setShowCustomerSearch(false);
                   }}
-                  className="text-xs text-muted-foreground hover:text-foreground mt-1"
+                  className="text-xs text-green-700 hover:text-green-900 underline mt-2"
                 >
-                  Clear selection
+                  Clear and create new customer
                 </button>
               </div>
             ) : (
               <>
-                <p className="text-xs text-muted-foreground">Or create a new customer:</p>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="space-y-2">
-                    <Label htmlFor="customerName">Name</Label>
-                    <Input
-                      id="customerName"
-                      placeholder="John Smith"
-                      value={customerName}
-                      onChange={(e) => setCustomerName(e.target.value)}
-                    />
+                {/* New Customer Form - Primary */}
+                <div className="space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="customerName">Customer Name *</Label>
+                      <Input
+                        id="customerName"
+                        placeholder="John Smith"
+                        value={customerName}
+                        onChange={(e) => setCustomerName(e.target.value)}
+                        className="min-h-[44px]"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="customerPhone">Phone</Label>
+                      <Input
+                        id="customerPhone"
+                        type="tel"
+                        placeholder="(555) 123-4567"
+                        value={customerPhone}
+                        onChange={(e) => setCustomerPhone(e.target.value)}
+                        className="min-h-[44px]"
+                      />
+                    </div>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="customerPhone">Phone</Label>
+                    <Label htmlFor="customerEmail">Email</Label>
                     <Input
-                      id="customerPhone"
-                      type="tel"
-                      placeholder="(555) 123-4567"
-                      value={customerPhone}
-                      onChange={(e) => setCustomerPhone(e.target.value)}
+                      id="customerEmail"
+                      type="email"
+                      placeholder="john@email.com"
+                      value={customerEmail}
+                      onChange={(e) => setCustomerEmail(e.target.value)}
+                      className="min-h-[44px]"
                     />
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="customerEmail">Email</Label>
-                  <Input
-                    id="customerEmail"
-                    type="email"
-                    placeholder="john@email.com"
-                    value={customerEmail}
-                    onChange={(e) => setCustomerEmail(e.target.value)}
-                  />
+
+                {/* Search Existing - Secondary */}
+                <div className="pt-2 border-t">
+                  {!showCustomerSearch ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowCustomerSearch(true)}
+                      className="text-sm text-muted-foreground hover:text-foreground underline"
+                    >
+                      Or search existing customers
+                    </button>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="customerSearch" className="text-sm">Search Existing Customer</Label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowCustomerSearch(false);
+                            setCustomerSearchQuery("");
+                          }}
+                          className="text-xs text-muted-foreground hover:text-foreground"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                      <div className="relative">
+                        <Input
+                          id="customerSearch"
+                          placeholder="Type name, phone, or email..."
+                          value={customerSearchQuery}
+                          onChange={(e) => {
+                            setCustomerSearchQuery(e.target.value);
+                            setSelectedCustomerId(null);
+                          }}
+                          className="min-h-[44px]"
+                          autoFocus
+                        />
+                        {customerSearchQuery && filteredCustomers.length > 0 && (
+                          <div className="absolute z-50 w-full mt-1 max-h-60 overflow-auto rounded-md border bg-card shadow-lg">
+                            {filteredCustomers.slice(0, 10).map((customer) => (
+                              <button
+                                key={customer.id}
+                                type="button"
+                                onClick={() => handleCustomerSelect(customer.id)}
+                                className="w-full text-left px-4 py-3 hover:bg-muted transition-colors border-b last:border-b-0"
+                              >
+                                <div className="font-medium">{customer.name}</div>
+                                <div className="text-sm text-muted-foreground">
+                                  {customer.phone && <span>{customer.phone}</span>}
+                                  {customer.phone && customer.email && <span className="mx-1">•</span>}
+                                  {customer.email && <span>{customer.email}</span>}
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {customerSearchQuery && filteredCustomers.length === 0 && (
+                          <div className="absolute z-50 w-full mt-1 p-4 rounded-md border bg-card shadow-lg text-center text-sm text-muted-foreground">
+                            No customers found
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </>
             )}
