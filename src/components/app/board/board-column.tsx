@@ -1,6 +1,7 @@
 "use client";
 
 import { useDroppable } from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { cn, type JobStatus } from "@/lib/utils";
 import type { Job, Customer } from "@/types/database";
 import { JobCard } from "./job-card";
@@ -21,6 +22,8 @@ export function BoardColumn({ id, title, jobs, count, onStatusChange, onDuplicat
     id,
   });
 
+  const jobIds = jobs.map((job) => job.id);
+
   return (
     <div
       ref={setNodeRef}
@@ -38,20 +41,22 @@ export function BoardColumn({ id, title, jobs, count, onStatusChange, onDuplicat
       </div>
 
       {/* Cards */}
-      <div className="flex-1 space-y-2 overflow-y-auto p-2 pt-0">
-        {jobs.length === 0 ? (
-          <div className="flex h-24 items-center justify-center rounded-lg border-2 border-dashed border-muted text-sm text-muted-foreground">
-            No jobs
-          </div>
-        ) : (
-          jobs.map((job) => (
-            <JobCard
-              key={job.id}
-              job={job}
-            />
-          ))
-        )}
-      </div>
+      <SortableContext items={jobIds} strategy={verticalListSortingStrategy}>
+        <div className="flex-1 space-y-2 overflow-y-auto p-2 pt-0">
+          {jobs.length === 0 ? (
+            <div className="flex h-24 items-center justify-center rounded-lg border-2 border-dashed border-muted text-sm text-muted-foreground">
+              No jobs
+            </div>
+          ) : (
+            jobs.map((job) => (
+              <JobCard
+                key={job.id}
+                job={job}
+              />
+            ))
+          )}
+        </div>
+      </SortableContext>
     </div>
   );
 }

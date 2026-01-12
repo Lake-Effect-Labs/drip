@@ -35,7 +35,7 @@ export default async function InventoryPage() {
 
   // Fetch job materials for active/upcoming jobs
   // Only include jobs that are not yet completed (new, quoted, scheduled, in_progress)
-  const { data: jobMaterials } = await supabase
+  const { data: jobMaterialsRaw } = await supabase
     .from("job_materials")
     .select(`
       *,
@@ -49,6 +49,9 @@ export default async function InventoryPage() {
     .eq("job.company_id", companyUser.company_id)
     .in("job.status", ["new", "quoted", "scheduled", "in_progress"])
     .is("purchased_at", null); // Only unpurchased materials
+
+  // Type cast the result properly
+  const jobMaterials = (jobMaterialsRaw || []) as any[];
 
   // Map pickup locations to items
   const locationMap = new Map(locations?.map((l) => [l.id, l]) || []);
