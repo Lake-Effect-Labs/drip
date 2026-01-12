@@ -21,20 +21,98 @@ import {
 } from "@/lib/matte/queries";
 
 // System prompt for Matte
-const SYSTEM_PROMPT = `You are Matte, a helpful assistant for a painting contractor. You answer questions about their business using only the data provided. You have access to comprehensive data about jobs, customers, estimates, invoices, payments, and materials.
+const SYSTEM_PROMPT = `ROLE
 
-Rules:
-- Be concise (1-3 sentences max)
-- Use bullet points for lists
-- Never invent numbers or facts - only use the data provided
-- Never ask follow-up questions
-- Never say "as an AI" or explain how you work
-- If no data: "I don't have that information right now."
-- If out of scope: "I can only answer questions about your jobs, customers, invoices, estimates, payments, and materials."
-- Use natural, conversational language
-- Format currency as dollars (e.g., "$1,200" not "1200 cents")
-- When showing job details, include relevant information like customer, status, and dates
-- Be helpful and specific with your answers`;
+You are Matte AI, a read-only analytical assistant for a painting company.
+
+Your ONLY source of truth is the structured data explicitly provided to you in the context of the request.
+
+You are not allowed to:
+- Guess
+- Infer missing values
+- Assume typical industry behavior
+- Fill gaps with "common sense"
+- Use external knowledge
+- Answer from memory
+
+If the data is not present, you must say so.
+
+ALLOWED DATA
+
+You may ONLY answer questions using data from:
+- Jobs
+- Estimates
+- Invoices
+- Inventory items
+- Job materials checklists
+- Stores
+- Customers
+- Payments (if provided)
+- Company settings
+
+If a field, record, or relationship is missing, you must treat it as unknown, not false.
+
+ANSWER RULES (CRITICAL)
+
+Rule 1 — No Data = No Answer
+If the question cannot be answered exactly with the provided data:
+Respond with: "I don't have enough data to answer that."
+Optionally add: "Here's what I would need to answer it accurately: …"
+
+Rule 2 — Cite the Source Internally
+Every answer must state where the data came from.
+Example: "Based on 12 completed jobs from January–March 2026…"
+If you can't cite the source → You cannot answer.
+
+Rule 3 — Never Extrapolate
+Do NOT:
+- Project future totals
+- Average across incomplete datasets
+- Estimate missing consumption
+- Assume defaults unless explicitly provided
+
+Bad ❌: "You probably used about 20 gallons…"
+Good ✅: "Recorded job materials show 14 gallons across 5 jobs."
+
+Rule 4 — Ask to Clarify, Don't Guess
+If the question is ambiguous, ask one clarifying question and stop.
+Example: "Do you want only completed jobs, or all jobs including scheduled?"
+
+RESPONSE FORMAT (MANDATORY)
+
+All responses must follow this structure:
+
+📊 Answer
+(Short, direct answer or "I don't have enough data.")
+
+📁 Data Used
+- Data source(s)
+- Date range
+- Filters applied
+
+⚠️ Limitations
+- What is missing or incomplete
+- Any assumptions explicitly NOT made
+
+HARD CONSTRAINTS (DO NOT VIOLATE)
+- NEVER answer with "typically", "usually", or "most painters"
+- NEVER invent quantities
+- NEVER use external knowledge
+- NEVER be confident without citations
+- NEVER hide uncertainty
+
+PRIMARY GOAL
+Your goal is trust, not completeness.
+A correct "I don't know" is always better than a wrong answer.
+
+FINAL CHECK (SELF-EVALUATION)
+Before responding, silently verify:
+- Did I use only provided data?
+- Can I cite the source?
+- Did I avoid assumptions?
+- Did I clearly state limitations?
+
+If any answer is "no" → do not answer.`;
 
 export async function POST(request: NextRequest) {
   try {
@@ -122,17 +200,33 @@ Respond concisely about payments received this week.`;
 
       case "JOBS_TODAY": {
         const today = new Date();
-        const result = await getJobsForDate(adminSupabase, companyId, today);
+        // Use local date to avoid timezone issues
+        const todayLocal = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        const result = await getJobsForDate(adminSupabase, companyId, todayLocal);
         data = result;
         
         // Format today's date for the prompt
         const todayStr = today.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
         
-        userPrompt = `The user asked about jobs today (${todayStr}). Here's the data:
+        // Always log for debugging
+        console.log("JOBS_TODAY - Today date object:", todayLocal);
+        console.log("JOBS_TODAY - Today date string:", `${todayLocal.getFullYear()}-${String(todayLocal.getMonth() + 1).padStart(2, "0")}-${String(todayLocal.getDate()).padStart(2, "0")}`);
+        console.log("JOBS_TODAY - Result count:", result.count);
+        console.log("JOBS_TODAY - Jobs found:", result.jobs);
+        
+        userPrompt = `The user asked: "${message}"
+
+Here is the EXACT data available:
+- Date searched: ${todayStr}
 - Count: ${result.count}
 - Jobs: ${JSON.stringify(result.jobs.map((j) => ({ title: j.title, customer: j.customerName, status: j.status, scheduledDate: j.scheduledDate })))}
 
-Respond concisely about today's jobs. If count is 0, say "You have no jobs scheduled for today."`;
+CRITICAL: You must respond using ONLY this data. Use the mandatory format:
+📊 Answer
+📁 Data Used
+⚠️ Limitations
+
+If count is 0, your answer must be: "I don't have enough data to answer that. No jobs are scheduled for today in the database."`;
         break;
       }
 
@@ -174,10 +268,17 @@ Respond concisely about jobs that haven't moved.`;
       case "MATERIALS_TODAY": {
         const result = await getMaterialsForDate(adminSupabase, companyId, new Date());
         data = result;
-        userPrompt = `The user asked about materials needed (defaulting to today if no date specified). Here's the data:
+        
+        if (result.materials.length === 0) {
+          userPrompt = `The user asked about materials needed for today. There are no materials needed for jobs scheduled today.
+
+Respond concisely: "You don't need any materials for today."`;
+        } else {
+          userPrompt = `The user asked about materials needed for today. Here's the data:
 - Materials: ${JSON.stringify(result.materials.map((m) => ({ name: m.name, job: m.jobTitle, customer: m.customerName })))}
 
-Respond concisely about materials needed. If no materials, say "You don't need any materials today."`;
+Respond concisely about the materials needed. List the materials and which jobs they're for.`;
+        }
         break;
       }
 
@@ -186,10 +287,17 @@ Respond concisely about materials needed. If no materials, say "You don't need a
         tomorrow.setDate(tomorrow.getDate() + 1);
         const result = await getMaterialsForDate(adminSupabase, companyId, tomorrow);
         data = result;
-        userPrompt = `The user asked about materials needed tomorrow. Here's the data:
+        
+        if (result.materials.length === 0) {
+          userPrompt = `The user asked about materials needed for tomorrow. There are no materials needed for jobs scheduled tomorrow.
+
+Respond concisely: "You don't need any materials for tomorrow."`;
+        } else {
+          userPrompt = `The user asked about materials needed for tomorrow. Here's the data:
 - Materials: ${JSON.stringify(result.materials.map((m) => ({ name: m.name, job: m.jobTitle, customer: m.customerName })))}
 
-Respond concisely about materials needed tomorrow.`;
+Respond concisely about the materials needed tomorrow. List the materials and which jobs they're for.`;
+        }
         break;
       }
 
@@ -637,7 +745,16 @@ ${JSON.stringify(customers)}
 Materials (last 50):
 ${JSON.stringify(materials)}
 
-Use this data to answer the user's question. Be specific and helpful. If the question is about a specific job, customer, invoice, or material, search through the data above and provide details. If asking about paint or materials, look through the materials list. If asking about a customer or job name, search through the jobs and customers lists.`;
+CRITICAL INSTRUCTIONS:
+1. You must respond using ONLY the data provided above
+2. Use the mandatory format:
+   📊 Answer
+   📁 Data Used
+   ⚠️ Limitations
+3. If you cannot answer with the provided data, say "I don't have enough data to answer that."
+4. Always cite your sources (e.g., "Based on jobs data", "From invoices data")
+5. Never guess, infer, or assume anything not in the data
+6. If data is missing or incomplete, state it clearly in the Limitations section`;
         break;
       }
     }
@@ -702,8 +819,8 @@ Use this data to answer the user's question. Be specific and helpful. If the que
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: userPrompt },
         ],
-        max_tokens: 150,
-        temperature: 0.3,
+        max_tokens: 400,
+        temperature: 0.1,
       }),
     });
 

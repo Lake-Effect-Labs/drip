@@ -40,6 +40,7 @@ export function JobCard({ job }: JobCardProps) {
     // If we're dragging, don't navigate
     if (isDragging) {
       e.preventDefault();
+      e.stopPropagation();
       return;
     }
 
@@ -48,9 +49,10 @@ export function JobCard({ job }: JobCardProps) {
       const deltaX = Math.abs(e.clientX - dragStartPos.current.x);
       const deltaY = Math.abs(e.clientY - dragStartPos.current.y);
       
-      // If moved more than 5px, it was a drag
-      if (deltaX > 5 || deltaY > 5) {
+      // If moved more than 10px, it was a drag (increased threshold to avoid conflicts)
+      if (deltaX > 10 || deltaY > 10) {
         e.preventDefault();
+        e.stopPropagation();
         dragStartPos.current = null;
         return;
       }

@@ -147,37 +147,84 @@ export async function getJobsForDate(
   companyId: string,
   date: Date
 ): Promise<JobsData> {
-  // Format date in local timezone (YYYY-MM-DD) to match database DATE type
-  // Use local date methods to avoid UTC timezone issues
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  const dateStr = `${year}-${month}-${day}`;
+  // Normalize the target date to YYYY-MM-DD format
+  // Use UTC to avoid timezone issues - get the date components in local time but format as UTC date string
+  const targetYear = date.getFullYear();
+  const targetMonth = date.getMonth();
+  const targetDay = date.getDate();
   
-  const nextDay = new Date(date);
-  nextDay.setDate(nextDay.getDate() + 1);
-  const nextYear = nextDay.getFullYear();
-  const nextMonth = String(nextDay.getMonth() + 1).padStart(2, "0");
-  const nextDayNum = String(nextDay.getDate()).padStart(2, "0");
-  const nextDayStr = `${nextYear}-${nextMonth}-${nextDayNum}`;
+  // Create a date string in YYYY-MM-DD format
+  const targetDateStr = `${targetYear}-${String(targetMonth + 1).padStart(2, "0")}-${String(targetDay).padStart(2, "0")}`;
 
-  // Query jobs - scheduled_date is DATE type, so we compare as strings
-  const { data: jobs, error } = await supabase
+  // Fetch all jobs with scheduled dates for this company
+  const { data: allJobs, error } = await supabase
     .from("jobs")
     .select("id, title, status, scheduled_date, scheduled_time, customer:customers(name)")
     .eq("company_id", companyId)
-    .not("scheduled_date", "is", null)
-    .gte("scheduled_date", dateStr)
-    .lt("scheduled_date", nextDayStr)
-    .order("scheduled_date", { ascending: true })
-    .order("scheduled_time", { ascending: true, nullsFirst: false });
+    .not("scheduled_date", "is", null);
 
   if (error) {
-    console.error("Error fetching jobs for date:", error);
+    console.error("Error fetching jobs for date:", error, "Target date:", targetDateStr);
     return { count: 0, jobs: [] };
   }
 
-  const jobsList = (jobs || []).map((job) => ({
+  // Filter jobs where scheduled_date matches the target date
+  // scheduled_date is a DATE type, so it should be in YYYY-MM-DD format
+  // But handle both DATE (YYYY-MM-DD) and TIMESTAMP (YYYY-MM-DDTHH:mm:ss) formats
+  const matchingJobs = (allJobs || []).filter((job) => {
+    if (!job.scheduled_date) return false;
+    
+    // Extract date part - handle both formats
+    let jobDateStr: string;
+    if (job.scheduled_date.includes("T")) {
+      // It's a timestamp, extract date part
+      jobDateStr = job.scheduled_date.split("T")[0];
+    } else {
+      // It's already a date string
+      jobDateStr = job.scheduled_date;
+    }
+    
+    // Normalize both dates for comparison (remove any trailing time/zone info)
+    const normalizedJobDate = jobDateStr.trim();
+    const normalizedTargetDate = targetDateStr.trim();
+    
+    const matches = normalizedJobDate === normalizedTargetDate;
+    
+    // Always log in development to debug
+    if (process.env.NODE_ENV === "development" && allJobs && allJobs.length < 10) {
+      console.log(`Comparing: "${normalizedJobDate}" === "${normalizedTargetDate}" = ${matches}`);
+    }
+    
+    return matches;
+  });
+
+  // Sort by scheduled_date then scheduled_time
+  matchingJobs.sort((a, b) => {
+    if (a.scheduled_date !== b.scheduled_date) {
+      return (a.scheduled_date || "").localeCompare(b.scheduled_date || "");
+    }
+    const timeA = a.scheduled_time || "00:00";
+    const timeB = b.scheduled_time || "00:00";
+    return timeA.localeCompare(timeB);
+  });
+
+  // Always log for debugging
+  console.log("getJobsForDate - Target date:", targetDateStr);
+  console.log("getJobsForDate - All jobs with dates:", allJobs?.length || 0);
+  console.log("getJobsForDate - Matching jobs:", matchingJobs.length);
+  if (allJobs && allJobs.length > 0) {
+    console.log("getJobsForDate - All job scheduled dates:", allJobs.map(j => ({
+      id: j.id,
+      title: j.title,
+      scheduled_date: j.scheduled_date,
+      datePart: j.scheduled_date?.split("T")[0],
+      matches: j.scheduled_date?.split("T")[0] === targetDateStr
+    })));
+  } else {
+    console.log("getJobsForDate - No jobs found with scheduled_date");
+  }
+
+  const jobsList = matchingJobs.map((job) => ({
     id: job.id,
     title: job.title,
     customerName: (job.customer as any)?.name || "Unknown",

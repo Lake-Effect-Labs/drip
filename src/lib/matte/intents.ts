@@ -46,6 +46,26 @@ interface IntentPattern {
 
 const intentPatterns: IntentPattern[] = [
   // Date-specific queries first (more specific)
+  // Check materials queries BEFORE jobs queries to avoid conflicts
+  {
+    intent: "MATERIALS_TODAY",
+    keywords: ["materials today", "need today", "paint today", "what materials do i need", "what materials", "materials i need"],
+    patterns: [
+      /what.*material.*(need|today)/i,
+      /material.*(need|today)/i,
+      /need.*material/i,
+      /material.*today/i,
+      /(what|which).*material/i,
+      /paint.*today/i,
+      /what.*(paint|supplies|materials).*need/i,
+      /what.*(materials|paint|supplies).*for.*today/i,
+    ],
+  },
+  {
+    intent: "MATERIALS_TOMORROW",
+    keywords: ["materials tomorrow", "need tomorrow", "paint tomorrow"],
+    patterns: [/material.*tomorrow/i, /need.*tomorrow/i, /paint.*tomorrow/i],
+  },
   {
     intent: "JOBS_TODAY",
     keywords: ["jobs today", "today's jobs", "scheduled today", "what do i have today", "how many jobs today"],
@@ -53,32 +73,16 @@ const intentPatterns: IntentPattern[] = [
       /how.*many.*job.*today/i,
       /job.*today/i,
       /today.*job/i,
-      /what.*today/i,
+      /what.*(job|work|scheduled).*today/i,
       /scheduled.*today/i,
-      /have.*today/i,
+      /(what|which).*have.*today/i,
+      /what.*do.*i.*have.*today/i,
     ],
   },
   {
     intent: "JOBS_TOMORROW",
     keywords: ["jobs tomorrow", "tomorrow's jobs", "scheduled tomorrow"],
     patterns: [/job.*tomorrow/i, /tomorrow.*job/i, /scheduled.*tomorrow/i],
-  },
-  {
-    intent: "MATERIALS_TODAY",
-    keywords: ["materials today", "need today", "paint today", "what materials do i need", "what materials", "materials i need"],
-    patterns: [
-      /what.*material.*need/i,
-      /material.*need/i,
-      /need.*material/i,
-      /material.*today/i,
-      /need.*today/i,
-      /paint.*today/i,
-    ],
-  },
-  {
-    intent: "MATERIALS_TOMORROW",
-    keywords: ["materials tomorrow", "need tomorrow", "paint tomorrow"],
-    patterns: [/material.*tomorrow/i, /need.*tomorrow/i, /paint.*tomorrow/i],
   },
   {
     intent: "PAYMENTS_THIS_WEEK",

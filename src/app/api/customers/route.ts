@@ -2,6 +2,63 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/server";
 import { createClient } from "@/lib/supabase/server";
 
+// Get customers for the authenticated user's company
+export async function GET(request: Request) {
+  const supabase = await createClient();
+  const adminSupabase = createAdminClient();
+
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Get company ID
+    const { data: companyUser } = await adminSupabase
+      .from("company_users")
+      .select("company_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    if (!companyUser) {
+      return NextResponse.json(
+        { error: "User not associated with a company" },
+        { status: 403 }
+      );
+    }
+
+    // Fetch customers for this company
+    const { data: customers, error: customersError } = await adminSupabase
+      .from("customers")
+      .select("*")
+      .eq("company_id", companyUser.company_id)
+      .order("name");
+
+    if (customersError) {
+      if (process.env.NODE_ENV === "development") {
+        console.error("Error fetching customers:", customersError);
+      }
+      return NextResponse.json(
+        { error: "Failed to fetch customers" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json(customers || []);
+  } catch (error) {
+    if (process.env.NODE_ENV === "development") {
+      console.error("Error in customer fetch:", error);
+    }
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
+
 // Create customer (uses admin client to bypass RLS)
 export async function POST(request: Request) {
   const supabase = await createClient();

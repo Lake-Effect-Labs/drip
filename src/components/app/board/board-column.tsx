@@ -29,7 +29,7 @@ export function BoardColumn({ id, title, jobs, count, onStatusChange, onDuplicat
       ref={setNodeRef}
       className={cn(
         "board-column flex w-72 flex-shrink-0 flex-col rounded-lg bg-muted/50 transition-colors",
-        isOver && "bg-muted"
+        isOver && "bg-muted ring-2 ring-primary ring-offset-2"
       )}
     >
       {/* Column header */}
@@ -41,22 +41,24 @@ export function BoardColumn({ id, title, jobs, count, onStatusChange, onDuplicat
       </div>
 
       {/* Cards */}
-      <SortableContext items={jobIds} strategy={verticalListSortingStrategy}>
-        <div className="flex-1 space-y-2 overflow-y-auto p-2 pt-0">
+      <div className="flex-1 overflow-y-auto p-2 pt-0 min-h-[200px]">
+        <SortableContext items={jobIds} strategy={verticalListSortingStrategy}>
           {jobs.length === 0 ? (
-            <div className="flex h-24 items-center justify-center rounded-lg border-2 border-dashed border-muted text-sm text-muted-foreground">
+            <div className="flex h-24 items-center justify-center rounded-lg border-2 border-dashed border-muted text-sm text-muted-foreground pointer-events-none">
               No jobs
             </div>
           ) : (
-            jobs.map((job) => (
-              <JobCard
-                key={job.id}
-                job={job}
-              />
-            ))
+            <div className="space-y-2">
+              {jobs.map((job) => (
+                <JobCard
+                  key={job.id}
+                  job={job}
+                />
+              ))}
+            </div>
           )}
-        </div>
-      </SortableContext>
+        </SortableContext>
+      </div>
     </div>
   );
 }

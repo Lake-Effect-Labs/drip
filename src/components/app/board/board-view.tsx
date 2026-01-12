@@ -78,9 +78,7 @@ export function BoardView({
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 5,
-        delay: 100,
-        tolerance: 5,
+        distance: 3,
       },
     }),
     useSensor(KeyboardSensor, {
@@ -143,61 +141,67 @@ export function BoardView({
       const activeId = active.id as string;
       const overId = over.id as string;
 
+      // Find the active job
+      const activeJob = jobs.find((j) => j.id === activeId);
+      if (!activeJob) return;
+
       // Check if overId is a valid status (column) or a job (within column sorting)
       const isValidStatus = JOB_STATUSES.includes(overId as JobStatus);
-
+      
+      let targetStatus: JobStatus | null = null;
+      
       if (isValidStatus) {
-        // Dragging to a different column (status change)
-        const jobId = activeId;
-        const newStatus = overId as JobStatus;
+        // Dropped directly on the column
+        targetStatus = overId as JobStatus;
+      } else {
+        // Dropped on a card - find that card's status
+        const overJob = jobs.find((j) => j.id === overId);
+        if (overJob) {
+          targetStatus = overJob.status;
+        }
+      }
 
-        // Find the job and check if status changed
-        const job = jobs.find((j) => j.id === jobId);
-        if (!job || job.status === newStatus) return;
-
+      // If we have a target status and it's different from the current status, update it
+      if (targetStatus && activeJob.status !== targetStatus) {
         // Optimistically update UI
         setJobs((prev) =>
-          prev.map((j) => (j.id === jobId ? { ...j, status: newStatus } : j))
+          prev.map((j) => (j.id === activeId ? { ...j, status: targetStatus! } : j))
         );
 
         // Update in database via API (bypasses RLS)
-        const updateResponse = await fetch(`/api/jobs/${jobId}`, {
+        const updateResponse = await fetch(`/api/jobs/${activeId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status: newStatus }),
+          body: JSON.stringify({ status: targetStatus }),
         });
 
         if (!updateResponse.ok) {
           // Revert on error
           setJobs((prev) =>
-            prev.map((j) => (j.id === jobId ? { ...j, status: job.status } : j))
+            prev.map((j) => (j.id === activeId ? { ...j, status: activeJob.status } : j))
           );
           addToast("Failed to update job status", "error");
         }
-      } else {
+      } else if (activeId !== overId && activeJob.status === targetStatus) {
         // Dragging within the same column (reordering)
         // For now, we just allow the visual reordering without persisting
         // The dnd-kit sortable will handle the visual update automatically
         // To persist, we would need to add a sort_order field to the jobs table
-        if (activeId !== overId) {
-          const activeJob = jobs.find((j) => j.id === activeId);
-          const overJob = jobs.find((j) => j.id === overId);
+        const overJob = jobs.find((j) => j.id === overId);
+        if (overJob && overJob.status === activeJob.status) {
+          // Reorder within the same status
+          const statusJobs = jobs.filter((j) => j.status === activeJob.status);
+          const otherJobs = jobs.filter((j) => j.status !== activeJob.status);
 
-          if (activeJob && overJob && activeJob.status === overJob.status) {
-            // Reorder within the same status
-            const statusJobs = jobs.filter((j) => j.status === activeJob.status);
-            const otherJobs = jobs.filter((j) => j.status !== activeJob.status);
+          const oldIndex = statusJobs.findIndex((j) => j.id === activeId);
+          const newIndex = statusJobs.findIndex((j) => j.id === overId);
 
-            const oldIndex = statusJobs.findIndex((j) => j.id === activeId);
-            const newIndex = statusJobs.findIndex((j) => j.id === overId);
+          if (oldIndex !== -1 && newIndex !== -1) {
+            const reorderedStatusJobs = [...statusJobs];
+            const [removed] = reorderedStatusJobs.splice(oldIndex, 1);
+            reorderedStatusJobs.splice(newIndex, 0, removed);
 
-            if (oldIndex !== -1 && newIndex !== -1) {
-              const reorderedStatusJobs = [...statusJobs];
-              const [removed] = reorderedStatusJobs.splice(oldIndex, 1);
-              reorderedStatusJobs.splice(newIndex, 0, removed);
-
-              setJobs([...otherJobs, ...reorderedStatusJobs]);
-            }
+            setJobs([...otherJobs, ...reorderedStatusJobs]);
           }
         }
       }
