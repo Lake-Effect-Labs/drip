@@ -1,6 +1,7 @@
 "use client";
 
-import { useDraggable } from "@dnd-kit/core";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { useRouter } from "next/navigation";
 import { useRef } from "react";
 import { cn, formatDate } from "@/lib/utils";
@@ -16,17 +17,16 @@ interface JobCardProps {
 export function JobCard({ job }: JobCardProps) {
   const router = useRouter();
   const dragStartPos = useRef<{ x: number; y: number } | null>(null);
-  
-  const { attributes, listeners, setNodeRef, transform, isDragging } =
-    useDraggable({
+
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({
       id: job.id,
     });
 
-  const style = transform
-    ? {
-        transform: `translate3d(${transform.x}px, ${transform.y}px, 0)`,
-      }
-    : undefined;
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
 
   const address = [job.address1, job.city, job.state]
     .filter(Boolean)
@@ -66,7 +66,7 @@ export function JobCard({ job }: JobCardProps) {
       ref={setNodeRef}
       style={style}
       className={cn(
-        "cursor-grab rounded-lg border bg-card p-3 shadow-sm transition-shadow hover:shadow-md active:cursor-grabbing",
+        "cursor-grab rounded-lg border bg-card p-3 shadow-sm transition-shadow hover:shadow-md active:cursor-grabbing select-none",
         isDragging && "opacity-50"
       )}
       {...listeners}
@@ -74,7 +74,7 @@ export function JobCard({ job }: JobCardProps) {
       onMouseDown={handleMouseDown}
       onClick={handleClick}
     >
-      <div className="block">
+      <div className="block select-none">
         <h4 className="font-medium text-foreground line-clamp-1">{job.title}</h4>
 
         {job.customer && (

@@ -429,7 +429,7 @@ export function ScheduleView({
                     ))}
                   </div>
                   {/* Month view grid */}
-                  <div className="grid grid-cols-7 gap-1">
+                  <div className="grid grid-cols-7 gap-1 auto-rows-fr" style={{ height: "calc(100vh - 280px)" }}>
                     {viewDays.map((day, index) => {
                       const dayKey = format(day, "yyyy-MM-dd");
                       const dayJobs = jobsByDate.get(dayKey) || [];
@@ -440,19 +440,19 @@ export function ScheduleView({
                         <div
                           key={index}
                           className={cn(
-                            "min-h-[100px] border rounded-lg p-2",
+                            "border rounded-lg p-2 flex flex-col overflow-hidden",
                             !isCurrentMonth && "bg-muted/30 text-muted-foreground",
                             isToday && "ring-2 ring-primary"
                           )}
                         >
                           <div className={cn(
-                            "text-sm font-semibold mb-1",
+                            "text-sm font-semibold mb-1 shrink-0",
                             isToday && "text-primary"
                           )}>
                             {format(day, "d")}
                           </div>
-                          <div className="space-y-1">
-                            {dayJobs.slice(0, 3).map((job) => (
+                          <div className="space-y-1 overflow-y-auto flex-1">
+                            {dayJobs.map((job) => (
                               <Link
                                 key={job.id}
                                 href={`/app/jobs/${job.id}`}
@@ -467,11 +467,6 @@ export function ScheduleView({
                                 </div>
                               </Link>
                             ))}
-                            {dayJobs.length > 3 && (
-                              <div className="text-xs text-muted-foreground">
-                                +{dayJobs.length - 3} more
-                              </div>
-                            )}
                           </div>
                         </div>
                       );

@@ -471,6 +471,8 @@ export interface Database {
           vendor_name: string | null;
           vendor_sku: string | null;
           preferred_pickup_location_id: string | null;
+          category: string;
+          notes: string | null;
           created_at: string;
         };
         Insert: {
@@ -484,6 +486,8 @@ export interface Database {
           vendor_name?: string | null;
           vendor_sku?: string | null;
           preferred_pickup_location_id?: string | null;
+          category?: string;
+          notes?: string | null;
           created_at?: string;
         };
         Update: {
@@ -497,6 +501,8 @@ export interface Database {
           vendor_name?: string | null;
           vendor_sku?: string | null;
           preferred_pickup_location_id?: string | null;
+          category?: string;
+          notes?: string | null;
           created_at?: string;
         };
         Relationships: [];
@@ -513,6 +519,8 @@ export interface Database {
           cost_per_unit: number | null;
           quantity_decimal: number | null;
           unit: string | null;
+          purchased_at: string | null;
+          consumed_at: string | null;
           created_at: string;
         };
         Insert: {
@@ -526,6 +534,8 @@ export interface Database {
           cost_per_unit?: number | null;
           quantity_decimal?: number | null;
           unit?: string | null;
+          purchased_at?: string | null;
+          consumed_at?: string | null;
           created_at?: string;
         };
         Update: {
@@ -539,6 +549,8 @@ export interface Database {
           cost_per_unit?: number | null;
           quantity_decimal?: number | null;
           unit?: string | null;
+          purchased_at?: string | null;
+          consumed_at?: string | null;
           created_at?: string;
         };
         Relationships: [];

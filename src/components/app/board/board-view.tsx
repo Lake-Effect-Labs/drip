@@ -140,31 +140,66 @@ export function BoardView({
 
       if (!over) return;
 
-      const jobId = active.id as string;
-      const newStatus = over.id as JobStatus;
+      const activeId = active.id as string;
+      const overId = over.id as string;
 
-      // Find the job and check if status changed
-      const job = jobs.find((j) => j.id === jobId);
-      if (!job || job.status === newStatus) return;
+      // Check if overId is a valid status (column) or a job (within column sorting)
+      const isValidStatus = JOB_STATUSES.includes(overId as JobStatus);
 
-      // Optimistically update UI
-      setJobs((prev) =>
-        prev.map((j) => (j.id === jobId ? { ...j, status: newStatus } : j))
-      );
+      if (isValidStatus) {
+        // Dragging to a different column (status change)
+        const jobId = activeId;
+        const newStatus = overId as JobStatus;
 
-      // Update in database via API (bypasses RLS)
-      const updateResponse = await fetch(`/api/jobs/${jobId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: newStatus }),
-      });
+        // Find the job and check if status changed
+        const job = jobs.find((j) => j.id === jobId);
+        if (!job || job.status === newStatus) return;
 
-      if (!updateResponse.ok) {
-        // Revert on error
+        // Optimistically update UI
         setJobs((prev) =>
-          prev.map((j) => (j.id === jobId ? { ...j, status: job.status } : j))
+          prev.map((j) => (j.id === jobId ? { ...j, status: newStatus } : j))
         );
-        addToast("Failed to update job status", "error");
+
+        // Update in database via API (bypasses RLS)
+        const updateResponse = await fetch(`/api/jobs/${jobId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: newStatus }),
+        });
+
+        if (!updateResponse.ok) {
+          // Revert on error
+          setJobs((prev) =>
+            prev.map((j) => (j.id === jobId ? { ...j, status: job.status } : j))
+          );
+          addToast("Failed to update job status", "error");
+        }
+      } else {
+        // Dragging within the same column (reordering)
+        // For now, we just allow the visual reordering without persisting
+        // The dnd-kit sortable will handle the visual update automatically
+        // To persist, we would need to add a sort_order field to the jobs table
+        if (activeId !== overId) {
+          const activeJob = jobs.find((j) => j.id === activeId);
+          const overJob = jobs.find((j) => j.id === overId);
+
+          if (activeJob && overJob && activeJob.status === overJob.status) {
+            // Reorder within the same status
+            const statusJobs = jobs.filter((j) => j.status === activeJob.status);
+            const otherJobs = jobs.filter((j) => j.status !== activeJob.status);
+
+            const oldIndex = statusJobs.findIndex((j) => j.id === activeId);
+            const newIndex = statusJobs.findIndex((j) => j.id === overId);
+
+            if (oldIndex !== -1 && newIndex !== -1) {
+              const reorderedStatusJobs = [...statusJobs];
+              const [removed] = reorderedStatusJobs.splice(oldIndex, 1);
+              reorderedStatusJobs.splice(newIndex, 0, removed);
+
+              setJobs([...otherJobs, ...reorderedStatusJobs]);
+            }
+          }
+        }
       }
     },
     [jobs, addToast]
