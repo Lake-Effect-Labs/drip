@@ -57,6 +57,7 @@ export function EstimateBuilder({
   const [loading, setLoading] = useState(false);
   const [useSqftPricing, setUseSqftPricing] = useState(false);
   const [sqft, setSqft] = useState("");
+  const [requiresSignoff, setRequiresSignoff] = useState(false);
   const [lineItems, setLineItems] = useState<LineItem[]>([
     {
       id: crypto.randomUUID(),
@@ -222,6 +223,7 @@ export function EstimateBuilder({
           sqft: sqft ? parseFloat(sqft) : null,
           status: "draft",
           public_token: generateToken(24),
+          requires_signoff: requiresSignoff,
         })
         .select()
         .single();
@@ -387,6 +389,25 @@ export function EstimateBuilder({
               )}
             </>
           )}
+        </div>
+
+        {/* Customer Signoff Option */}
+        <div className="rounded-lg border bg-card p-4 space-y-3">
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="requiresSignoff"
+              checked={requiresSignoff}
+              onChange={(e) => setRequiresSignoff(e.target.checked)}
+              className="h-4 w-4"
+            />
+            <label htmlFor="requiresSignoff" className="font-semibold cursor-pointer">
+              Require customer signoff
+            </label>
+          </div>
+          <p className="text-sm text-muted-foreground pl-7">
+            Customer will need to review and acknowledge the scope, materials, and areas before accepting the estimate.
+          </p>
         </div>
 
         {/* Line Items */}

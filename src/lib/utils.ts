@@ -147,6 +147,21 @@ export const COMMON_MATERIALS = [
   "Stir sticks",
 ];
 
+// Paint sheen options (expanded list)
+export const PAINT_SHEENS = [
+  "Flat",
+  "Matte",
+  "Eggshell",
+  "Satin",
+  "Semi-Gloss",
+  "High-Gloss",
+  "Gloss",
+  "Pearl",
+  "Velvet",
+] as const;
+
+export type PaintSheen = (typeof PAINT_SHEENS)[number];
+
 // Theme options - Popular Sherwin-Williams colors (mix of neutrals and vibrant)
 export const THEMES = [
   // Popular Neutrals

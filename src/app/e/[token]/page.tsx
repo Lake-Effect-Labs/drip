@@ -20,7 +20,7 @@ export default async function PublicEstimatePage({
   if (estimate) {
     // Check if this is a unified payment estimate (has job_id and uses job_payment_line_items)
     let lineItems;
-    
+
     if (estimate.job_id) {
       // Unified payment system - fetch from job_payment_line_items
       const { data: paymentLineItems } = await supabase
@@ -28,7 +28,7 @@ export default async function PublicEstimatePage({
         .select("*")
         .eq("job_id", estimate.job_id)
         .order("sort_order");
-      
+
       // Convert to format expected by PublicEstimateView (title -> name)
       lineItems = (paymentLineItems || []).map(item => ({
         id: item.id,
@@ -42,9 +42,15 @@ export default async function PublicEstimatePage({
         .from("estimate_line_items")
         .select("*")
         .eq("estimate_id", estimate.id);
-      
+
       lineItems = oldLineItems || [];
     }
+
+    // Fetch materials
+    const { data: materials } = await supabase
+      .from("estimate_materials")
+      .select("*")
+      .eq("estimate_id", estimate.id);
 
     let customer = null;
     if (estimate.customer_id) {
@@ -75,6 +81,7 @@ export default async function PublicEstimatePage({
     const estimateWithDetails = {
       ...estimate,
       line_items: lineItems || [],
+      materials: materials || [],
       customer,
       job,
       company,

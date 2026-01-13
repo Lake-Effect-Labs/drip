@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { formatCurrency, formatDate, copyToClipboard } from "@/lib/utils";
-import type { Estimate, EstimateLineItem, Customer, Job } from "@/types/database";
+import type { Estimate, EstimateLineItem, EstimateMaterial, Customer, Job } from "@/types/database";
+import { EstimateMaterialsList } from "./estimate-materials-list";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -30,6 +31,7 @@ import {
 
 type EstimateWithDetails = Estimate & {
   line_items: EstimateLineItem[];
+  materials: EstimateMaterial[];
   customer: Customer | null;
   job: Job | null;
 };
@@ -49,7 +51,11 @@ export function EstimateDetailView({ estimate: initialEstimate }: EstimateDetail
   const [checkingInvoice, setCheckingInvoice] = useState(false);
   const [showFollowUpDialog, setShowFollowUpDialog] = useState(false);
 
-  const total = estimate.line_items.reduce((sum, li) => sum + li.price, 0);
+  // Calculate totals
+  const laborTotal = estimate.labor_total || estimate.line_items.reduce((sum, li) => sum + li.price, 0);
+  const materialsTotal = estimate.materials_total || estimate.materials.reduce((sum, m) => sum + (m.line_total || 0), 0);
+  const total = laborTotal + materialsTotal;
+
   const publicUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/e/${estimate.public_token}`;
 
   // Refresh estimate data to ensure we have the latest status
@@ -61,9 +67,10 @@ export function EstimateDetailView({ estimate: initialEstimate }: EstimateDetail
       .single();
 
     if (refreshedEstimate) {
-      // Fetch line items, customer, and job
-      const [lineItemsResult, customerResult, jobResult] = await Promise.all([
+      // Fetch line items, materials, customer, and job
+      const [lineItemsResult, materialsResult, customerResult, jobResult] = await Promise.all([
         supabase.from("estimate_line_items").select("*").eq("estimate_id", estimate.id),
+        supabase.from("estimate_materials").select("*").eq("estimate_id", estimate.id),
         refreshedEstimate.customer_id
           ? supabase.from("customers").select("*").eq("id", refreshedEstimate.customer_id).single()
           : Promise.resolve({ data: null }),
@@ -75,6 +82,7 @@ export function EstimateDetailView({ estimate: initialEstimate }: EstimateDetail
       setEstimate({
         ...refreshedEstimate,
         line_items: lineItemsResult.data || [],
+        materials: materialsResult.data || [],
         customer: customerResult.data,
         job: jobResult.data,
       });
@@ -322,6 +330,8 @@ export function EstimateDetailView({ estimate: initialEstimate }: EstimateDetail
                   variant={
                     estimate.status === "accepted"
                       ? "success"
+                      : estimate.status === "denied"
+                      ? "destructive"
                       : estimate.status === "sent"
                       ? "secondary"
                       : "outline"
@@ -412,10 +422,48 @@ export function EstimateDetailView({ estimate: initialEstimate }: EstimateDetail
           )}
         </div>
 
-        {/* Line Items */}
+        {/* Denial Info */}
+        {estimate.status === "denied" && estimate.denied_at && (
+          <div className="rounded-lg border border-destructive bg-destructive/10 p-4 space-y-3">
+            <div>
+              <h3 className="font-semibold text-destructive mb-1">✗ Estimate Declined</h3>
+              <p className="text-sm text-muted-foreground">
+                Declined on {formatDate(estimate.denied_at)}
+              </p>
+            </div>
+            {estimate.denial_reason && (
+              <div className="bg-card p-3 rounded-lg">
+                <p className="text-sm font-medium mb-1">Customer Feedback:</p>
+                <p className="text-sm text-muted-foreground">{estimate.denial_reason}</p>
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push(`/app/estimates/new?from=${estimate.id}`)}
+              >
+                Create Revised Estimate
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={copyEstimateMessage}
+              >
+                <Copy className="mr-2 h-4 w-4" />
+                Copy Link to Discuss
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              You can create a revised estimate or reach out to the customer to discuss their concerns.
+            </p>
+          </div>
+        )}
+
+        {/* Line Items (Labor) */}
         <div className="rounded-lg border bg-card overflow-hidden">
           <div className="p-4 border-b">
-            <h3 className="font-semibold">Line Items</h3>
+            <h3 className="font-semibold">Labor & Services</h3>
             {estimate.sqft && (
               <p className="text-sm text-muted-foreground">
                 Based on {estimate.sqft.toLocaleString()} sqft
@@ -452,7 +500,37 @@ export function EstimateDetailView({ estimate: initialEstimate }: EstimateDetail
             ))}
           </div>
           <div className="p-4 border-t bg-muted/50">
-            <div className="flex items-center justify-between text-lg font-semibold">
+            <div className="flex items-center justify-between font-medium">
+              <span>Labor Subtotal</span>
+              <span>{formatCurrency(laborTotal)}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Materials */}
+        <div className="rounded-lg border bg-card overflow-hidden">
+          <div className="p-4">
+            <EstimateMaterialsList
+              estimateId={estimate.id}
+              materials={estimate.materials}
+              isEditable={estimate.status !== "accepted"}
+              onMaterialsChange={refreshEstimate}
+            />
+          </div>
+        </div>
+
+        {/* Total Summary */}
+        <div className="rounded-lg border bg-card p-4">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Labor Total:</span>
+              <span className="font-medium">{formatCurrency(laborTotal)}</span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">Materials Total:</span>
+              <span className="font-medium">{formatCurrency(materialsTotal)}</span>
+            </div>
+            <div className="pt-2 border-t flex items-center justify-between text-lg font-semibold">
               <span>Total</span>
               <span>{formatCurrency(total)}</span>
             </div>

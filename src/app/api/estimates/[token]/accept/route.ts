@@ -40,6 +40,14 @@ export async function POST(
       return NextResponse.json({ success: true, message: "Already accepted" });
     }
 
+    // Check if signoff is required and not completed
+    if (estimate.requires_signoff && !estimate.signoff_completed_at) {
+      return NextResponse.json(
+        { error: "Customer signoff is required before accepting this estimate" },
+        { status: 400 }
+      );
+    }
+
     // Start transaction-like operations
     let jobId = estimate.job_id;
     let customerId = estimate.customer_id;
@@ -151,67 +159,117 @@ export async function POST(
       );
     }
 
-    // Auto-generate materials checklist from estimate line items
-    const { data: lineItems } = await supabase
-      .from("estimate_line_items")
-      .select("service_key, paint_color_name_or_code, sheen, product_line, gallons_estimate")
+    // Copy materials from estimate_materials to job_materials
+    // This is the new system where materials are first-class citizens
+    const { data: estimateMaterials } = await supabase
+      .from("estimate_materials")
+      .select("*")
       .eq("estimate_id", estimate.id);
 
     let materialsCreated = 0;
-    if (lineItems && lineItems.length > 0) {
-      // Collect all materials from services, avoiding duplicates
-      const materialsSet = new Set<string>();
-      const materialsToInsert: { job_id: string; name: string; checked: boolean }[] = [];
 
-      for (const item of lineItems) {
-        // Add service-specific materials
-        const serviceMaterials = SERVICE_MATERIALS[item.service_key] || [];
-        for (const material of serviceMaterials) {
-          if (!materialsSet.has(material)) {
-            materialsSet.add(material);
-            materialsToInsert.push({
-              job_id: jobId,
-              name: material,
-              checked: false,
-            });
-          }
-        }
+    if (estimateMaterials && estimateMaterials.length > 0) {
+      // New system: Copy estimate_materials to job_materials
+      const jobMaterialsToInsert = estimateMaterials.map((material) => {
+        // Build detailed notes from material properties
+        const notes = [
+          material.paint_product && `Product: ${material.paint_product}`,
+          material.color_name && `Color: ${material.color_name}`,
+          material.color_code && `Code: ${material.color_code}`,
+          material.sheen && `Sheen: ${material.sheen}`,
+          material.area_description && `Area: ${material.area_description}`,
+        ]
+          .filter(Boolean)
+          .join(" | ");
 
-        // Add paint-specific material if specified
-        if (item.paint_color_name_or_code || item.product_line) {
-          const paintName = [
-            item.product_line,
-            item.paint_color_name_or_code,
-            item.sheen,
-            item.gallons_estimate ? `(${item.gallons_estimate} gal)` : null,
-          ]
-            .filter(Boolean)
-            .join(" ");
+        return {
+          job_id: jobId,
+          name: material.name,
+          checked: false,
+          notes: notes || null,
+          cost_per_unit: material.cost_per_gallon || null,
+          quantity_decimal: material.quantity_gallons || null,
+          unit: material.quantity_gallons ? "gal" : null,
+          vendor_sku: material.vendor_sku || null,
+        };
+      });
 
-          if (paintName && !materialsSet.has(paintName)) {
-            materialsSet.add(paintName);
-            materialsToInsert.push({
-              job_id: jobId,
-              name: paintName,
-              checked: false,
-            });
-          }
-        }
-      }
-
-      // Insert materials
-      if (materialsToInsert.length > 0) {
+      if (jobMaterialsToInsert.length > 0) {
         const { error: materialsError } = await supabase
           .from("job_materials")
-          .insert(materialsToInsert);
+          .insert(jobMaterialsToInsert);
 
         if (materialsError) {
           if (process.env.NODE_ENV === "development") {
-            console.error("Error creating materials:", materialsError);
+            console.error("Error copying estimate materials to job:", materialsError);
           }
           // Don't fail the whole request, just log the error
         } else {
-          materialsCreated = materialsToInsert.length;
+          materialsCreated = jobMaterialsToInsert.length;
+        }
+      }
+    } else {
+      // Fallback to old system: Auto-generate from line items if no estimate_materials exist
+      const { data: lineItems } = await supabase
+        .from("estimate_line_items")
+        .select("service_key, paint_color_name_or_code, sheen, product_line, gallons_estimate")
+        .eq("estimate_id", estimate.id);
+
+      if (lineItems && lineItems.length > 0) {
+        // Collect all materials from services, avoiding duplicates
+        const materialsSet = new Set<string>();
+        const materialsToInsert: { job_id: string; name: string; checked: boolean }[] = [];
+
+        for (const item of lineItems) {
+          // Add service-specific materials
+          const serviceMaterials = SERVICE_MATERIALS[item.service_key] || [];
+          for (const material of serviceMaterials) {
+            if (!materialsSet.has(material)) {
+              materialsSet.add(material);
+              materialsToInsert.push({
+                job_id: jobId,
+                name: material,
+                checked: false,
+              });
+            }
+          }
+
+          // Add paint-specific material if specified
+          if (item.paint_color_name_or_code || item.product_line) {
+            const paintName = [
+              item.product_line,
+              item.paint_color_name_or_code,
+              item.sheen,
+              item.gallons_estimate ? `(${item.gallons_estimate} gal)` : null,
+            ]
+              .filter(Boolean)
+              .join(" ");
+
+            if (paintName && !materialsSet.has(paintName)) {
+              materialsSet.add(paintName);
+              materialsToInsert.push({
+                job_id: jobId,
+                name: paintName,
+                checked: false,
+              });
+            }
+          }
+        }
+
+        // Insert materials
+        if (materialsToInsert.length > 0) {
+          const { error: materialsError } = await supabase
+            .from("job_materials")
+            .insert(materialsToInsert);
+
+          if (materialsError) {
+            if (process.env.NODE_ENV === "development") {
+              console.error("Error creating materials from line items:", materialsError);
+            }
+            // Don't fail the whole request, just log the error
+          } else {
+            materialsCreated = materialsToInsert.length;
+          }
         }
       }
     }
