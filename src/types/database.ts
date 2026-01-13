@@ -240,6 +240,8 @@ export interface Database {
           expires_at: string | null;
           hourly_rate: number | null;
           public_token: string;
+          labor_total: number;
+          materials_total: number;
           created_at: string;
           updated_at: string;
         };
@@ -254,6 +256,8 @@ export interface Database {
           expires_at?: string | null;
           hourly_rate?: number | null;
           public_token: string;
+          labor_total?: number;
+          materials_total?: number;
           created_at?: string;
           updated_at?: string;
         };
@@ -268,6 +272,8 @@ export interface Database {
           expires_at?: string | null;
           hourly_rate?: number | null;
           public_token?: string;
+          labor_total?: number;
+          materials_total?: number;
           created_at?: string;
           updated_at?: string;
         };
@@ -318,6 +324,69 @@ export interface Database {
           gallons_estimate?: number | null;
           vendor_sku?: string | null;
           created_at?: string;
+        };
+        Relationships: [];
+      };
+      estimate_materials: {
+        Row: {
+          id: string;
+          estimate_id: string;
+          name: string;
+          paint_product: string | null;
+          product_line: string | null;
+          color_name: string | null;
+          color_code: string | null;
+          sheen: string | null;
+          area_description: string | null;
+          quantity_gallons: number | null;
+          cost_per_gallon: number | null;
+          line_total: number | null;
+          estimate_line_item_id: string | null;
+          vendor_sku: string | null;
+          notes: string | null;
+          is_auto_generated: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          estimate_id: string;
+          name: string;
+          paint_product?: string | null;
+          product_line?: string | null;
+          color_name?: string | null;
+          color_code?: string | null;
+          sheen?: string | null;
+          area_description?: string | null;
+          quantity_gallons?: number | null;
+          cost_per_gallon?: number | null;
+          line_total?: number | null;
+          estimate_line_item_id?: string | null;
+          vendor_sku?: string | null;
+          notes?: string | null;
+          is_auto_generated?: boolean;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          estimate_id?: string;
+          name?: string;
+          paint_product?: string | null;
+          product_line?: string | null;
+          color_name?: string | null;
+          color_code?: string | null;
+          sheen?: string | null;
+          area_description?: string | null;
+          quantity_gallons?: number | null;
+          cost_per_gallon?: number | null;
+          line_total?: number | null;
+          estimate_line_item_id?: string | null;
+          vendor_sku?: string | null;
+          notes?: string | null;
+          is_auto_generated?: boolean;
+          created_at?: string;
+          updated_at?: string;
         };
         Relationships: [];
       };
@@ -905,6 +974,7 @@ export type Customer = Tables<"customers">;
 export type Job = Tables<"jobs">;
 export type Estimate = Tables<"estimates">;
 export type EstimateLineItem = Tables<"estimate_line_items">;
+export type EstimateMaterial = Tables<"estimate_materials">;
 export type Invoice = Tables<"invoices">;
 export type InvoicePayment = Tables<"invoice_payments">;
 export type EstimatingConfig = Tables<"estimating_config">;
@@ -929,6 +999,7 @@ export type JobWithCustomer = Job & {
 
 export type EstimateWithLineItems = Estimate & {
   line_items: EstimateLineItem[];
+  materials: EstimateMaterial[];
   customer: Customer | null;
   job: Job | null;
 };
