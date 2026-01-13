@@ -9,6 +9,9 @@ export async function POST(
   const supabase = createAdminClient();
 
   try {
+    const body = await request.json().catch(() => ({}));
+    const paymentMethod = body.payment_method || "manual";
+
     // Get job by payment_token
     const { data: job, error: jobError } = await supabase
       .from("jobs")
@@ -34,6 +37,8 @@ export async function POST(
       .update({
         payment_state: "paid",
         payment_paid_at: new Date().toISOString(),
+        payment_method: paymentMethod,
+        status: "paid", // Also update job status to move card to paid column
         updated_at: new Date().toISOString(),
       })
       .eq("id", job.id);

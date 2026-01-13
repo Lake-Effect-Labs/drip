@@ -13,7 +13,7 @@ interface UnpaidInvoicesData {
 
 interface JobsData {
   count: number;
-  jobs: Array<{ id: string; title: string; customerName: string; status: string; scheduledDate?: string }>;
+  jobs: Array<{ id: string; title: string; customerName: string; status: string; scheduledDate?: string; scheduledEndDate?: string }>;
 }
 
 interface MaterialsData {
@@ -159,7 +159,7 @@ export async function getJobsForDate(
   // Fetch all jobs with scheduled dates for this company
   const { data: allJobs, error } = await supabase
     .from("jobs")
-    .select("id, title, status, scheduled_date, scheduled_time, customer:customers(name)")
+    .select("id, title, status, scheduled_date, scheduled_end_date, scheduled_time, customer:customers(name)")
     .eq("company_id", companyId)
     .not("scheduled_date", "is", null);
 
@@ -168,34 +168,39 @@ export async function getJobsForDate(
     return { count: 0, jobs: [] };
   }
 
-  // Filter jobs where scheduled_date matches the target date
-  // scheduled_date is a DATE type, so it should be in YYYY-MM-DD format
-  // But handle both DATE (YYYY-MM-DD) and TIMESTAMP (YYYY-MM-DDTHH:mm:ss) formats
+  // Filter jobs that overlap with the target date (handles multi-day jobs)
+  // A job overlaps if:
+  // - scheduled_date <= targetDate AND (scheduled_end_date >= targetDate OR scheduled_end_date IS NULL)
   const matchingJobs = (allJobs || []).filter((job) => {
     if (!job.scheduled_date) return false;
     
     // Extract date part - handle both formats
-    let jobDateStr: string;
+    let jobStartDateStr: string;
     if (job.scheduled_date.includes("T")) {
-      // It's a timestamp, extract date part
-      jobDateStr = job.scheduled_date.split("T")[0];
+      jobStartDateStr = job.scheduled_date.split("T")[0];
     } else {
-      // It's already a date string
-      jobDateStr = job.scheduled_date;
+      jobStartDateStr = job.scheduled_date;
     }
     
-    // Normalize both dates for comparison (remove any trailing time/zone info)
-    const normalizedJobDate = jobDateStr.trim();
-    const normalizedTargetDate = targetDateStr.trim();
-    
-    const matches = normalizedJobDate === normalizedTargetDate;
-    
-    // Always log in development to debug
-    if (process.env.NODE_ENV === "development" && allJobs && allJobs.length < 10) {
-      console.log(`Comparing: "${normalizedJobDate}" === "${normalizedTargetDate}" = ${matches}`);
+    // If no end date, job is single-day - check if it matches target date
+    if (!job.scheduled_end_date) {
+      return jobStartDateStr.trim() === targetDateStr.trim();
     }
     
-    return matches;
+    // Extract end date part
+    let jobEndDateStr: string;
+    if (job.scheduled_end_date.includes("T")) {
+      jobEndDateStr = job.scheduled_end_date.split("T")[0];
+    } else {
+      jobEndDateStr = job.scheduled_end_date;
+    }
+    
+    // Check if target date falls within the range [start, end] (inclusive)
+    const normalizedStart = jobStartDateStr.trim();
+    const normalizedEnd = jobEndDateStr.trim();
+    const normalizedTarget = targetDateStr.trim();
+    
+    return normalizedStart <= normalizedTarget && normalizedEnd >= normalizedTarget;
   });
 
   // Sort by scheduled_date then scheduled_time
@@ -230,6 +235,7 @@ export async function getJobsForDate(
     customerName: (job.customer as any)?.name || "Unknown",
     status: job.status,
     scheduledDate: job.scheduled_date,
+    scheduledEndDate: job.scheduled_end_date || undefined,
   }));
 
   return {

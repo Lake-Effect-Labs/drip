@@ -4,7 +4,9 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import {
   DndContext,
   DragOverlay,
-  closestCorners,
+  closestCenter,
+  pointerWithin,
+  rectIntersection,
   KeyboardSensor,
   PointerSensor,
   useSensor,
@@ -24,6 +26,7 @@ import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Plus, Search, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
+import { createClient } from "@/lib/supabase/client";
 
 type JobWithCustomer = Job & { customer: Customer | null };
 
@@ -51,6 +54,7 @@ export function BoardView({
   const [canScrollRight, setCanScrollRight] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const { addToast } = useToast();
+  const supabase = createClient();
 
   // Check scroll position
   const checkScroll = useCallback(() => {
@@ -78,13 +82,25 @@ export function BoardView({
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
-        distance: 3,
+        distance: 8, // Reduced sensitivity for better drag feel
       },
     }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
+
+  // Custom collision detection for better kanban board UX
+  const collisionDetectionStrategy = useCallback((args: any) => {
+    // First, try pointer-within for intuitive column detection
+    const pointerCollisions = pointerWithin(args);
+    if (pointerCollisions.length > 0) {
+      return pointerCollisions;
+    }
+
+    // Fallback to rect intersection for edge cases
+    return rectIntersection(args);
+  }, []);
 
   // Filter and search jobs
   const filteredJobs = jobs.filter((job) => {
@@ -215,6 +231,50 @@ export function BoardView({
     addToast("Job created!", "success");
   }, [addToast]);
 
+  // Real-time subscription for job updates
+  useEffect(() => {
+    const channel = supabase
+      .channel(`board-jobs-${companyId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "jobs",
+          filter: `company_id=eq.${companyId}`,
+        },
+        (payload) => {
+          // Update the job in local state when it changes
+          // Preserve customer data from existing job
+          setJobs((prev) =>
+            prev.map((job) =>
+              job.id === payload.new.id
+                ? { ...job, ...(payload.new as Partial<JobWithCustomer>) }
+                : job
+            )
+          );
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "jobs",
+          filter: `company_id=eq.${companyId}`,
+        },
+        async () => {
+          // Refresh jobs when a new one is created to get customer data
+          window.location.reload();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [companyId, supabase]);
+
   // Check scroll on mount and when jobs change
   useEffect(() => {
     checkScroll();
@@ -327,7 +387,7 @@ export function BoardView({
         ) : (
           <DndContext
             sensors={sensors}
-            collisionDetection={closestCorners}
+            collisionDetection={collisionDetectionStrategy}
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
           >
@@ -386,8 +446,10 @@ export function BoardView({
 
             <DragOverlay>
               {activeJob && (
-                <div className="drag-overlay">
-                  <JobCard job={activeJob} />
+                <div className="rotate-3 scale-105 opacity-95">
+                  <div className="shadow-2xl ring-2 ring-primary/20">
+                    <JobCard job={activeJob} />
+                  </div>
                 </div>
               )}
             </DragOverlay>

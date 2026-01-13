@@ -44,7 +44,7 @@ export function EstimateMaterialsList({
 
   const refreshMaterials = async () => {
     try {
-      const response = await fetch(`/api/estimates/${estimateId}/materials`);
+      const response = await fetch(`/api/estimate-materials/${estimateId}`);
       if (!response.ok) throw new Error("Failed to fetch materials");
       const data = await response.json();
       setMaterials(data.materials || []);
@@ -61,7 +61,7 @@ export function EstimateMaterialsList({
 
     setRegenerating(true);
     try {
-      const response = await fetch(`/api/estimates/${estimateId}/materials/generate`, {
+      const response = await fetch(`/api/estimate-materials/${estimateId}/generate`, {
         method: "POST",
       });
 
@@ -98,7 +98,7 @@ export function EstimateMaterialsList({
   const handleSaveEdit = async (materialId: string) => {
     try {
       const response = await fetch(
-        `/api/estimates/${estimateId}/materials/${materialId}`,
+        `/api/estimate-materials/${estimateId}/${materialId}`,
         {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -126,7 +126,7 @@ export function EstimateMaterialsList({
 
     try {
       const response = await fetch(
-        `/api/estimates/${estimateId}/materials/${materialId}`,
+        `/api/estimate-materials/${estimateId}/${materialId}`,
         {
           method: "DELETE",
         }
@@ -145,7 +145,7 @@ export function EstimateMaterialsList({
 
   const handleAddNew = async () => {
     try {
-      const response = await fetch(`/api/estimates/${estimateId}/materials`, {
+      const response = await fetch(`/api/estimate-materials/${estimateId}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -179,7 +179,6 @@ export function EstimateMaterialsList({
     }
   };
 
-  const totalCost = materials.reduce((sum, m) => sum + (m.line_total || 0), 0);
   const totalGallons = materials.reduce((sum, m) => sum + (m.quantity_gallons || 0), 0);
 
   return (
@@ -188,7 +187,7 @@ export function EstimateMaterialsList({
         <div>
           <h3 className="text-lg font-semibold">Materials</h3>
           <p className="text-sm text-gray-500">
-            Total: {totalGallons.toFixed(1)} gallons • {formatCurrency(totalCost)}
+            Total: {totalGallons.toFixed(1)} gallons
           </p>
         </div>
         {isEditable && (
@@ -373,9 +372,7 @@ export function EstimateMaterialsList({
                       )}
                       {material.quantity_gallons && (
                         <div>
-                          Quantity: {material.quantity_gallons} gal × $
-                          {material.cost_per_gallon?.toFixed(2) || "0.00"}/gal ={" "}
-                          {formatCurrency(material.line_total || 0)}
+                          Quantity: {material.quantity_gallons} gallons
                         </div>
                       )}
                     </div>

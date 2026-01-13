@@ -151,6 +151,7 @@ export interface Database {
           zip: string | null;
           status: string;
           scheduled_date: string | null;
+          scheduled_end_date: string | null;
           scheduled_time: string | null;
           schedule_state: string | null;
           schedule_token: string | null;
@@ -164,6 +165,7 @@ export interface Database {
           payment_approved_at: string | null;
           payment_paid_at: string | null;
           payment_method: string | null;
+          payment_methods: string[] | null;
           payment_token: string | null;
           created_at: string;
           updated_at: string;
@@ -180,6 +182,7 @@ export interface Database {
           zip?: string | null;
           status?: string;
           scheduled_date?: string | null;
+          scheduled_end_date?: string | null;
           scheduled_time?: string | null;
           schedule_state?: string | null;
           schedule_token?: string | null;
@@ -193,6 +196,7 @@ export interface Database {
           payment_approved_at?: string | null;
           payment_paid_at?: string | null;
           payment_method?: string | null;
+          payment_methods?: string[] | null;
           payment_token?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -209,6 +213,7 @@ export interface Database {
           zip?: string | null;
           status?: string;
           scheduled_date?: string | null;
+          scheduled_end_date?: string | null;
           scheduled_time?: string | null;
           schedule_state?: string | null;
           schedule_token?: string | null;
@@ -222,6 +227,7 @@ export interface Database {
           payment_approved_at?: string | null;
           payment_paid_at?: string | null;
           payment_method?: string | null;
+          payment_methods?: string[] | null;
           payment_token?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -309,6 +315,8 @@ export interface Database {
           name: string;
           description: string | null;
           price: number;
+          sqft: number | null;
+          rate_per_sqft: number | null;
           paint_color_name_or_code: string | null;
           sheen: string | null;
           product_line: string | null;
@@ -324,6 +332,8 @@ export interface Database {
           name: string;
           description?: string | null;
           price: number;
+          sqft?: number | null;
+          rate_per_sqft?: number | null;
           paint_color_name_or_code?: string | null;
           sheen?: string | null;
           product_line?: string | null;
@@ -339,6 +349,8 @@ export interface Database {
           name?: string;
           description?: string | null;
           price?: number;
+          sqft?: number | null;
+          rate_per_sqft?: number | null;
           paint_color_name_or_code?: string | null;
           sheen?: string | null;
           product_line?: string | null;

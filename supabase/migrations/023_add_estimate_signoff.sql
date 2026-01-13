@@ -46,7 +46,7 @@ CREATE POLICY "Users can view signoffs for their company estimates"
   USING (
     estimate_id IN (
       SELECT id FROM estimates WHERE company_id IN (
-        SELECT company_id FROM user_company_roles WHERE user_id = auth.uid()
+        SELECT company_id FROM company_users WHERE user_id = auth.uid()
       )
     )
   );

@@ -48,7 +48,7 @@ CREATE POLICY "Users can view estimate materials in their company"
   USING (
     estimate_id IN (
       SELECT id FROM estimates WHERE company_id IN (
-        SELECT company_id FROM user_company_roles WHERE user_id = auth.uid()
+        SELECT company_id FROM company_users WHERE user_id = auth.uid()
       )
     )
   );
@@ -60,7 +60,7 @@ CREATE POLICY "Users can insert estimate materials in their company"
   WITH CHECK (
     estimate_id IN (
       SELECT id FROM estimates WHERE company_id IN (
-        SELECT company_id FROM user_company_roles WHERE user_id = auth.uid()
+        SELECT company_id FROM company_users WHERE user_id = auth.uid()
       )
     )
   );
@@ -73,7 +73,7 @@ CREATE POLICY "Users can update estimate materials in their company"
     estimate_id IN (
       SELECT id FROM estimates
       WHERE company_id IN (
-        SELECT company_id FROM user_company_roles WHERE user_id = auth.uid()
+        SELECT company_id FROM company_users WHERE user_id = auth.uid()
       )
       AND status != 'accepted' -- Protect accepted estimates
     )
@@ -87,7 +87,7 @@ CREATE POLICY "Users can delete estimate materials in their company"
     estimate_id IN (
       SELECT id FROM estimates
       WHERE company_id IN (
-        SELECT company_id FROM user_company_roles WHERE user_id = auth.uid()
+        SELECT company_id FROM company_users WHERE user_id = auth.uid()
       )
       AND status != 'accepted' -- Protect accepted estimates
     )

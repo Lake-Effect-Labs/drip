@@ -28,7 +28,6 @@ import {
   Palette,
   Calculator,
   Users,
-  MapPin,
   Download,
   Copy,
   Trash2,
@@ -36,6 +35,8 @@ import {
   Check,
   LogOut,
   CreditCard,
+  Upload,
+  Image as ImageIcon,
 } from "lucide-react";
 
 interface SettingsViewProps {
@@ -87,6 +88,8 @@ export function SettingsView({
     company.theme_id as ThemeId
   );
   const [savingCompany, setSavingCompany] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [logoPreview, setLogoPreview] = useState<string | null>((company as any).logo_url || null);
 
   // Config form - use empty strings, show placeholders with suggestions
   const [wallsRate, setWallsRate] = useState(
@@ -141,6 +144,55 @@ export function SettingsView({
       addToast("Failed to save settings", "error");
     } finally {
       setSavingCompany(false);
+    }
+  }
+
+  async function handleLogoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file
+    if (file.size > 5 * 1024 * 1024) {
+      addToast("File too large (max 5MB)", "error");
+      return;
+    }
+
+    if (!["image/jpeg", "image/png", "image/webp", "image/svg+xml"].includes(file.type)) {
+      addToast("Invalid file type. Allowed: JPEG, PNG, WebP, SVG", "error");
+      return;
+    }
+
+    setUploadingLogo(true);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await fetch(`/api/companies/${company.id}/logo`, {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to upload logo");
+      }
+
+      setLogoPreview(data.logo_url);
+      setCompany((prev) => ({
+        ...prev,
+        logo_url: data.logo_url,
+      }));
+
+      addToast("Logo uploaded successfully!", "success");
+      router.refresh();
+    } catch (error) {
+      addToast(error instanceof Error ? error.message : "Failed to upload logo", "error");
+    } finally {
+      setUploadingLogo(false);
+      // Reset file input
+      e.target.value = "";
     }
   }
 
@@ -641,10 +693,6 @@ export function SettingsView({
               <Users className="mr-1.5 h-4 w-4" />
               Crew
             </TabsTrigger>
-            <TabsTrigger value="locations">
-              <MapPin className="mr-1.5 h-4 w-4" />
-              Locations
-            </TabsTrigger>
             <TabsTrigger value="exports">
               <Download className="mr-1.5 h-4 w-4" />
               Exports
@@ -667,6 +715,56 @@ export function SettingsView({
                   onChange={(e) => setCompanyName(e.target.value)}
                 />
               </div>
+            </div>
+
+            <div className="rounded-lg border bg-card p-4 space-y-4">
+              <h3 className="font-semibold flex items-center gap-2">
+                <ImageIcon className="h-4 w-4" />
+                Company Logo
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                Upload your company logo to display on customer-facing pages (estimates, invoices, payment links).
+              </p>
+              
+              <div className="flex items-center gap-4">
+                {logoPreview ? (
+                  <div className="relative">
+                    <img 
+                      src={logoPreview} 
+                      alt="Company Logo" 
+                      className="w-20 h-20 rounded-lg object-cover border"
+                    />
+                  </div>
+                ) : (
+                  <div className="w-20 h-20 rounded-lg bg-muted border flex items-center justify-center">
+                    <ImageIcon className="h-8 w-8 text-muted-foreground" />
+                  </div>
+                )}
+                
+                <div className="flex-1">
+                  <Label htmlFor="logoUpload" className="cursor-pointer">
+                    <div className="flex items-center gap-2">
+                      <Upload className="h-4 w-4" />
+                      <span>{logoPreview ? "Change Logo" : "Upload Logo"}</span>
+                    </div>
+                  </Label>
+                  <input
+                    id="logoUpload"
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/svg+xml"
+                    onChange={handleLogoUpload}
+                    disabled={uploadingLogo}
+                    className="hidden"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Max 5MB. Formats: JPEG, PNG, WebP, SVG
+                  </p>
+                </div>
+              </div>
+              
+              {uploadingLogo && (
+                <p className="text-sm text-muted-foreground">Uploading...</p>
+              )}
             </div>
 
             <div className="rounded-lg border bg-card p-4 space-y-4">
@@ -869,71 +967,6 @@ export function SettingsView({
                 </div>
               </div>
             )}
-          </TabsContent>
-
-          {/* Locations Tab */}
-          <TabsContent value="locations" className="mt-6 space-y-6">
-            <div className="rounded-lg border bg-card p-4 space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-semibold">Pickup Locations</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Sherwin-Williams stores or other pickup points.
-                  </p>
-                </div>
-                <Button size="sm" onClick={() => openLocationDialog()}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Location
-                </Button>
-              </div>
-
-              {locations.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-4 text-center">
-                  No pickup locations added yet.
-                </p>
-              ) : (
-                <div className="divide-y">
-                  {locations.map((location) => (
-                    <div
-                      key={location.id}
-                      className="py-3 flex items-center justify-between"
-                    >
-                      <div>
-                        <p className="font-medium">{location.name}</p>
-                        {location.address1 && (
-                          <p className="text-sm text-muted-foreground">
-                            {[
-                              location.address1,
-                              location.city,
-                              location.state,
-                              location.zip,
-                            ]
-                              .filter(Boolean)
-                              .join(", ")}
-                          </p>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => openLocationDialog(location)}
-                        >
-                          Edit
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteLocation(location.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
           </TabsContent>
 
           {/* Exports Tab */}

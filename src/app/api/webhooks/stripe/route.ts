@@ -58,6 +58,28 @@ export async function POST(request: Request) {
 
   try {
     switch (event.type) {
+      case "checkout.session.completed": {
+        const session = event.data.object as Stripe.Checkout.Session;
+        
+        // Check if this is a job payment (has job_id in metadata)
+        if (session.metadata?.job_id && session.payment_status === "paid") {
+          const { error } = await supabase
+            .from("jobs")
+            .update({
+              payment_state: "paid",
+              payment_paid_at: new Date().toISOString(),
+              payment_method: "stripe",
+              status: "paid", // Also update job status to move card to paid column
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", session.metadata.job_id);
+
+          if (error) {
+            console.error("Error updating job payment from Stripe:", error);
+          }
+        }
+        break;
+      }
       // FUTURE: SaaS billing - subscription checkout
       case "checkout.session.completed": {
         // TODO: Handle subscription checkout for SaaS billing

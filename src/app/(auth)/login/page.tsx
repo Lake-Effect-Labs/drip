@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -20,41 +20,66 @@ export default function LoginPage() {
   const { addToast } = useToast();
   const supabase = createClient();
 
+  // Pre-fill email if coming from password reset
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const resetEmail = sessionStorage.getItem("resetEmail");
+      if (resetEmail) {
+        setEmail(resetEmail);
+        sessionStorage.removeItem("resetEmail");
+      }
+    }
+  }, []);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
 
     try {
-      // Trim whitespace from email and password
-      const trimmedEmail = email.trim().toLowerCase();
-      const trimmedPassword = password.trim();
+      // Clear any existing session first to avoid conflicts
+      await supabase.auth.signOut({ scope: 'local' });
+      
+      // Small delay to ensure session is cleared
+      await new Promise(resolve => setTimeout(resolve, 100));
 
-      if (!trimmedEmail || !trimmedPassword) {
+      // Trim whitespace from email and password (but don't trim password to avoid issues)
+      const trimmedEmail = email.trim().toLowerCase();
+      const cleanPassword = password; // Don't trim password - use exactly what user entered
+
+      if (!trimmedEmail || !cleanPassword) {
         addToast("Please enter both email and password", "error");
         setLoading(false);
         return;
       }
 
+      console.log("🔑 Attempting login...");
+      console.log("Email:", trimmedEmail);
+      console.log("Password length:", cleanPassword.length);
+      console.log("Password first char code:", cleanPassword.charCodeAt(0));
+      console.log("Password last char code:", cleanPassword.charCodeAt(cleanPassword.length - 1));
+
       const { data, error } = await supabase.auth.signInWithPassword({
         email: trimmedEmail,
-        password: trimmedPassword,
+        password: cleanPassword,
       });
 
       if (error) {
         // Log the full error for debugging
-        console.error("Login error details:", {
+        console.error("❌ Login error details:", {
           message: error.message,
           status: error.status,
           name: error.name,
+          email: trimmedEmail,
+          errorCode: (error as any).code,
+          fullError: error,
         });
 
         // Provide more helpful error messages
         if (error.message.includes("Invalid login credentials") || 
-            error.message.includes("Email not confirmed") ||
-            error.message.includes("Invalid password") ||
+            error.message.includes("invalid") ||
             error.status === 400) {
           addToast(
-            "Invalid email or password. If you've forgotten your password, click 'Forgot password?' below.",
+            "Invalid email or password. If you just reset your password, make sure you're using the NEW password. If you've forgotten your password, click 'Forgot password?' below.",
             "error"
           );
         } else if (error.message.includes("Email not confirmed")) {
@@ -66,11 +91,16 @@ export default function LoginPage() {
         return;
       }
 
-      if (!data.user) {
+      if (!data.user || !data.session) {
+        console.error("❌ No user or session in response");
         addToast("Failed to sign in. Please try again.", "error");
         setLoading(false);
         return;
       }
+
+      console.log("✅ Login successful!");
+      console.log("User:", data.user.email);
+      console.log("User ID:", data.user.id);
 
       // After successful login, just redirect to app
       // The app layout will handle checking for company and redirecting if needed
@@ -78,7 +108,7 @@ export default function LoginPage() {
       router.push("/app");
       router.refresh();
     } catch (err) {
-      console.error("Login error:", err);
+      console.error("Unexpected login error:", err);
       addToast("An unexpected error occurred. Please try again.", "error");
       setLoading(false);
     }

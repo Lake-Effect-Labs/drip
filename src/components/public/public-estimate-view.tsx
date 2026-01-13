@@ -25,7 +25,7 @@ type EstimateWithDetails = Estimate & {
   materials: EstimateMaterial[];
   customer: Customer | null;
   job: Job | null;
-  company: Pick<Company, "name"> | null;
+  company: (Pick<Company, "name"> & { logo_url?: string | null }) | null;
 };
 
 interface PublicEstimateViewProps {
@@ -57,8 +57,7 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
 
   // Calculate totals
   const laborTotal = estimate.labor_total || estimate.line_items.reduce((sum, li) => sum + li.price, 0);
-  const materialsTotal = estimate.materials_total || estimate.materials.reduce((sum, m) => sum + (m.line_total || 0), 0);
-  const total = laborTotal + materialsTotal;
+  const total = laborTotal;
 
   const address = estimate.job
     ? [estimate.job.address1, estimate.job.city, estimate.job.state, estimate.job.zip]
@@ -235,105 +234,111 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
           </CardContent>
         </Card>
 
-        {/* Line Items (Labor & Services) */}
+        {/* Line Items with Materials */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Labor & Services</CardTitle>
+            <CardTitle>Estimate Details</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <div className="divide-y">
-              {estimate.line_items.map((item) => (
-                <div key={item.id} className="p-4">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="font-medium">{item.name}</p>
-                      {item.description && (
-                        <p className="text-sm text-muted-foreground mt-1">
-                          {item.description}
-                        </p>
-                      )}
+              {estimate.line_items.map((item) => {
+                const hasPaintDetails = item.product_line || item.paint_color_name_or_code || item.sheen || item.gallons_estimate;
+                
+                // Find materials for this line item (match by ID or by area name)
+                const itemMaterials = estimate.materials?.filter(
+                  (m: EstimateMaterial) => 
+                    m.estimate_line_item_id === item.id ||
+                    m.area_description?.toLowerCase().includes(item.name?.toLowerCase()) ||
+                    item.name?.toLowerCase().includes(m.area_description?.toLowerCase() || '')
+                ) || [];
+                
+                return (
+                  <div key={item.id} className="p-4">
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex-1">
+                        <div className="flex items-baseline gap-2">
+                          <p className="font-medium">{item.name}</p>
+                          {item.sqft && (
+                            <span className="text-sm text-muted-foreground">
+                              {item.sqft} sqft
+                              {item.rate_per_sqft && ` @ ${formatCurrency(item.rate_per_sqft)}/sqft`}
+                            </span>
+                          )}
+                        </div>
+                        {item.description && (
+                          <p className="text-sm text-muted-foreground mt-1">
+                            {item.description}
+                          </p>
+                        )}
+                      </div>
+                      <p className="font-medium ml-4 shrink-0">{formatCurrency(item.price)}</p>
                     </div>
-                    <p className="font-medium">{formatCurrency(item.price)}</p>
+                    
+                    {/* Materials for this area */}
+                    {itemMaterials.length > 0 && (
+                      <div className="ml-0 mt-3 space-y-2 border-l-2 border-muted pl-3">
+                        {itemMaterials.map((material: EstimateMaterial) => (
+                          <div key={material.id} className="text-sm">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 text-muted-foreground">
+                                {material.paint_product && (
+                                  <div className="font-medium text-foreground">
+                                    {material.paint_product}
+                                    {material.product_line && ` ${material.product_line}`}
+                                  </div>
+                                )}
+                                {!material.paint_product && (
+                                  <div className="font-medium text-foreground">
+                                    {material.name}
+                                  </div>
+                                )}
+                                <div>
+                                  {material.color_name && <span>{material.color_name}</span>}
+                                  {material.color_code && <span className="ml-1 text-xs">({material.color_code})</span>}
+                                  {material.sheen && (
+                                    <span className="ml-1">- {material.sheen}</span>
+                                  )}
+                                </div>
+                              </div>
+                              {material.quantity_gallons && (
+                                <span className="text-xs text-muted-foreground shrink-0">
+                                  {material.quantity_gallons} {material.quantity_gallons === 1 ? 'gallon' : 'gallons'}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {/* Legacy paint details if no materials */}
+                    {itemMaterials.length === 0 && hasPaintDetails && (
+                      <div className="text-sm text-muted-foreground mt-2 space-y-0.5">
+                        {(item.product_line || item.paint_color_name_or_code || item.sheen) && (
+                          <div>
+                            {item.product_line && <span>{item.product_line} </span>}
+                            {item.paint_color_name_or_code && <span>{item.paint_color_name_or_code} </span>}
+                            {item.sheen && <span>- {item.sheen}</span>}
+                          </div>
+                        )}
+                        {item.gallons_estimate && (
+                          <div>{item.gallons_estimate} gallons</div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
-            </div>
-            <div className="p-4 border-t bg-muted/30">
-              <div className="flex items-center justify-between text-sm font-medium">
-                <span>Labor Subtotal</span>
-                <span>{formatCurrency(laborTotal)}</span>
-              </div>
+                );
+              })}
             </div>
           </CardContent>
         </Card>
 
-        {/* Materials */}
-        {estimate.materials && estimate.materials.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Materials</CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <div className="divide-y">
-                {estimate.materials.map((material) => (
-                  <div key={material.id} className="p-4">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <p className="font-medium">{material.name}</p>
-                        <div className="text-sm text-muted-foreground mt-1 space-y-0.5">
-                          {material.area_description && (
-                            <div>{material.area_description}</div>
-                          )}
-                          {(material.product_line || material.color_name || material.sheen) && (
-                            <div>
-                              {material.product_line && `${material.product_line} `}
-                              {material.color_name && `${material.color_name} `}
-                              {material.color_code && `(${material.color_code}) `}
-                              {material.sheen && `- ${material.sheen}`}
-                            </div>
-                          )}
-                          {material.quantity_gallons && (
-                            <div>
-                              {material.quantity_gallons} gallons
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                      <p className="font-medium ml-4">
-                        {formatCurrency(material.line_total || 0)}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="p-4 border-t bg-muted/30">
-                <div className="flex items-center justify-between text-sm font-medium">
-                  <span>Materials Subtotal</span>
-                  <span>{formatCurrency(materialsTotal)}</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
         {/* Total Summary */}
         <Card>
-          <CardContent className="py-4">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm text-muted-foreground">
-                <span>Labor Total:</span>
-                <span className="font-medium text-foreground">{formatCurrency(laborTotal)}</span>
-              </div>
-              {materialsTotal > 0 && (
-                <div className="flex items-center justify-between text-sm text-muted-foreground">
-                  <span>Materials Total:</span>
-                  <span className="font-medium text-foreground">{formatCurrency(materialsTotal)}</span>
-                </div>
-              )}
-              <div className="pt-2 border-t flex items-center justify-between text-xl font-bold">
-                <span>Total</span>
-                <span>{formatCurrency(total)}</span>
-              </div>
+          <CardContent className="p-6 pt-6">
+            <div className="flex items-center justify-between text-xl font-bold">
+              <span>Total</span>
+              <span>{formatCurrency(laborTotal)}</span>
             </div>
           </CardContent>
         </Card>
@@ -344,6 +349,8 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
             estimate={estimate}
             token={token}
             onSignoffComplete={handleSignoffComplete}
+            companyLogo={estimate.company?.logo_url}
+            companyName={estimate.company?.name}
           />
         ) : (
           <div className="space-y-3">
@@ -459,7 +466,7 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
         </DialogContent>
       </Dialog>
 
-      <PaintChipAnimator />
+      {!accepted && !denied && <PaintChipAnimator />}
     </div>
   );
 }

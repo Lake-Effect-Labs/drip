@@ -42,7 +42,10 @@ export async function updateSession(request: NextRequest) {
   const isAuthRoute =
     request.nextUrl.pathname === "/login" ||
     request.nextUrl.pathname === "/signup" ||
-    request.nextUrl.pathname.startsWith("/join");
+    request.nextUrl.pathname === "/reset-password" ||
+    request.nextUrl.pathname === "/forgot-password" ||
+    request.nextUrl.pathname.startsWith("/join") ||
+    request.nextUrl.pathname.startsWith("/auth/confirm");
 
   if (!user && isAppRoute) {
     // Redirect to login if trying to access app without auth

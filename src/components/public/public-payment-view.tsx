@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import type { Job, Customer, Company } from "@/types/database";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Paintbrush, MapPin, User, CheckCircle, DollarSign } from "lucide-react";
+import { Paintbrush, MapPin, User, CheckCircle, DollarSign, CreditCard, Wallet, FileText, Smartphone } from "lucide-react";
 import { PaintChipAnimator } from "@/components/public/paint-chip-animator";
 import { useRouter } from "next/navigation";
 
@@ -32,7 +32,22 @@ interface PublicPaymentViewProps {
 export function PublicPaymentView({ job, token }: PublicPaymentViewProps) {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
+  const [processingStripe, setProcessingStripe] = useState(false);
   const [confirmed, setConfirmed] = useState(job.payment_state === "paid");
+  const [selectedMethod, setSelectedMethod] = useState<string | null>(null);
+
+  // Check URL params for Stripe success/cancel
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("success") === "true" && !confirmed) {
+        // Payment succeeded via Stripe - mark as confirmed
+        setConfirmed(true);
+        // Clean URL
+        window.history.replaceState({}, "", `/p/${token}`);
+      }
+    }
+  }, [token, confirmed]);
 
   const address = [job.address1, job.city, job.state, job.zip]
     .filter(Boolean)
@@ -41,12 +56,17 @@ export function PublicPaymentView({ job, token }: PublicPaymentViewProps) {
   const totalAmount = job.payment_amount || 
     (job.payment_line_items?.reduce((sum, item) => sum + item.price, 0) || 0);
 
-  async function handleMarkPaid() {
+  // Get available payment methods (default to cash, check, venmo, stripe if not set)
+  const availableMethods = job.payment_methods || ["cash", "check", "venmo", "stripe"];
+
+  async function handleMarkPaid(method: string) {
     setConfirming(true);
+    setSelectedMethod(method);
     try {
       const response = await fetch(`/api/payments/${token}/mark-paid`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ payment_method: method }),
       });
 
       if (!response.ok) {
@@ -59,6 +79,61 @@ export function PublicPaymentView({ job, token }: PublicPaymentViewProps) {
       alert("Failed to mark payment as paid. Please try again.");
     } finally {
       setConfirming(false);
+      setSelectedMethod(null);
+    }
+  }
+
+  async function handleStripePayment() {
+    setProcessingStripe(true);
+    try {
+      const response = await fetch(`/api/payments/${token}/checkout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || "Failed to create payment session");
+      }
+
+      const { url } = await response.json();
+      if (url) {
+        window.location.href = url;
+      }
+    } catch (error) {
+      console.error("Error creating Stripe checkout:", error);
+      alert(error instanceof Error ? error.message : "Failed to process payment. Please try again.");
+      setProcessingStripe(false);
+    }
+  }
+
+  function getPaymentMethodIcon(method: string) {
+    switch (method) {
+      case "stripe":
+        return <CreditCard className="h-5 w-5" />;
+      case "cash":
+        return <DollarSign className="h-5 w-5" />;
+      case "check":
+        return <FileText className="h-5 w-5" />;
+      case "venmo":
+        return <Smartphone className="h-5 w-5" />;
+      default:
+        return <Wallet className="h-5 w-5" />;
+    }
+  }
+
+  function getPaymentMethodLabel(method: string) {
+    switch (method) {
+      case "stripe":
+        return "Pay Online with Card";
+      case "cash":
+        return "I Paid with Cash";
+      case "check":
+        return "I Paid with Check";
+      case "venmo":
+        return "I Paid via Venmo";
+      default:
+        return `I Paid via ${method}`;
     }
   }
 
@@ -181,30 +256,61 @@ export function PublicPaymentView({ job, token }: PublicPaymentViewProps) {
           </CardContent>
         </Card>
 
-        {/* Mark as Paid Button */}
+        {/* Payment Methods */}
         <Card>
-          <CardContent className="py-6">
-            <Button
-              onClick={handleMarkPaid}
-              disabled={confirming}
-              className="w-full"
-              size="lg"
-            >
-              {confirming ? (
-                <>
-                  <DollarSign className="mr-2 h-4 w-4 animate-spin" />
-                  Confirming...
-                </>
-              ) : (
-                <>
-                  <CheckCircle className="mr-2 h-4 w-4" />
-                  Mark Payment as Complete
-                </>
-              )}
-            </Button>
-            <p className="text-xs text-muted-foreground text-center mt-3">
-              Click this button to confirm you've received payment
-            </p>
+          <CardHeader>
+            <CardTitle className="text-lg">Payment Options</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {availableMethods.includes("stripe") && (
+              <Button
+                onClick={handleStripePayment}
+                disabled={processingStripe || confirming}
+                className="w-full"
+                size="lg"
+              >
+                {processingStripe ? (
+                  <>
+                    <CreditCard className="mr-2 h-4 w-4 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <CreditCard className="mr-2 h-4 w-4" />
+                    Pay Online with Card
+                  </>
+                )}
+              </Button>
+            )}
+
+            {availableMethods.filter(m => m !== "stripe").map((method) => (
+              <Button
+                key={method}
+                onClick={() => handleMarkPaid(method)}
+                disabled={confirming || processingStripe}
+                variant={method === "stripe" ? "default" : "outline"}
+                className="w-full"
+                size="lg"
+              >
+                {confirming && selectedMethod === method ? (
+                  <>
+                    {getPaymentMethodIcon(method)}
+                    <span className="ml-2">Confirming...</span>
+                  </>
+                ) : (
+                  <>
+                    {getPaymentMethodIcon(method)}
+                    <span className="ml-2">{getPaymentMethodLabel(method)}</span>
+                  </>
+                )}
+              </Button>
+            ))}
+
+            {availableMethods.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                No payment methods configured. Please contact {job.company?.name || "us"} for payment instructions.
+              </p>
+            )}
           </CardContent>
         </Card>
 

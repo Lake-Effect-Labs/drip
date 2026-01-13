@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { InsertTables } from "@/types/database";
 
 /**
- * GET /api/estimates/[id]/materials
+ * GET /api/estimate-materials/[id]
  * Lists all materials for an estimate
  */
 export async function GET(
@@ -65,7 +65,7 @@ export async function GET(
 }
 
 /**
- * POST /api/estimates/[id]/materials
+ * POST /api/estimate-materials/[id]
  * Creates a new material for an estimate
  */
 export async function POST(

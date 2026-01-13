@@ -15,6 +15,9 @@ import {
   subMonths,
   isToday,
   parseISO,
+  isAfter,
+  isBefore,
+  isWithinInterval,
 } from "date-fns";
 import { createClient } from "@/lib/supabase/client";
 import { cn, formatTime, JOB_STATUS_COLORS, type JobStatus } from "@/lib/utils";
@@ -61,18 +64,48 @@ export function CalendarView({
   const calendarEnd = endOfWeek(monthEnd);
   const calendarDays = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
 
-  // Group jobs by date
+  // Group jobs by date - handle multi-day jobs
   const jobsByDate = useMemo(() => {
     const map = new Map<string, JobWithCustomer[]>();
+    
     filteredJobs.forEach((job) => {
-      if (job.scheduled_date) {
-        const dateKey = job.scheduled_date;
+      if (!job.scheduled_date) return;
+      
+      const startDate = parseISO(job.scheduled_date);
+      const endDate = job.scheduled_end_date ? parseISO(job.scheduled_end_date) : startDate;
+      
+      // Add job to all days it spans
+      const currentDate = new Date(startDate);
+      while (currentDate <= endDate) {
+        const dateKey = format(currentDate, "yyyy-MM-dd");
         const existing = map.get(dateKey) || [];
         map.set(dateKey, [...existing, job]);
+        currentDate.setDate(currentDate.getDate() + 1);
       }
     });
+    
     return map;
   }, [filteredJobs]);
+  
+  // Helper to check if a job spans multiple days
+  const isMultiDayJob = (job: JobWithCustomer): boolean => {
+    if (!job.scheduled_date || !job.scheduled_end_date) return false;
+    return job.scheduled_date !== job.scheduled_end_date;
+  };
+  
+  // Helper to check if a job starts on this day
+  const isJobStartDay = (job: JobWithCustomer, day: Date): boolean => {
+    if (!job.scheduled_date) return false;
+    const dateKey = format(day, "yyyy-MM-dd");
+    return job.scheduled_date === dateKey;
+  };
+  
+  // Helper to check if a job ends on this day
+  const isJobEndDay = (job: JobWithCustomer, day: Date): boolean => {
+    if (!job.scheduled_end_date) return false;
+    const dateKey = format(day, "yyyy-MM-dd");
+    return job.scheduled_end_date === dateKey;
+  };
 
   async function handleDrop(date: Date) {
     if (!draggedJob) return;
@@ -210,26 +243,36 @@ export function CalendarView({
                   {format(day, "d")}
                 </div>
                 <div className="space-y-1">
-                  {dayJobs.slice(0, 3).map((job) => (
-                    <Link
-                      key={job.id}
-                      href={`/app/jobs/${job.id}`}
-                      draggable
-                      onDragStart={() => setDraggedJob(job)}
-                      onDragEnd={() => setDraggedJob(null)}
-                      className={cn(
-                        "block rounded px-1.5 py-0.5 text-xs truncate cursor-grab active:cursor-grabbing",
-                        JOB_STATUS_COLORS[job.status as JobStatus]
-                      )}
-                    >
-                      {job.scheduled_time && (
-                        <span className="font-medium">
-                          {formatTime(job.scheduled_time).split(" ")[0]}{" "}
-                        </span>
-                      )}
-                      {job.title}
-                    </Link>
-                  ))}
+                  {dayJobs.slice(0, 3).map((job) => {
+                    const multiDay = isMultiDayJob(job);
+                    const isStart = isJobStartDay(job, day);
+                    const isEnd = isJobEndDay(job, day);
+                    
+                    return (
+                      <Link
+                        key={`${job.id}-${dateKey}`}
+                        href={`/app/jobs/${job.id}`}
+                        draggable={isStart}
+                        onDragStart={() => isStart && setDraggedJob(job)}
+                        onDragEnd={() => setDraggedJob(null)}
+                        className={cn(
+                          "block rounded px-1.5 py-0.5 text-xs truncate",
+                          isStart && "cursor-grab active:cursor-grabbing",
+                          !isStart && multiDay && "cursor-pointer",
+                          JOB_STATUS_COLORS[job.status as JobStatus],
+                          multiDay && !isStart && !isEnd && "opacity-75"
+                        )}
+                        title={multiDay ? `${job.title} (${format(parseISO(job.scheduled_date), "MMM d")} - ${format(parseISO(job.scheduled_end_date!), "MMM d")})` : job.title}
+                      >
+                        {isStart && job.scheduled_time && (
+                          <span className="font-medium">
+                            {formatTime(job.scheduled_time).split(" ")[0]}{" "}
+                          </span>
+                        )}
+                        {isStart ? job.title : multiDay ? "..." : job.title}
+                      </Link>
+                    );
+                  })}
                   {dayJobs.length > 3 && (
                     <div className="text-xs text-muted-foreground px-1">
                       +{dayJobs.length - 3} more

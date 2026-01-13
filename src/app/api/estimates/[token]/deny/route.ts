@@ -60,7 +60,8 @@ export async function POST(
       );
     }
 
-    // If job exists, update job status to indicate customer declined
+    // If job exists, add denial note but DON'T archive
+    // Leave job active so contractor can revise and resend estimate
     if (estimate.job_id) {
       // Fetch job to get current notes
       const { data: job } = await supabase
@@ -69,7 +70,7 @@ export async function POST(
         .eq("id", estimate.job_id)
         .single();
 
-      const denialNote = `[Estimate Denied] ${denialReason || "No reason provided"}`;
+      const denialNote = `[Estimate Denied ${new Date().toLocaleDateString()}] ${denialReason || "No reason provided"}`;
       const updatedNotes = job?.notes
         ? `${job.notes}\n\n${denialNote}`
         : denialNote;
@@ -77,7 +78,8 @@ export async function POST(
       await supabase
         .from("jobs")
         .update({
-          status: "archive", // Move to archive since customer declined
+          // Keep job in current status - don't archive
+          // Contractor can revise estimate and resend
           notes: updatedNotes,
           updated_at: new Date().toISOString(),
         })

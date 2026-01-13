@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { regenerateEstimateMaterials } from "@/lib/estimate-materials";
 
 /**
- * POST /api/estimates/[id]/materials/generate
+ * POST /api/estimate-materials/[id]/generate
  * Regenerates materials for an estimate based on its line items
  */
 export async function POST(

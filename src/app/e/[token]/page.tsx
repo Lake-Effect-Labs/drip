@@ -35,6 +35,12 @@ export default async function PublicEstimatePage({
         name: item.title,
         price: item.price,
         description: null,
+        sqft: null,
+        rate_per_sqft: null,
+        paint_color_name_or_code: null,
+        sheen: null,
+        product_line: null,
+        gallons_estimate: null,
       }));
     } else {
       // Old system - fetch from estimate_line_items
@@ -74,7 +80,7 @@ export default async function PublicEstimatePage({
 
     const { data: company } = await supabase
       .from("companies")
-      .select("name")
+      .select("name, logo_url")
       .eq("id", estimate.company_id)
       .single();
 
@@ -94,7 +100,7 @@ export default async function PublicEstimatePage({
   // For Matte Lite, we'll use the job's public token
   const { data: jobWithEstimate } = await supabase
     .from("jobs")
-    .select("*, customer:customers(*), company:companies(name)")
+    .select("*, customer:customers(*), company:companies(name, logo_url)")
     .or(`id.eq.${token}`)
     .single();
 
@@ -109,9 +115,49 @@ export default async function PublicEstimatePage({
     .eq("job_id", jobWithEstimate.id)
     .order("sort_order");
 
+  // Fetch estimate to get materials
+  const { data: jobEstimate } = await supabase
+    .from("estimates")
+    .select("*")
+    .eq("job_id", jobWithEstimate.id)
+    .single();
+
+  let materials = [];
+  if (jobEstimate) {
+    const { data: estimateMaterials } = await supabase
+      .from("estimate_materials")
+      .select("*")
+      .eq("estimate_id", jobEstimate.id);
+    materials = estimateMaterials || [];
+  }
+
+  // Convert payment line items to the format expected by PublicEstimateView
+  const lineItems = (paymentLineItems || []).map(item => ({
+    id: item.id,
+    name: item.title,
+    price: item.price,
+    description: null,
+    sqft: null,
+    rate_per_sqft: null,
+    paint_color_name_or_code: null,
+    sheen: null,
+    product_line: null,
+    gallons_estimate: null,
+  }));
+
   const jobWithDetails = {
     ...jobWithEstimate,
-    payment_line_items: paymentLineItems || [],
+    ...jobEstimate,
+    line_items: lineItems,
+    materials: materials,
+    customer: jobWithEstimate.customer,
+    job: {
+      address1: jobWithEstimate.address1,
+      city: jobWithEstimate.city,
+      state: jobWithEstimate.state,
+      zip: jobWithEstimate.zip,
+    },
+    company: jobWithEstimate.company,
   };
 
   return <PublicEstimateView estimate={jobWithDetails as any} token={token} />;

@@ -28,8 +28,8 @@ export function BoardColumn({ id, title, jobs, count, onStatusChange, onDuplicat
     <div
       ref={setNodeRef}
       className={cn(
-        "board-column flex w-72 flex-shrink-0 flex-col rounded-lg bg-muted/50 transition-colors",
-        isOver && "bg-muted ring-2 ring-primary ring-offset-2"
+        "board-column flex w-72 h-full flex-shrink-0 flex-col rounded-lg bg-muted/50 transition-all duration-200",
+        isOver && "bg-primary/10 ring-2 ring-primary shadow-lg scale-[1.02]"
       )}
     >
       {/* Column header */}
@@ -41,11 +41,19 @@ export function BoardColumn({ id, title, jobs, count, onStatusChange, onDuplicat
       </div>
 
       {/* Cards */}
-      <div className="flex-1 overflow-y-auto p-2 pt-0 min-h-[200px]">
+      <div className={cn(
+        "flex-1 overflow-y-auto p-2 pt-0 min-h-[200px] rounded-lg transition-all",
+        isOver && jobs.length > 0 && "bg-primary/5 ring-2 ring-primary ring-inset"
+      )}>
         <SortableContext items={jobIds} strategy={verticalListSortingStrategy}>
           {jobs.length === 0 ? (
-            <div className="flex h-24 items-center justify-center rounded-lg border-2 border-dashed border-muted text-sm text-muted-foreground pointer-events-none">
-              No jobs
+            <div className={cn(
+              "flex h-full min-h-[180px] items-center justify-center rounded-lg border-2 border-dashed transition-all",
+              isOver 
+                ? "border-primary bg-primary/5 text-primary font-medium" 
+                : "border-muted text-muted-foreground"
+            )}>
+              Drop here
             </div>
           ) : (
             <div className="space-y-2">

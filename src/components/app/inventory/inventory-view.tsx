@@ -138,7 +138,6 @@ export function InventoryView({
   const [costPerUnit, setCostPerUnit] = useState("");
   const [vendorName, setVendorName] = useState("Sherwin-Williams");
   const [vendorSku, setVendorSku] = useState("");
-  const [pickupLocationId, setPickupLocationId] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -226,7 +225,6 @@ export function InventoryView({
     setCostPerUnit("");
     setVendorName("Sherwin-Williams");
     setVendorSku("");
-    setPickupLocationId("");
     setNotes("");
     setEditingItem(null);
   }
@@ -241,7 +239,6 @@ export function InventoryView({
     setCostPerUnit(item.cost_per_unit?.toString() || "");
     setVendorName(item.vendor_name || "Sherwin-Williams");
     setVendorSku(item.vendor_sku || "");
-    setPickupLocationId(item.preferred_pickup_location_id || "");
     setNotes(item.notes || "");
     setDialogOpen(true);
   }
@@ -268,7 +265,7 @@ export function InventoryView({
         cost_per_unit: costPerUnit ? parseFloat(costPerUnit) : null,
         vendor_name: vendorName || null,
         vendor_sku: vendorSku || null,
-        preferred_pickup_location_id: pickupLocationId || null,
+        preferred_pickup_location_id: null,
         notes: notes || null,
       };
 
@@ -697,22 +694,6 @@ export function InventoryView({
                     onChange={(e) => setVendorSku(e.target.value)}
                     placeholder="SW-12345"
                   />
-                </div>
-
-                <div className="space-y-2 sm:col-span-2">
-                  <Label htmlFor="pickupLocation">Preferred Pickup Location</Label>
-                  <Select
-                    id="pickupLocation"
-                    value={pickupLocationId}
-                    onChange={(e) => setPickupLocationId(e.target.value)}
-                  >
-                    <option value="">None</option>
-                    {pickupLocations.map((loc) => (
-                      <option key={loc.id} value={loc.id}>
-                        {loc.name}
-                      </option>
-                    ))}
-                  </Select>
                 </div>
 
                 <div className="space-y-2 sm:col-span-2">

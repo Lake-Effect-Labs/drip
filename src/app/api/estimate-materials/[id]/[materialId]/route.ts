@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
 /**
- * PATCH /api/estimates/[id]/materials/[materialId]
+ * PATCH /api/estimate-materials/[id]/[materialId]
  * Updates a material for an estimate
  */
 export async function PATCH(
@@ -90,7 +90,7 @@ export async function PATCH(
 }
 
 /**
- * DELETE /api/estimates/[id]/materials/[materialId]
+ * DELETE /api/estimate-materials/[id]/[materialId]
  * Deletes a material from an estimate
  */
 export async function DELETE(

@@ -12,6 +12,7 @@ import {
   copyToClipboard,
   generateToken,
   COMMON_MATERIALS,
+  JOB_STATUSES,
   JOB_STATUS_LABELS,
   JOB_STATUS_COLORS,
   type JobStatus,
@@ -58,6 +59,7 @@ import {
   Archive,
   Save,
   CheckCircle,
+  ChevronRight,
 } from "lucide-react";
 
 type JobWithCustomer = Job & { customer: Customer | null };
@@ -127,6 +129,7 @@ export function JobDetailView({
   const [loadingTimeEntries, setLoadingTimeEntries] = useState(false);
   const [addingTimeEntry, setAddingTimeEntry] = useState(false);
   const [editingTimeEntry, setEditingTimeEntry] = useState<string | null>(null);
+  const [showAddTimeDialog, setShowAddTimeDialog] = useState(false);
   const [newTimeEntry, setNewTimeEntry] = useState({
     userId: currentUserId,
     hours: "",
@@ -144,7 +147,12 @@ export function JobDetailView({
     setMaterials(initialMaterials);
     setEstimatesList(estimates);
     setInvoicesList(invoices);
-  }, [initialJob.id, initialMaterials.length, estimates.length, invoices.length]);
+    // Update schedule states when job changes
+    setScheduledDate(initialJob.scheduled_date || "");
+    setScheduledEndDate(initialJob.scheduled_end_date || "");
+    setScheduledTime(initialJob.scheduled_time || "");
+    setIsMultiDay(!!initialJob.scheduled_end_date);
+  }, [initialJob.id, initialJob.scheduled_date, initialJob.scheduled_end_date, initialJob.scheduled_time, initialMaterials.length, estimates.length, invoices.length]);
 
   // Real-time subscription for estimate updates
   useEffect(() => {
@@ -194,6 +202,20 @@ export function JobDetailView({
         (payload) => {
           // Update job with new data
           setJob((prev) => ({ ...prev, ...payload.new }));
+          
+          // Also update schedule-related state if schedule fields changed
+          if (payload.new.scheduled_date !== undefined) {
+            setScheduledDate(payload.new.scheduled_date || "");
+          }
+          if (payload.new.scheduled_end_date !== undefined) {
+            setScheduledEndDate(payload.new.scheduled_end_date || "");
+          }
+          if (payload.new.scheduled_time !== undefined) {
+            setScheduledTime(payload.new.scheduled_time || "");
+          }
+          if (payload.new.scheduled_end_date !== undefined) {
+            setIsMultiDay(!!payload.new.scheduled_end_date);
+          }
         }
       )
       .subscribe();
@@ -235,6 +257,38 @@ export function JobDetailView({
       supabase.removeChannel(channel);
     };
   }, [job.id, job.status, supabase]);
+
+  // Real-time subscription for payment line items changes
+  useEffect(() => {
+    const channel = supabase
+      .channel(`job-${job.id}-payment-line-items`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'job_payment_line_items',
+          filter: `job_id=eq.${job.id}`,
+        },
+        async () => {
+          // Refetch all payment line items when any change occurs
+          const { data } = await supabase
+            .from("job_payment_line_items")
+            .select("id, title, price")
+            .eq("job_id", job.id)
+            .order("sort_order");
+          
+          if (data) {
+            setPaymentLineItems(data);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [job.id, supabase]);
   const [saving, setSaving] = useState(false);
   const [newMaterial, setNewMaterial] = useState("");
   const [showCommonMaterials, setShowCommonMaterials] = useState(false);
@@ -284,7 +338,9 @@ export function JobDetailView({
 
   // Form state
   const [scheduledDate, setScheduledDate] = useState(job.scheduled_date || "");
+  const [scheduledEndDate, setScheduledEndDate] = useState(job.scheduled_end_date || "");
   const [scheduledTime, setScheduledTime] = useState(job.scheduled_time || "");
+  const [isMultiDay, setIsMultiDay] = useState(!!job.scheduled_end_date);
   const [assignedUserId, setAssignedUserId] = useState(job.assigned_user_id || "");
   const [notes, setNotes] = useState(job.notes || "");
 
@@ -358,6 +414,12 @@ export function JobDetailView({
       return;
     }
 
+    // Validate end date is after start date if provided
+    if (scheduledEndDate && scheduledEndDate < scheduledDate) {
+      addToast("End date must be after start date", "error");
+      return;
+    }
+
     try {
       // Generate token if it doesn't exist
       const token = scheduleToken || generateToken(24);
@@ -366,6 +428,7 @@ export function JobDetailView({
         .from("jobs")
         .update({
           scheduled_date: scheduledDate || null,
+          scheduled_end_date: scheduledEndDate || null,
           scheduled_time: scheduledTime || null,
           schedule_state: "proposed",
           schedule_token: token,
@@ -381,6 +444,7 @@ export function JobDetailView({
       setJob((prev) => ({
         ...prev,
         scheduled_date: scheduledDate || null,
+        scheduled_end_date: scheduledEndDate || null,
         scheduled_time: scheduledTime || null,
         schedule_state: "proposed",
         schedule_token: token,
@@ -740,11 +804,11 @@ export function JobDetailView({
         setPaymentLineItems(data);
       }
 
-      // Also fetch estimate record for public token if payment state is proposed
-      if (job.payment_state === "proposed") {
+      // Also fetch estimate record and line items for paint details
+      if (job.payment_state === "proposed" || job.payment_state === "approved") {
         const { data: estimateData } = await supabase
           .from("estimates")
-          .select("public_token")
+          .select("id, public_token")
           .eq("job_id", job.id)
           .maybeSingle();
         
@@ -773,6 +837,14 @@ export function JobDetailView({
     return () => window.removeEventListener('focus', handleFocus);
   }, [router]);
 
+  function getNextStatus(currentStatus: JobStatus): JobStatus | null {
+    const currentIndex = JOB_STATUSES.indexOf(currentStatus);
+    if (currentIndex === -1 || currentIndex === JOB_STATUSES.length - 1) {
+      return null; // Already at the last status
+    }
+    return JOB_STATUSES[currentIndex + 1];
+  }
+
   async function handleStatusChange(newStatus: JobStatus) {
     const { error } = await supabase
       .from("jobs")
@@ -789,6 +861,13 @@ export function JobDetailView({
     
     // Force a refresh of the page to update the board view
     router.refresh();
+  }
+
+  function handleMoveToNextStatus() {
+    const nextStatus = getNextStatus(job.status as JobStatus);
+    if (nextStatus) {
+      handleStatusChange(nextStatus);
+    }
   }
 
   async function handleAddMaterial(materialName?: string) {
@@ -864,13 +943,12 @@ export function JobDetailView({
     let unit: string | null = null;
 
     if (materialType === "paint") {
-      // Paint: Brand, Color, Sheen, Quantity, Product Line, Area, Notes
+      // Paint: Brand, Color, Sheen, Product Line, Area, Notes
+      // Note: quantity is stored separately in quantity_decimal/unit fields
       if (materialFormData.brand) notesParts.push(materialFormData.brand);
       notesParts.push(materialFormData.color);
       notesParts.push(materialFormData.sheen);
       if (materialFormData.quantity) {
-        const quantityWithUnit = `${materialFormData.quantity} ${materialFormData.quantityUnit}`;
-        notesParts.push(quantityWithUnit);
         quantityDecimal = parseFloat(materialFormData.quantity);
         unit = materialFormData.quantityUnit;
       } else {
@@ -881,9 +959,8 @@ export function JobDetailView({
       if (materialFormData.area) notesParts.push(`- ${materialFormData.area}`);
       if (materialFormData.notes) notesParts.push(`| ${materialFormData.notes}`);
     } else {
-      // Generic: Quantity, Notes
+      // Generic: Notes only (quantity stored separately)
       if (materialFormData.quantity) {
-        notesParts.push(materialFormData.quantity);
         // Try to parse quantity for generic materials
         const parsedQty = parseFloat(materialFormData.quantity);
         if (!isNaN(parsedQty)) {
@@ -1205,18 +1282,32 @@ export function JobDetailView({
   }
 
   function copyScheduleConfirmationMessage() {
+    const token = scheduleToken || (job as any).schedule_token;
+    if (!token) {
+      addToast("Please generate a schedule link first", "error");
+      return;
+    }
+    
     const customerName = job.customer?.name || "there";
-    const dateStr = scheduledDate ? formatDate(scheduledDate) : "[date]";
+    const dateStr = scheduledDate 
+      ? (scheduledEndDate && scheduledEndDate !== scheduledDate
+          ? `${formatDate(scheduledDate)} - ${formatDate(scheduledEndDate)}`
+          : formatDate(scheduledDate))
+      : "[date]";
     const timeStr = scheduledTime ? formatTime(scheduledTime) : "[time]";
-    const confirmUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/s/${job.id}`;
-    const message = `Hey ${customerName} — we'd like to schedule your project for ${dateStr} at ${timeStr}. Please confirm this works for you: ${confirmUrl}`;
+    const confirmUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/s/${token}`;
+    const message = `Hey ${customerName} — we'd like to schedule your project for ${dateStr}${scheduledTime ? ` at ${timeStr}` : ""}. Please confirm this works for you: ${confirmUrl}`;
     copyToClipboard(message);
     addToast("Schedule confirmation message copied!", "success");
   }
 
   function copyReminderMessage() {
     const customerName = job.customer?.name || "there";
-    const dateStr = scheduledDate ? formatDate(scheduledDate) : "[date]";
+    const dateStr = scheduledDate 
+      ? (scheduledEndDate && scheduledEndDate !== scheduledDate
+          ? `${formatDate(scheduledDate)} - ${formatDate(scheduledEndDate)}`
+          : formatDate(scheduledDate))
+      : "[date]";
     const timeStr = scheduledTime ? formatTime(scheduledTime) : "[time]";
     const message = `Hey ${customerName} — just a reminder that we're scheduled for ${dateStr} at ${timeStr} at ${address || "[address]"}. Reply here if anything changes. See you then!`;
     copyToClipboard(message);
@@ -1235,11 +1326,22 @@ export function JobDetailView({
     let message = `Materials needed for ${jobTitle} (${customerName}):\n\n`;
     
     materials.forEach((material, index) => {
-      message += `${index + 1}. ${material.name}`;
+      let line = `${index + 1}. ${material.name}`;
+      
       if (material.notes) {
-        message += ` - ${material.notes}`;
+        line += ` - ${material.notes}`;
       }
-      message += `\n`;
+      
+      // Add quantity and unit if available (on the same line)
+      if (material.quantity_decimal && material.unit) {
+        // Format the quantity nicely (remove unnecessary decimals)
+        const qty = material.quantity_decimal % 1 === 0 
+          ? material.quantity_decimal.toFixed(0) 
+          : material.quantity_decimal;
+        line += ` - ${qty} ${material.unit}`;
+      }
+      
+      message += line + `\n`;
     });
     
     message += `\nTotal items: ${materials.length}`;
@@ -1285,11 +1387,15 @@ export function JobDetailView({
   function getScheduleMessage() {
     const customerName = job.customer?.name || "there";
     const companyName = ""; // You can add company name from context if needed
-    const dateStr = scheduledDate ? formatDate(scheduledDate) : "TBD";
+    const dateStr = scheduledDate 
+      ? (scheduledEndDate && scheduledEndDate !== scheduledDate
+          ? `${formatDate(scheduledDate)} - ${formatDate(scheduledEndDate)}`
+          : formatDate(scheduledDate))
+      : "TBD";
     const timeStr = scheduledTime ? formatTime(scheduledTime) : "TBD";
     const link = getScheduleLink();
     
-    return `Hi ${customerName}${companyName ? `, this is ${companyName}` : ""}. We're scheduled for ${dateStr} at ${timeStr}. Confirm your appointment here: ${link}`;
+    return `Hi ${customerName}${companyName ? `, this is ${companyName}` : ""}. We're scheduled for ${dateStr}${scheduledTime ? ` at ${timeStr}` : ""}. Confirm your appointment here: ${link}`;
   }
 
   function copyScheduleLink() {
@@ -1387,6 +1493,17 @@ export function JobDetailView({
                 <Badge className={cn("w-fit text-base px-4 py-2", JOB_STATUS_COLORS[job.status as JobStatus])}>
                   {JOB_STATUS_LABELS[job.status as JobStatus]}
                 </Badge>
+                {getNextStatus(job.status as JobStatus) && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleMoveToNextStatus}
+                    className="touch-target min-h-[44px]"
+                    title={`Move to ${JOB_STATUS_LABELS[getNextStatus(job.status as JobStatus)!]}`}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                )}
               </div>
             </div>
           </div>
@@ -1399,44 +1516,37 @@ export function JobDetailView({
           {/* Main content */}
           <div className="space-y-6">
             {/* Quick Info */}
-            <div className="rounded-lg border bg-card p-4 space-y-3">
-              {address && (
-                <div className="flex items-start gap-3">
-                  <MapPin className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
-                  <span className="break-words">{address}</span>
-                </div>
-              )}
-              {job.customer?.phone && (
-                <div className="flex items-center gap-3 min-w-0">
-                  <Phone className="h-5 w-5 text-muted-foreground shrink-0" />
-                  <div className="flex gap-2 min-w-0">
+            <div className="rounded-lg border bg-card p-2.5">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                {address && (
+                  <div className="flex items-center gap-1.5">
+                    <MapPin className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <span>{address}</span>
+                  </div>
+                )}
+                {job.customer?.phone && (
+                  <div className="flex items-center gap-1.5">
+                    <Phone className="h-4 w-4 text-muted-foreground shrink-0" />
                     <a 
                       href={`tel:${job.customer.phone}`} 
-                      className="hover:underline touch-target min-h-[44px] flex items-center truncate"
+                      className="hover:underline"
                     >
                       {job.customer.phone}
                     </a>
+                  </div>
+                )}
+                {job.customer?.email && (
+                  <div className="flex items-center gap-1.5">
+                    <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
                     <a 
-                      href={`sms:${job.customer.phone}`}
-                      className="text-muted-foreground hover:text-foreground touch-target min-h-[44px] min-w-[44px] flex items-center justify-center"
-                      title="Send SMS"
+                      href={`mailto:${job.customer.email}`} 
+                      className="hover:underline"
                     >
-                      <Mail className="h-4 w-4" />
+                      {job.customer.email}
                     </a>
                   </div>
-                </div>
-              )}
-              {job.customer?.email && (
-                <div className="flex items-center gap-3 min-w-0">
-                  <Mail className="h-5 w-5 text-muted-foreground shrink-0" />
-                  <a 
-                    href={`mailto:${job.customer.email}`} 
-                    className="hover:underline touch-target min-h-[44px] flex items-center truncate"
-                  >
-                    {job.customer.email}
-                  </a>
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
             {/* All sections in one view */}
@@ -1454,6 +1564,9 @@ export function JobDetailView({
                 publicToken={estimatesList[0]?.public_token}
                 lineItems={paymentLineItems}
                 estimatingConfig={estimatingConfig}
+                estimateStatus={estimatesList[0]?.status || null}
+                estimateDeniedAt={estimatesList[0]?.denied_at || null}
+                estimateDenialReason={estimatesList[0]?.denial_reason || null}
                 onUpdate={() => {
                   router.refresh();
                 }}
@@ -1464,17 +1577,32 @@ export function JobDetailView({
                 {!editingSchedule && scheduledDate && scheduledTime ? (
                   <>
                     <div className="flex items-center justify-between mb-3">
-                      <div>
-                        <h3 className="font-semibold mb-1">Scheduling</h3>
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-1">
+                          <h3 className="font-semibold">Scheduling</h3>
+                          {(job as any).schedule_state === "accepted" && (
+                            <Badge variant="default">Accepted</Badge>
+                          )}
+                          {(job as any).schedule_state === "proposed" && (
+                            <Badge variant="secondary">Proposed</Badge>
+                          )}
+                          {(job as any).schedule_state === "denied" && (
+                            <Badge variant="destructive">Denied</Badge>
+                          )}
+                        </div>
                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
                           <Clock className="h-4 w-4" />
-                          <span>{formatDate(scheduledDate)} at {formatTime(scheduledTime)}</span>
+                          <span>
+                            {scheduledEndDate && scheduledEndDate !== scheduledDate
+                              ? `${formatDate(scheduledDate)} - ${formatDate(scheduledEndDate)}`
+                              : formatDate(scheduledDate)}
+                            {scheduledTime && ` at ${formatTime(scheduledTime)}`}
+                          </span>
                         </div>
-                        {(job as any).schedule_state === "proposed" && (
-                          <Badge variant="secondary" className="mt-2">Proposed</Badge>
-                        )}
-                        {(job as any).schedule_state === "accepted" && (
-                          <Badge variant="default" className="mt-2">Accepted</Badge>
+                        {scheduledEndDate && scheduledEndDate !== scheduledDate && (
+                          <p className="text-xs text-muted-foreground mt-1 ml-6">
+                            Daily arrival: {formatTime(scheduledTime)}
+                          </p>
                         )}
                       </div>
                       <Button
@@ -1529,8 +1657,57 @@ export function JobDetailView({
                         time={scheduledTime || null}
                         onDateChange={(date) => setScheduledDate(date)}
                         onTimeChange={(time) => setScheduledTime(time)}
-                        label="When is this job scheduled?"
+                        label={isMultiDay ? "Start date and daily arrival time" : "Date and time"}
                       />
+                      
+                      {/* Multi-day toggle */}
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id="multiDayToggle"
+                          checked={isMultiDay}
+                          onChange={(e) => {
+                            setIsMultiDay(e.target.checked);
+                            if (!e.target.checked) {
+                              setScheduledEndDate("");
+                            }
+                          }}
+                          className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary"
+                        />
+                        <label htmlFor="multiDayToggle" className="text-sm font-medium cursor-pointer">
+                          Multi-day job
+                        </label>
+                      </div>
+
+                      {/* End date field - only visible when multi-day is enabled */}
+                      {isMultiDay && (
+                        <div>
+                          <label className="text-sm font-medium mb-1 block">
+                            End date
+                          </label>
+                          <input
+                            type="date"
+                            value={scheduledEndDate}
+                            onChange={(e) => setScheduledEndDate(e.target.value)}
+                            min={scheduledDate || undefined}
+                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                          />
+                          {scheduledEndDate && scheduledEndDate < scheduledDate && (
+                            <p className="text-xs text-destructive mt-1">
+                              End date must be after start date
+                            </p>
+                          )}
+                          {scheduledEndDate && scheduledEndDate >= scheduledDate && scheduledTime && (
+                            <p className="text-xs text-muted-foreground mt-2 flex items-start gap-1">
+                              <span className="text-primary">ℹ️</span>
+                              <span>
+                                Crew will arrive at {formatTime(scheduledTime)} each day from {formatDate(scheduledDate)} to {formatDate(scheduledEndDate)}
+                              </span>
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      
                       <Button onClick={handleSaveSchedule} className="w-full">
                         <Save className="mr-2 h-4 w-4" />
                         Save Schedule
@@ -1902,28 +2079,6 @@ export function JobDetailView({
                       );
                     })()}
                     
-                    {/* Pickup Location Subsection */}
-                    <div className="space-y-3 pt-4 border-t">
-                      <h4 className="font-medium text-sm">Pickup Location</h4>
-                      <p className="text-xs text-muted-foreground">Optional - Select where to pick up materials</p>
-                      <Select
-                        value={selectedPickupLocation || ""}
-                        onChange={(e) => handlePickupLocationChange(e.target.value || null)}
-                        className="w-full"
-                      >
-                        <option value="">None selected</option>
-                        {pickupLocations.map((location) => (
-                          <option key={location.id} value={location.id}>
-                            {location.name}
-                          </option>
-                        ))}
-                      </Select>
-                      {pickupLocations.length === 0 && (
-                        <p className="text-xs text-muted-foreground">
-                          Add pickup locations in Settings → Locations
-                        </p>
-                      )}
-                    </div>
                   </div>
                     </>
                   )}
@@ -2086,57 +2241,12 @@ export function JobDetailView({
                     </div>
                     {/* Time Tracking */}
                     <div className="space-y-3">
-                      <Label className="text-sm font-medium">Time Logs</Label>
-                      
-                      {/* Add Time Entry Form */}
-                      <div className="rounded-lg border bg-muted/30 p-3 space-y-3">
-                        <div className="grid gap-2 sm:grid-cols-3">
-                          <div className="space-y-1">
-                            <Label htmlFor="timeWorker" className="text-xs">Worker</Label>
-                            <Select
-                              id="timeWorker"
-                              value={newTimeEntry.userId}
-                              onChange={(e) => setNewTimeEntry({ ...newTimeEntry, userId: e.target.value })}
-                              className="h-9"
-                            >
-                              <option value="">Select worker</option>
-                              {teamMembers.map((member) => (
-                                <option key={member.id} value={member.id}>
-                                  {member.fullName}
-                                </option>
-                              ))}
-                            </Select>
-                          </div>
-                          <div className="space-y-1">
-                            <Label htmlFor="timeDate" className="text-xs">Date</Label>
-                            <Input
-                              id="timeDate"
-                              type="date"
-                              value={newTimeEntry.date}
-                              onChange={(e) => setNewTimeEntry({ ...newTimeEntry, date: e.target.value })}
-                              className="h-9"
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <Label htmlFor="timeHours" className="text-xs">Hours</Label>
-                            <Input
-                              id="timeHours"
-                              type="number"
-                              step="0.25"
-                              min="0"
-                              placeholder="0.0"
-                              value={newTimeEntry.hours}
-                              onChange={(e) => setNewTimeEntry({ ...newTimeEntry, hours: e.target.value })}
-                              className="h-9"
-                            />
-                          </div>
-                        </div>
+                      <div className="flex items-center justify-between">
+                        <Label className="text-sm font-medium">Time Logs</Label>
                         <Button
                           size="sm"
-                          onClick={handleAddTimeEntry}
-                          loading={addingTimeEntry}
-                          disabled={!newTimeEntry.hours || !newTimeEntry.userId}
-                          className="w-full"
+                          onClick={() => setShowAddTimeDialog(true)}
+                          className="touch-target min-h-[44px]"
                         >
                           <Plus className="mr-2 h-4 w-4" />
                           Add Hours
@@ -2398,18 +2508,6 @@ export function JobDetailView({
               /* Paint Form */
               <>
                 <div className="space-y-2">
-                  <Label htmlFor="paintName">Paint Type *</Label>
-                  <Input
-                    id="paintName"
-                    value={materialFormData.name}
-                    onChange={(e) => setMaterialFormData({ ...materialFormData, name: e.target.value })}
-                    placeholder="e.g., Interior Wall Paint"
-                    className="min-h-[44px]"
-                    autoFocus
-                  />
-                </div>
-
-                <div className="space-y-2">
                   <Label htmlFor="paintArea">Area / Use *</Label>
                   <Select
                     id="paintArea"
@@ -2418,10 +2516,19 @@ export function JobDetailView({
                     className="min-h-[44px]"
                   >
                     <option value="">Select area...</option>
-                    <option value="Walls">Walls</option>
-                    <option value="Ceiling">Ceiling</option>
-                    <option value="Trim">Trim</option>
-                    <option value="Doors">Doors</option>
+                    <optgroup label="Interior">
+                      <option value="Interior Walls">Interior Walls</option>
+                      <option value="Ceiling">Ceiling</option>
+                      <option value="Interior Trim">Interior Trim</option>
+                      <option value="Doors">Doors</option>
+                    </optgroup>
+                    <optgroup label="Exterior">
+                      <option value="Exterior Walls">Exterior Walls</option>
+                      <option value="Exterior Trim">Exterior Trim</option>
+                      <option value="Deck/Fence">Deck/Fence</option>
+                      <option value="Siding">Siding</option>
+                    </optgroup>
+                    <option value="Other">Other</option>
                   </Select>
                 </div>
 
@@ -2636,7 +2743,10 @@ export function JobDetailView({
                 <div className="rounded-lg border bg-card p-4">
                   <p className="text-sm text-muted-foreground mb-2">Scheduled for</p>
                   <p className="font-semibold text-lg">
-                    {formatDate(scheduledDate)} at {formatTime(scheduledTime)}
+                    {scheduledEndDate && scheduledEndDate !== scheduledDate
+                      ? `${formatDate(scheduledDate)} - ${formatDate(scheduledEndDate)}`
+                      : formatDate(scheduledDate)}
+                    {scheduledTime && ` at ${formatTime(scheduledTime)}`}
                   </p>
                 </div>
 
@@ -2740,6 +2850,77 @@ export function JobDetailView({
         onRefresh={() => router.refresh()}
       />
 
+      {/* Add Hours Dialog */}
+      <Dialog open={showAddTimeDialog} onOpenChange={setShowAddTimeDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Hours</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="timeWorker">Worker</Label>
+              <Select
+                id="timeWorker"
+                value={newTimeEntry.userId}
+                onChange={(e) => setNewTimeEntry({ ...newTimeEntry, userId: e.target.value })}
+              >
+                <option value="">Select worker</option>
+                {teamMembers.map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {member.fullName}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="timeDate">Date</Label>
+              <Input
+                id="timeDate"
+                type="date"
+                value={newTimeEntry.date}
+                onChange={(e) => setNewTimeEntry({ ...newTimeEntry, date: e.target.value })}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="timeHours">Hours</Label>
+              <Input
+                id="timeHours"
+                type="number"
+                step="0.25"
+                min="0"
+                placeholder="0.0"
+                value={newTimeEntry.hours}
+                onChange={(e) => setNewTimeEntry({ ...newTimeEntry, hours: e.target.value })}
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="outline"
+                onClick={() => setShowAddTimeDialog(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={async () => {
+                  await handleAddTimeEntry();
+                  setShowAddTimeDialog(false);
+                  setNewTimeEntry({
+                    userId: currentUserId,
+                    hours: "",
+                    date: new Date().toISOString().split("T")[0],
+                  });
+                }}
+                loading={addingTimeEntry}
+                disabled={!newTimeEntry.hours || !newTimeEntry.userId}
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Add Hours
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Copy Message Dialog */}
       <Dialog open={showCopyDialog} onOpenChange={setShowCopyDialog}>
         <DialogContent className="max-w-lg">
@@ -2754,9 +2935,9 @@ export function JobDetailView({
           </DialogHeader>
           <div className="space-y-4">
             {copyDialogType === "estimate" && estimatesList[0] && (
-              <>
-                <div className="rounded-lg border bg-card p-4">
-                  <p className="text-sm text-muted-foreground mb-2">Estimate Link</p>
+              <div className="space-y-3">
+                <div>
+                  <Label className="text-sm text-muted-foreground">Estimate Link</Label>
                   <div className="flex gap-2 mt-2">
                     <Input 
                       value={`${typeof window !== "undefined" ? window.location.origin : ""}/e/${estimatesList[0].public_token}`}
@@ -2775,8 +2956,9 @@ export function JobDetailView({
                     </Button>
                   </div>
                 </div>
+
                 <div>
-                  <Label className="text-sm text-muted-foreground">Message Template</Label>
+                  <Label className="text-sm text-muted-foreground">Pre-written Message</Label>
                   <Textarea 
                     value={`Hey ${job.customer?.name || "there"} — here's your estimate for ${formatCurrency(estimatesList[0].line_items.reduce((sum, li) => sum + li.price, 0))}: ${typeof window !== "undefined" ? window.location.origin : ""}/e/${estimatesList[0].public_token}. Let me know if you have any questions!`}
                     readOnly 
@@ -2794,13 +2976,13 @@ export function JobDetailView({
                     Copy Message
                   </Button>
                 </div>
-              </>
+              </div>
             )}
 
             {copyDialogType === "invoice" && invoicesList[0] && (
-              <>
-                <div className="rounded-lg border bg-card p-4">
-                  <p className="text-sm text-muted-foreground mb-2">Invoice Link</p>
+              <div className="space-y-3">
+                <div>
+                  <Label className="text-sm text-muted-foreground">Invoice Link</Label>
                   <div className="flex gap-2 mt-2">
                     <Input 
                       value={`${typeof window !== "undefined" ? window.location.origin : ""}/i/${invoicesList[0].public_token}`}
@@ -2819,8 +3001,9 @@ export function JobDetailView({
                     </Button>
                   </div>
                 </div>
+
                 <div>
-                  <Label className="text-sm text-muted-foreground">Message Template</Label>
+                  <Label className="text-sm text-muted-foreground">Pre-written Message</Label>
                   <Textarea 
                     value={`Hey ${job.customer?.name || "there"} — thanks again for letting us work on your project! Here's your invoice for ${formatCurrency(invoicesList[0].amount_total)}: ${typeof window !== "undefined" ? window.location.origin : ""}/i/${invoicesList[0].public_token}. Let us know if you have any questions!`}
                     readOnly 
@@ -2838,50 +3021,69 @@ export function JobDetailView({
                     Copy Message
                   </Button>
                 </div>
-              </>
+              </div>
             )}
 
             {copyDialogType === "materials" && (
-              <div>
-                <Label className="text-sm text-muted-foreground">Materials List</Label>
-                <Textarea 
-                  value={`Materials needed for ${job.title} (${job.customer?.name || "Customer"}):\n\n${materials.map((m, i) => `${i + 1}. ${m.name}${m.notes ? ` - ${m.notes}` : ""}`).join("\n")}\n\nTotal items: ${materials.length}`}
-                  readOnly 
-                  rows={Math.min(materials.length + 4, 12)}
-                  className="mt-2 font-mono text-sm"
-                />
-                <Button 
-                  onClick={() => {
-                    copyMaterialsList();
-                    setShowCopyDialog(false);
-                  }}
-                  className="w-full mt-2"
-                >
-                  <Copy className="mr-2 h-4 w-4" />
-                  Copy List
-                </Button>
+              <div className="space-y-3">
+                <div>
+                  <Label className="text-sm text-muted-foreground">Materials List</Label>
+                  <Textarea 
+                    value={(() => {
+                      const jobTitle = job.title;
+                      const customerName = job.customer?.name || "Customer";
+                      let preview = `Materials needed for ${jobTitle} (${customerName}):\n\n`;
+                      materials.forEach((m, i) => {
+                        let line = `${i + 1}. ${m.name}`;
+                        if (m.notes) line += ` - ${m.notes}`;
+                        if (m.quantity_decimal && m.unit) {
+                          const qty = m.quantity_decimal % 1 === 0 ? m.quantity_decimal.toFixed(0) : m.quantity_decimal;
+                          line += ` - ${qty} ${m.unit}`;
+                        }
+                        preview += line + `\n`;
+                      });
+                      preview += `\nTotal items: ${materials.length}`;
+                      return preview;
+                    })()}
+                    readOnly 
+                    rows={Math.min(materials.length + 4, 12)}
+                    className="mt-2 font-mono text-sm"
+                  />
+                  <Button 
+                    onClick={() => {
+                      copyMaterialsList();
+                      setShowCopyDialog(false);
+                    }}
+                    className="w-full mt-2"
+                  >
+                    <Copy className="mr-2 h-4 w-4" />
+                    Copy List
+                  </Button>
+                </div>
               </div>
             )}
 
             {copyDialogType === "reminder" && scheduledDate && scheduledTime && (
-              <div>
-                <Label className="text-sm text-muted-foreground">Reminder Message</Label>
-                <Textarea 
-                  value={`Hey ${job.customer?.name || "there"} — just a reminder that we're scheduled for ${formatDate(scheduledDate)} at ${formatTime(scheduledTime)} at ${address || "[address]"}. Reply here if anything changes. See you then!`}
-                  readOnly 
-                  rows={4}
-                  className="mt-2 font-sans"
-                />
-                <Button 
-                  onClick={() => {
-                    copyReminderMessage();
-                    setShowCopyDialog(false);
-                  }}
-                  className="w-full mt-2"
-                >
-                  <Copy className="mr-2 h-4 w-4" />
-                  Copy Message
-                </Button>
+              <div className="space-y-3">
+                <div>
+                  <Label className="text-sm text-muted-foreground">Reminder Message</Label>
+                  <Textarea 
+                    value={`Hey ${job.customer?.name || "there"} — just a reminder that we're scheduled for ${scheduledEndDate && scheduledEndDate !== scheduledDate ? `${formatDate(scheduledDate)} - ${formatDate(scheduledEndDate)}` : formatDate(scheduledDate)} at ${formatTime(scheduledTime)} at ${address || "[address]"}. Reply here if anything changes. See you then!`}
+                    readOnly 
+                    rows={4}
+                    className="mt-2 font-sans"
+                  />
+                  <Button 
+                    onClick={() => {
+                      copyReminderMessage();
+                      setShowCopyDialog(false);
+                    }}
+                    className="w-full mt-2"
+                  >
+                    <Copy className="mr-2 h-4 w-4" />
+                    Copy Message
+                  </Button>
+                </div>
               </div>
             )}
           </div>

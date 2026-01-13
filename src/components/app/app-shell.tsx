@@ -15,6 +15,7 @@ import {
   Calendar,
   MessageSquare,
   Package,
+  BarChart3,
 } from "lucide-react";
 
 interface AppShellProps {
@@ -34,10 +35,10 @@ interface AppShellProps {
 
 // All nav items
 const allNavItems = [
+  { href: "/app/dashboard", label: "Dashboard", icon: BarChart3, ownerOnly: false },
   { href: "/app/board", label: "Board", icon: LayoutGrid, ownerOnly: false },
   { href: "/app/schedule", label: "Schedule", icon: Calendar, ownerOnly: false },
   { href: "/app/customers", label: "Customers", icon: UserCircle, ownerOnly: false },
-  { href: "/app/inventory", label: "Inventory", icon: Package, ownerOnly: false },
   { href: "/app/matte", label: "Matte", icon: MessageSquare, ownerOnly: false },
   { href: "/app/settings", label: "Settings", icon: Settings, ownerOnly: true },
 ];

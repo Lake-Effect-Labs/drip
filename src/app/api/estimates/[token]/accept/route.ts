@@ -171,16 +171,17 @@ export async function POST(
     if (estimateMaterials && estimateMaterials.length > 0) {
       // New system: Copy estimate_materials to job_materials
       const jobMaterialsToInsert = estimateMaterials.map((material) => {
-        // Build detailed notes from material properties
+        // Build detailed notes from material properties using bullet points (consistent with manual additions)
+        // Note: quantity is stored separately in quantity_decimal/unit fields
         const notes = [
-          material.paint_product && `Product: ${material.paint_product}`,
-          material.color_name && `Color: ${material.color_name}`,
-          material.color_code && `Code: ${material.color_code}`,
-          material.sheen && `Sheen: ${material.sheen}`,
-          material.area_description && `Area: ${material.area_description}`,
+          material.paint_product,
+          material.color_name,
+          material.color_code && `(${material.color_code})`,
+          material.sheen,
+          material.area_description && `- ${material.area_description}`,
         ]
           .filter(Boolean)
-          .join(" | ");
+          .join(" • ");
 
         return {
           job_id: jobId,

@@ -37,23 +37,9 @@ export async function generateEstimateMaterials(estimateId: string): Promise<Est
         ? item.paint_color_name_or_code?.replace(colorCode, "").trim() || null
         : item.paint_color_name_or_code;
 
-      // Try to get cost from inventory first
-      let costPerGallon = DEFAULT_COST_PER_GALLON;
-
-      if (item.vendor_sku) {
-        const { data: inventoryItem } = await supabase
-          .from("inventory_items")
-          .select("cost_per_unit")
-          .eq("vendor_sku", item.vendor_sku)
-          .single();
-
-        if (inventoryItem?.cost_per_unit) {
-          costPerGallon = inventoryItem.cost_per_unit;
-        }
-      }
-
-      // Calculate total cost in cents
-      const lineTotal = Math.round(item.gallons_estimate * costPerGallon * 100);
+      // No cost calculation - materials are for informational purposes only
+      const costPerGallon = null;
+      const lineTotal = null;
 
       // Create descriptive material name
       const paintProduct = item.product_line

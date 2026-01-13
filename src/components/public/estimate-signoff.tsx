@@ -7,14 +7,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Paintbrush } from "lucide-react";
 
 interface EstimateSignoffProps {
   estimate: EstimateWithLineItems;
   token: string;
   onSignoffComplete: () => void;
+  companyLogo?: string | null;
+  companyName?: string | null;
 }
 
-export function EstimateSignoff({ estimate, token, onSignoffComplete }: EstimateSignoffProps) {
+export function EstimateSignoff({ estimate, token, onSignoffComplete, companyLogo, companyName }: EstimateSignoffProps) {
   const [customerName, setCustomerName] = useState("");
   const [acknowledgedScope, setAcknowledgedScope] = useState(false);
   const [acknowledgedMaterials, setAcknowledgedMaterials] = useState(false);
@@ -97,6 +100,29 @@ export function EstimateSignoff({ estimate, token, onSignoffComplete }: Estimate
 
   return (
     <div className="space-y-6">
+      {/* Company Logo Header */}
+      {(companyLogo || companyName) && (
+        <div className="flex items-center gap-3 pb-4 border-b">
+          {companyLogo ? (
+            <img 
+              src={companyLogo} 
+              alt={companyName || "Company Logo"}
+              className="w-10 h-10 rounded-lg object-cover"
+            />
+          ) : (
+            <div className="w-10 h-10 rounded-lg bg-stone-800 flex items-center justify-center">
+              <Paintbrush className="w-5 h-5 text-white" />
+            </div>
+          )}
+          {companyName && (
+            <div>
+              <span className="font-bold">{companyName}</span>
+              <p className="text-xs text-muted-foreground">Customer Agreement</p>
+            </div>
+          )}
+        </div>
+      )}
+      
       <Card>
         <CardHeader>
           <CardTitle>Customer Agreement Required</CardTitle>

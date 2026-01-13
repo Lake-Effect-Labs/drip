@@ -13,7 +13,24 @@ export function formatCurrency(amount: number): string {
 }
 
 export function formatDate(date: Date | string): string {
-  const d = typeof date === "string" ? new Date(date) : date;
+  let d: Date;
+  
+  if (typeof date === "string") {
+    // Parse as local date to avoid timezone issues
+    // "2026-01-12" should be Jan 12 in local time, not UTC
+    const parts = date.split("-");
+    if (parts.length === 3) {
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1; // Month is 0-indexed
+      const day = parseInt(parts[2], 10);
+      d = new Date(year, month, day);
+    } else {
+      d = new Date(date);
+    }
+  } else {
+    d = date;
+  }
+  
   return d.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",

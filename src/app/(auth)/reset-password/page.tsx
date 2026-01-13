@@ -21,37 +21,19 @@ export default function ResetPasswordPage() {
   const supabase = createClient();
 
   useEffect(() => {
-    // Handle password reset from URL hash fragments
-    async function handlePasswordReset() {
-      // Supabase automatically processes hash fragments on page load
-      // Wait a bit for Supabase to process the hash and establish session
-      await new Promise(resolve => setTimeout(resolve, 1000));
+    async function checkSession() {
+      const { data: { session } } = await supabase.auth.getSession();
       
-      // Check if we have a valid session
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError) {
-        console.error("Session error:", sessionError);
-        addToast("Invalid or expired reset link", "error");
+      if (!session) {
+        addToast("Invalid or expired reset link. Please request a new password reset.", "error");
         setTimeout(() => router.push("/forgot-password"), 2000);
         return;
-      }
-
-      if (!session) {
-        // Try refreshing the session in case it's still being established
-        const { data: { session: refreshedSession } } = await supabase.auth.refreshSession();
-        
-        if (!refreshedSession) {
-          addToast("Invalid or expired reset link. Please request a new password reset.", "error");
-          setTimeout(() => router.push("/forgot-password"), 2000);
-          return;
-        }
       }
 
       setValidSession(true);
     }
 
-    handlePasswordReset();
+    checkSession();
   }, [router, addToast, supabase]);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -88,35 +70,113 @@ export default function ResetPasswordPage() {
         return;
       }
 
-      console.log("Updating password for user:", session.user.email);
-
-      // Update the password
-      const { data: updateData, error: updateError } = await supabase.auth.updateUser({
-        password: password,
-      });
-
-      if (updateError) {
-        console.error("Password update error:", updateError);
-        addToast(updateError.message || "Failed to update password. Please try again.", "error");
+      // Get fresh session to ensure we have the latest
+      const { data: { session: currentSession }, error: sessionCheckError } = await supabase.auth.getSession();
+      
+      if (sessionCheckError || !currentSession) {
+        console.error("No valid session found:", sessionCheckError);
+        addToast("Your reset session has expired. Please request a new password reset.", "error");
         setLoading(false);
         return;
       }
 
-      console.log("Password updated successfully");
+      const userEmail = currentSession.user.email;
+      console.log("🔑 Updating password for user:", userEmail);
+      console.log("Session details:", {
+        email: currentSession.user.email,
+        id: currentSession.user.id,
+        recovery: !!currentSession.user.recovery_sent_at,
+        app_metadata: currentSession.user.app_metadata,
+        user_metadata: currentSession.user.user_metadata,
+      });
 
-      // Wait a moment to ensure the password is saved
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Update the password using the recovery session
+      // Don't trim - use exactly what the user entered
+      const newPassword = password;
+      console.log("📝 Password length:", newPassword.length);
+      console.log("Password first char code:", newPassword.charCodeAt(0));
+      console.log("Password last char code:", newPassword.charCodeAt(newPassword.length - 1));
+
+      if (newPassword.length < 6) {
+        addToast("Password must be at least 6 characters", "error");
+        setLoading(false);
+        return;
+      }
+
+      console.log("🚀 Calling updateUser...");
+      const { data: updateData, error: updateError } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+
+      if (updateError) {
+        console.error("❌ Password update error:", updateError);
+        console.error("Error name:", updateError.name);
+        console.error("Error message:", updateError.message);
+        console.error("Error status:", (updateError as any).status);
+        console.error("Full error:", JSON.stringify(updateError, null, 2));
+        addToast(`Failed to update password: ${updateError.message}. Please try again or request a new reset link.`, "error");
+        setLoading(false);
+        return;
+      }
+
+      if (!updateData || !updateData.user) {
+        console.error("❌ Password update returned no user data");
+        console.error("Update data:", updateData);
+        addToast("Password update failed - no user data returned. Please try again.", "error");
+        setLoading(false);
+        return;
+      }
+
+      console.log("✅ Password updated successfully!");
+      console.log("Updated user email:", updateData.user.email);
+      console.log("Updated user ID:", updateData.user.id);
+      console.log("Updated at:", updateData.user.updated_at);
+      
+      setSuccess(true);
+      addToast("Password reset successfully! Signing you in...", "success");
+      
+      // Wait a bit to ensure password is fully saved on server
+      await new Promise(resolve => setTimeout(resolve, 2000));
 
       // Sign out the recovery session
       await supabase.auth.signOut();
       
-      setSuccess(true);
-      addToast("Password reset successfully! You can now sign in with your new password.", "success");
-      
-      // Redirect to login after a short delay
-      setTimeout(() => {
-        router.push("/login");
-      }, 2000);
+      // Wait a moment after sign out
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Now sign in with the new password
+      console.log("🔑 Signing in with new password...");
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email: userEmail || "",
+        password: newPassword,
+      });
+
+      if (signInError) {
+        console.error("Auto sign-in error:", signInError);
+        addToast("Password reset successful! Please sign in with your new password.", "success");
+        
+        // Store email for pre-fill
+        if (typeof window !== "undefined" && userEmail) {
+          sessionStorage.setItem("resetEmail", userEmail);
+        }
+        
+        setTimeout(() => {
+          router.push("/login");
+          router.refresh();
+        }, 2000);
+        return;
+      }
+
+      if (signInData?.user) {
+        console.log("✅ Auto sign-in successful!");
+        addToast("Password reset complete! Redirecting to app...", "success");
+        
+        // Redirect to app
+        setTimeout(() => {
+          router.push("/app");
+          router.refresh();
+        }, 1000);
+      }
     } catch (err) {
       console.error("Unexpected error:", err);
       addToast("An unexpected error occurred. Please try again.", "error");

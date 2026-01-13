@@ -87,8 +87,8 @@ export function ScheduleView({
     return true;
   });
 
-  // Get jobs for current day/week/month
-  const jobsForPeriod = useMemo(() => {
+  // Get period boundaries
+  const periodBounds = useMemo(() => {
     let start, end;
     
     if (view === "day") {
@@ -101,11 +101,22 @@ export function ScheduleView({
       start = startOfMonth(currentDate);
       end = endOfMonth(currentDate);
     }
+    
+    return { start, end };
+  }, [currentDate, view]);
+
+  // Get jobs for current day/week/month
+  const jobsForPeriod = useMemo(() => {
+    const { start, end } = periodBounds;
 
     return filteredJobs.filter((job) => {
       if (!job.scheduled_date) return false;
-      const jobDate = parseISO(job.scheduled_date);
-      return jobDate >= start && jobDate <= end;
+      const jobStart = parseISO(job.scheduled_date);
+      const jobEnd = job.scheduled_end_date ? parseISO(job.scheduled_end_date) : jobStart;
+      
+      // Job overlaps with period if:
+      // - Job starts before period ends AND job ends after period starts
+      return jobStart <= end && jobEnd >= start;
     }).sort((a, b) => {
       // Sort by date, then by time
       if (a.scheduled_date !== b.scheduled_date) {
@@ -115,7 +126,7 @@ export function ScheduleView({
       const timeB = b.scheduled_time || "00:00";
       return timeA.localeCompare(timeB);
     });
-  }, [filteredJobs, currentDate, view]);
+  }, [filteredJobs, periodBounds]);
 
   // Get days for week/month view
   const viewDays = useMemo(() => {
@@ -150,18 +161,31 @@ export function ScheduleView({
     return [...paddingStart, ...monthDays, ...paddingEnd];
   }, [currentDate, view]);
 
-  // Group jobs by date for week view
+  // Group jobs by date for week view - handle multi-day jobs
   const jobsByDate = useMemo(() => {
     const map = new Map<string, JobWithCustomer[]>();
+    const { start, end } = periodBounds;
+    
     jobsForPeriod.forEach((job) => {
-      if (job.scheduled_date) {
-        const dateKey = job.scheduled_date;
-        const existing = map.get(dateKey) || [];
-        map.set(dateKey, [...existing, job]);
+      if (!job.scheduled_date) return;
+      
+      const startDate = parseISO(job.scheduled_date);
+      const endDate = job.scheduled_end_date ? parseISO(job.scheduled_end_date) : startDate;
+      
+      // Add job to all days it spans within the view period
+      const currentDate = new Date(startDate);
+      while (currentDate <= endDate) {
+        const dateKey = format(currentDate, "yyyy-MM-dd");
+        // Only add if within the view period
+        if (currentDate >= start && currentDate <= end) {
+          const existing = map.get(dateKey) || [];
+          map.set(dateKey, [...existing, job]);
+        }
+        currentDate.setDate(currentDate.getDate() + 1);
       }
     });
     return map;
-  }, [jobsForPeriod]);
+  }, [jobsForPeriod, periodBounds]);
 
   function navigateDate(direction: "prev" | "next") {
     if (view === "day") {
