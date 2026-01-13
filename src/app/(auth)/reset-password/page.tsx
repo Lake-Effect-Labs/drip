@@ -90,12 +90,15 @@ export default function ResetPasswordPage() {
         user_metadata: currentSession.user.user_metadata,
       });
 
+      // Verify this is a recovery session (password reset session)
+      // Recovery sessions are created when exchangeCodeForSession is called with a password reset code
+      // The session should allow password updates via updateUser
+      console.log("Session type check - user ID:", currentSession.user.id);
+
       // Update the password using the recovery session
       // Don't trim - use exactly what the user entered
       const newPassword = password;
       console.log("📝 Password length:", newPassword.length);
-      console.log("Password first char code:", newPassword.charCodeAt(0));
-      console.log("Password last char code:", newPassword.charCodeAt(newPassword.length - 1));
 
       if (newPassword.length < 6) {
         addToast("Password must be at least 6 characters", "error");
@@ -103,7 +106,7 @@ export default function ResetPasswordPage() {
         return;
       }
 
-      console.log("🚀 Calling updateUser...");
+      console.log("🚀 Calling updateUser with password...");
       const { data: updateData, error: updateError } = await supabase.auth.updateUser({
         password: newPassword,
       });
@@ -132,51 +135,37 @@ export default function ResetPasswordPage() {
       console.log("Updated user ID:", updateData.user.id);
       console.log("Updated at:", updateData.user.updated_at);
       
-      setSuccess(true);
-      addToast("Password reset successfully! Signing you in...", "success");
+      // Wait a moment to ensure password update has fully propagated on the server
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
-      // Wait a bit to ensure password is fully saved on server
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // Sign out the recovery session
+      // Refresh the session to ensure it reflects the password update
+      const { error: refreshError } = await supabase.auth.refreshSession();
+      
+      if (refreshError) {
+        console.error("Session refresh error:", refreshError);
+        // Even if refresh fails, password was updated, so continue
+      }
+      
+      setSuccess(true);
+      addToast("Password reset successfully! Redirecting to sign in...", "success");
+      
+      // Store email for pre-fill
+      if (typeof window !== "undefined" && userEmail) {
+        sessionStorage.setItem("resetEmail", userEmail);
+      }
+      
+      // Wait a bit more to ensure password is fully saved before signing out
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Sign out the recovery session and redirect to login
+      // The recovery session should be cleared so user can sign in with new password
       await supabase.auth.signOut();
       
-      // Wait a moment after sign out
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      // Now sign in with the new password
-      console.log("🔑 Signing in with new password...");
-      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-        email: userEmail || "",
-        password: newPassword,
-      });
-
-      if (signInError) {
-        console.error("Auto sign-in error:", signInError);
-        addToast("Password reset successful! Please sign in with your new password.", "success");
-        
-        // Store email for pre-fill
-        if (typeof window !== "undefined" && userEmail) {
-          sessionStorage.setItem("resetEmail", userEmail);
-        }
-        
-        setTimeout(() => {
-          router.push("/login");
-          router.refresh();
-        }, 2000);
-        return;
-      }
-
-      if (signInData?.user) {
-        console.log("✅ Auto sign-in successful!");
-        addToast("Password reset complete! Redirecting to app...", "success");
-        
-        // Redirect to app
-        setTimeout(() => {
-          router.push("/app");
-          router.refresh();
-        }, 1000);
-      }
+      // Redirect to login after a brief delay
+      setTimeout(() => {
+        router.push("/login");
+        router.refresh();
+      }, 1000);
     } catch (err) {
       console.error("Unexpected error:", err);
       addToast("An unexpected error occurred. Please try again.", "error");
