@@ -62,13 +62,23 @@ export async function POST(
 
     // If job exists, update job status to indicate customer declined
     if (estimate.job_id) {
+      // Fetch job to get current notes
+      const { data: job } = await supabase
+        .from("jobs")
+        .select("notes")
+        .eq("id", estimate.job_id)
+        .single();
+
+      const denialNote = `[Estimate Denied] ${denialReason || "No reason provided"}`;
+      const updatedNotes = job?.notes
+        ? `${job.notes}\n\n${denialNote}`
+        : denialNote;
+
       await supabase
         .from("jobs")
         .update({
           status: "archive", // Move to archive since customer declined
-          notes: estimate.job?.notes
-            ? `${estimate.job.notes}\n\n[Estimate Denied] ${denialReason || "No reason provided"}`
-            : `[Estimate Denied] ${denialReason || "No reason provided"}`,
+          notes: updatedNotes,
           updated_at: new Date().toISOString(),
         })
         .eq("id", estimate.job_id);

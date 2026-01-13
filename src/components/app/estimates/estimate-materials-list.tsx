@@ -68,20 +68,12 @@ export function EstimateMaterialsList({
       if (!response.ok) throw new Error("Failed to regenerate materials");
 
       const data = await response.json();
-      addToast({
-        title: "Materials regenerated",
-        description: `${data.count} materials created from line items`,
-        type: "success",
-      });
+      addToast(`${data.count} materials created from line items`, "success");
 
       await refreshMaterials();
     } catch (error) {
       console.error("Error regenerating materials:", error);
-      addToast({
-        title: "Error",
-        description: "Failed to regenerate materials",
-        type: "error",
-      });
+      addToast("Failed to regenerate materials", "error");
     } finally {
       setRegenerating(false);
     }
@@ -116,21 +108,14 @@ export function EstimateMaterialsList({
 
       if (!response.ok) throw new Error("Failed to update material");
 
-      addToast({
-        title: "Material updated",
-        type: "success",
-      });
+      addToast("Material updated", "success");
 
       setEditingId(null);
       setEditForm({});
       await refreshMaterials();
     } catch (error) {
       console.error("Error updating material:", error);
-      addToast({
-        title: "Error",
-        description: "Failed to update material",
-        type: "error",
-      });
+      addToast("Failed to update material", "error");
     }
   };
 
@@ -149,19 +134,12 @@ export function EstimateMaterialsList({
 
       if (!response.ok) throw new Error("Failed to delete material");
 
-      addToast({
-        title: "Material deleted",
-        type: "success",
-      });
+      addToast("Material deleted", "success");
 
       await refreshMaterials();
     } catch (error) {
       console.error("Error deleting material:", error);
-      addToast({
-        title: "Error",
-        description: "Failed to delete material",
-        type: "error",
-      });
+      addToast("Failed to delete material", "error");
     }
   };
 
@@ -179,10 +157,7 @@ export function EstimateMaterialsList({
 
       if (!response.ok) throw new Error("Failed to add material");
 
-      addToast({
-        title: "Material added",
-        type: "success",
-      });
+      addToast("Material added", "success");
 
       setIsAddingNew(false);
       setNewMaterial({
@@ -200,11 +175,7 @@ export function EstimateMaterialsList({
       await refreshMaterials();
     } catch (error) {
       console.error("Error adding material:", error);
-      addToast({
-        title: "Error",
-        description: "Failed to add material",
-        type: "error",
-      });
+      addToast("Failed to add material", "error");
     }
   };
 

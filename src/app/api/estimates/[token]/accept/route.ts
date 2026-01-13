@@ -40,6 +40,14 @@ export async function POST(
       return NextResponse.json({ success: true, message: "Already accepted" });
     }
 
+    // Check if signoff is required and not completed
+    if (estimate.requires_signoff && !estimate.signoff_completed_at) {
+      return NextResponse.json(
+        { error: "Customer signoff is required before accepting this estimate" },
+        { status: 400 }
+      );
+    }
+
     // Start transaction-like operations
     let jobId = estimate.job_id;
     let customerId = estimate.customer_id;

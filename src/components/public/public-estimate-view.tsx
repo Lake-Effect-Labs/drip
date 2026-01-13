@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { Paintbrush, CheckCircle, MapPin, User } from "lucide-react";
 import { PaintChipAnimator } from "@/components/public/paint-chip-animator";
+import { EstimateSignoff } from "@/components/public/estimate-signoff";
 
 type EstimateWithDetails = Estimate & {
   line_items: EstimateLineItem[];
@@ -42,6 +43,17 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [showDenyDialog, setShowDenyDialog] = useState(false);
   const [denialReason, setDenialReason] = useState("");
+  const [showSignoff, setShowSignoff] = useState(
+    estimate.requires_signoff && !estimate.signoff_completed_at
+  );
+
+  function handleSignoffComplete() {
+    setShowSignoff(false);
+    setEstimate((prev) => ({
+      ...prev,
+      signoff_completed_at: new Date().toISOString(),
+    }));
+  }
 
   // Calculate totals
   const laborTotal = estimate.labor_total || estimate.line_items.reduce((sum, li) => sum + li.price, 0);
@@ -326,32 +338,40 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
           </CardContent>
         </Card>
 
-        {/* Accept/Deny Buttons */}
-        <div className="space-y-3">
-          {error && (
-            <p className="text-sm text-destructive text-center">{error}</p>
-          )}
-          <div className="grid grid-cols-2 gap-3">
-            <Button
-              size="lg"
-              variant="outline"
-              className="w-full"
-              onClick={() => setShowDenyDialog(true)}
-            >
-              Decline
-            </Button>
-            <Button
-              size="lg"
-              className="w-full"
-              onClick={() => setShowConfirmDialog(true)}
-            >
-              Accept Estimate
-            </Button>
+        {/* Signoff or Accept/Deny Buttons */}
+        {showSignoff ? (
+          <EstimateSignoff
+            estimate={estimate}
+            token={token}
+            onSignoffComplete={handleSignoffComplete}
+          />
+        ) : (
+          <div className="space-y-3">
+            {error && (
+              <p className="text-sm text-destructive text-center">{error}</p>
+            )}
+            <div className="grid grid-cols-2 gap-3">
+              <Button
+                size="lg"
+                variant="outline"
+                className="w-full"
+                onClick={() => setShowDenyDialog(true)}
+              >
+                Decline
+              </Button>
+              <Button
+                size="lg"
+                className="w-full"
+                onClick={() => setShowConfirmDialog(true)}
+              >
+                Accept Estimate
+              </Button>
+            </div>
+            <p className="text-xs text-center text-muted-foreground">
+              Review the {formatCurrency(total)} estimate above and choose to accept or decline.
+            </p>
           </div>
-          <p className="text-xs text-center text-muted-foreground">
-            Review the {formatCurrency(total)} estimate above and choose to accept or decline.
-          </p>
-        </div>
+        )}
 
         {/* Footer with contact info */}
         {((estimate.company as any)?.contact_phone || (estimate.company as any)?.contact_email) && (
