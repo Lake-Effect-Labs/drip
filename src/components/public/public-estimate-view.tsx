@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { formatCurrency, formatDate } from "@/lib/utils";
-import type { Estimate, EstimateLineItem, Customer, Job, Company } from "@/types/database";
+import type { Estimate, EstimateLineItem, EstimateMaterial, Customer, Job, Company } from "@/types/database";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +19,7 @@ import { PaintChipAnimator } from "@/components/public/paint-chip-animator";
 
 type EstimateWithDetails = Estimate & {
   line_items: EstimateLineItem[];
+  materials: EstimateMaterial[];
   customer: Customer | null;
   job: Job | null;
   company: Pick<Company, "name"> | null;
@@ -36,7 +37,11 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
   const [error, setError] = useState("");
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
 
-  const total = estimate.line_items.reduce((sum, li) => sum + li.price, 0);
+  // Calculate totals
+  const laborTotal = estimate.labor_total || estimate.line_items.reduce((sum, li) => sum + li.price, 0);
+  const materialsTotal = estimate.materials_total || estimate.materials.reduce((sum, m) => sum + (m.line_total || 0), 0);
+  const total = laborTotal + materialsTotal;
+
   const address = estimate.job
     ? [estimate.job.address1, estimate.job.city, estimate.job.state, estimate.job.zip]
         .filter(Boolean)
@@ -148,10 +153,10 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
           </CardContent>
         </Card>
 
-        {/* Line Items */}
+        {/* Line Items (Labor & Services) */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">Services</CardTitle>
+            <CardTitle className="text-lg">Labor & Services</CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <div className="divide-y">
@@ -171,15 +176,82 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
                 </div>
               ))}
             </div>
+            <div className="p-4 border-t bg-muted/30">
+              <div className="flex items-center justify-between text-sm font-medium">
+                <span>Labor Subtotal</span>
+                <span>{formatCurrency(laborTotal)}</span>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
-        {/* Total */}
+        {/* Materials */}
+        {estimate.materials && estimate.materials.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Materials</CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="divide-y">
+                {estimate.materials.map((material) => (
+                  <div key={material.id} className="p-4">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <p className="font-medium">{material.name}</p>
+                        <div className="text-sm text-muted-foreground mt-1 space-y-0.5">
+                          {material.area_description && (
+                            <div>{material.area_description}</div>
+                          )}
+                          {(material.product_line || material.color_name || material.sheen) && (
+                            <div>
+                              {material.product_line && `${material.product_line} `}
+                              {material.color_name && `${material.color_name} `}
+                              {material.color_code && `(${material.color_code}) `}
+                              {material.sheen && `- ${material.sheen}`}
+                            </div>
+                          )}
+                          {material.quantity_gallons && (
+                            <div>
+                              {material.quantity_gallons} gallons
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      <p className="font-medium ml-4">
+                        {formatCurrency(material.line_total || 0)}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="p-4 border-t bg-muted/30">
+                <div className="flex items-center justify-between text-sm font-medium">
+                  <span>Materials Subtotal</span>
+                  <span>{formatCurrency(materialsTotal)}</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Total Summary */}
         <Card>
           <CardContent className="py-4">
-            <div className="flex items-center justify-between text-xl font-bold">
-              <span>Total</span>
-              <span>{formatCurrency(total)}</span>
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm text-muted-foreground">
+                <span>Labor Total:</span>
+                <span className="font-medium text-foreground">{formatCurrency(laborTotal)}</span>
+              </div>
+              {materialsTotal > 0 && (
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                  <span>Materials Total:</span>
+                  <span className="font-medium text-foreground">{formatCurrency(materialsTotal)}</span>
+                </div>
+              )}
+              <div className="pt-2 border-t flex items-center justify-between text-xl font-bold">
+                <span>Total</span>
+                <span>{formatCurrency(total)}</span>
+              </div>
             </div>
           </CardContent>
         </Card>

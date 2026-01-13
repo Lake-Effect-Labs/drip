@@ -43,6 +43,12 @@ export default async function EstimatePage({
     .select("*")
     .eq("estimate_id", id);
 
+  // Fetch materials
+  const { data: materials } = await supabase
+    .from("estimate_materials")
+    .select("*")
+    .eq("estimate_id", id);
+
   // Fetch customer if exists
   let customer = null;
   if (estimate.customer_id) {
@@ -68,6 +74,7 @@ export default async function EstimatePage({
   const estimateWithDetails = {
     ...estimate,
     line_items: lineItems || [],
+    materials: materials || [],
     customer,
     job,
   };
