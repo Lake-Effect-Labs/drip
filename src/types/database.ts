@@ -237,6 +237,9 @@ export interface Database {
           sqft: number | null;
           status: string;
           accepted_at: string | null;
+          denied_at: string | null;
+          denial_reason: string | null;
+          sent_at: string | null;
           expires_at: string | null;
           hourly_rate: number | null;
           public_token: string;
@@ -253,6 +256,9 @@ export interface Database {
           sqft?: number | null;
           status?: string;
           accepted_at?: string | null;
+          denied_at?: string | null;
+          denial_reason?: string | null;
+          sent_at?: string | null;
           expires_at?: string | null;
           hourly_rate?: number | null;
           public_token: string;
@@ -269,6 +275,9 @@ export interface Database {
           sqft?: number | null;
           status?: string;
           accepted_at?: string | null;
+          denied_at?: string | null;
+          denial_reason?: string | null;
+          sent_at?: string | null;
           expires_at?: string | null;
           hourly_rate?: number | null;
           public_token?: string;

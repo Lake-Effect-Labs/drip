@@ -6,6 +6,8 @@ import type { Estimate, EstimateLineItem, EstimateMaterial, Customer, Job, Compa
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -33,9 +35,13 @@ interface PublicEstimateViewProps {
 export function PublicEstimateView({ estimate: initialEstimate, token }: PublicEstimateViewProps) {
   const [estimate, setEstimate] = useState(initialEstimate);
   const [accepting, setAccepting] = useState(false);
+  const [denying, setDenying] = useState(false);
   const [accepted, setAccepted] = useState(estimate.status === "accepted");
+  const [denied, setDenied] = useState(estimate.status === "denied");
   const [error, setError] = useState("");
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [showDenyDialog, setShowDenyDialog] = useState(false);
+  const [denialReason, setDenialReason] = useState("");
 
   // Calculate totals
   const laborTotal = estimate.labor_total || estimate.line_items.reduce((sum, li) => sum + li.price, 0);
@@ -76,6 +82,37 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
     }
   }
 
+  async function handleDeny() {
+    setDenying(true);
+    setError("");
+    setShowDenyDialog(false);
+
+    try {
+      const response = await fetch(`/api/estimates/${token}/deny`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: denialReason || null }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || "Failed to deny estimate");
+      }
+
+      setDenied(true);
+      setEstimate((prev) => ({
+        ...prev,
+        status: "denied",
+        denied_at: new Date().toISOString(),
+        denial_reason: denialReason || null,
+      }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setDenying(false);
+    }
+  }
+
   if (accepted) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-stone-100 via-stone-50 to-white flex items-center justify-center p-4 relative">
@@ -92,6 +129,39 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
             <div className="text-sm text-muted-foreground">
               Accepted on {formatDate(estimate.accepted_at || new Date().toISOString())}
             </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (denied) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-stone-100 via-stone-50 to-white flex items-center justify-center p-4 relative">
+        <PaintChipAnimator />
+        <Card className="w-full max-w-md text-center relative z-20">
+          <CardContent className="pt-8 pb-8">
+            <div className="w-16 h-16 rounded-full bg-orange-100 flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </div>
+            <h1 className="text-2xl font-bold mb-2">Estimate Declined</h1>
+            <p className="text-muted-foreground mb-4">
+              Thank you for your response. {estimate.company?.name} has been notified of your decision.
+            </p>
+            {estimate.denial_reason && (
+              <div className="text-sm text-left bg-muted p-3 rounded-lg mb-4">
+                <p className="font-medium mb-1">Your feedback:</p>
+                <p className="text-muted-foreground">{estimate.denial_reason}</p>
+              </div>
+            )}
+            <div className="text-sm text-muted-foreground">
+              Declined on {formatDate(estimate.denied_at || new Date().toISOString())}
+            </div>
+            <p className="text-xs text-muted-foreground mt-4">
+              {estimate.company?.name} may follow up with a revised estimate.
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -256,20 +326,30 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
           </CardContent>
         </Card>
 
-        {/* Accept Button */}
+        {/* Accept/Deny Buttons */}
         <div className="space-y-3">
           {error && (
             <p className="text-sm text-destructive text-center">{error}</p>
           )}
-          <Button
-            size="lg"
-            className="w-full"
-            onClick={() => setShowConfirmDialog(true)}
-          >
-            Accept Estimate
-          </Button>
+          <div className="grid grid-cols-2 gap-3">
+            <Button
+              size="lg"
+              variant="outline"
+              className="w-full"
+              onClick={() => setShowDenyDialog(true)}
+            >
+              Decline
+            </Button>
+            <Button
+              size="lg"
+              className="w-full"
+              onClick={() => setShowConfirmDialog(true)}
+            >
+              Accept Estimate
+            </Button>
+          </div>
           <p className="text-xs text-center text-muted-foreground">
-            Click to review and accept this {formatCurrency(total)} estimate.
+            Review the {formatCurrency(total)} estimate above and choose to accept or decline.
           </p>
         </div>
 
@@ -309,6 +389,51 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
               loading={accepting}
             >
               Yes, Accept Estimate
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Deny Dialog */}
+      <Dialog open={showDenyDialog} onOpenChange={setShowDenyDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Decline This Estimate?</DialogTitle>
+            <DialogDescription>
+              Let {estimate.company?.name} know why you're declining. They may be able to adjust the estimate to better meet your needs.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="reason">Reason for declining (optional)</Label>
+              <Textarea
+                id="reason"
+                placeholder="e.g., Price is too high, timeline doesn't work, found another contractor..."
+                value={denialReason}
+                onChange={(e) => setDenialReason(e.target.value)}
+                rows={4}
+              />
+              <p className="text-xs text-muted-foreground">
+                Your feedback helps {estimate.company?.name} provide better service.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowDenyDialog(false);
+                setDenialReason("");
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeny}
+              loading={denying}
+            >
+              Decline Estimate
             </Button>
           </DialogFooter>
         </DialogContent>
