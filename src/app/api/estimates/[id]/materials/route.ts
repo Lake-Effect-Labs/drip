@@ -8,11 +8,11 @@ import { InsertTables } from "@/types/database";
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
-    const estimateId = params.id;
+    const { id: estimateId } = await params;
 
     // Verify user has access to this estimate
     const { data: estimate, error: estimateError } = await supabase
@@ -70,11 +70,11 @@ export async function GET(
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
-    const estimateId = params.id;
+    const { id: estimateId } = await params;
     const body = await request.json();
 
     // Verify user has access to this estimate

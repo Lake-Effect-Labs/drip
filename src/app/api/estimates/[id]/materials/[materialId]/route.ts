@@ -7,11 +7,11 @@ import { createClient } from "@/lib/supabase/server";
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string; materialId: string } }
+  { params }: { params: Promise<{ id: string; materialId: string }> }
 ) {
   try {
     const supabase = await createClient();
-    const { id: estimateId, materialId } = params;
+    const { id: estimateId, materialId } = await params;
     const body = await request.json();
 
     // Verify user has access to this estimate
@@ -95,11 +95,11 @@ export async function PATCH(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string; materialId: string } }
+  { params }: { params: Promise<{ id: string; materialId: string }> }
 ) {
   try {
     const supabase = await createClient();
-    const { id: estimateId, materialId } = params;
+    const { id: estimateId, materialId } = await params;
 
     // Verify user has access to this estimate
     const { data: estimate, error: estimateError } = await supabase

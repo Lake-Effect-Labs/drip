@@ -8,11 +8,11 @@ import { regenerateEstimateMaterials } from "@/lib/estimate-materials";
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
-    const estimateId = params.id;
+    const { id: estimateId } = await params;
 
     // Verify user has access to this estimate
     const { data: estimate, error: estimateError } = await supabase
