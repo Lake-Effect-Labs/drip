@@ -330,6 +330,8 @@ export function EstimateDetailView({ estimate: initialEstimate }: EstimateDetail
                   variant={
                     estimate.status === "accepted"
                       ? "success"
+                      : estimate.status === "denied"
+                      ? "destructive"
                       : estimate.status === "sent"
                       ? "secondary"
                       : "outline"
@@ -419,6 +421,44 @@ export function EstimateDetailView({ estimate: initialEstimate }: EstimateDetail
             </div>
           )}
         </div>
+
+        {/* Denial Info */}
+        {estimate.status === "denied" && estimate.denied_at && (
+          <div className="rounded-lg border border-destructive bg-destructive/10 p-4 space-y-3">
+            <div>
+              <h3 className="font-semibold text-destructive mb-1">✗ Estimate Declined</h3>
+              <p className="text-sm text-muted-foreground">
+                Declined on {formatDate(estimate.denied_at)}
+              </p>
+            </div>
+            {estimate.denial_reason && (
+              <div className="bg-card p-3 rounded-lg">
+                <p className="text-sm font-medium mb-1">Customer Feedback:</p>
+                <p className="text-sm text-muted-foreground">{estimate.denial_reason}</p>
+              </div>
+            )}
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.push(`/app/estimates/new?from=${estimate.id}`)}
+              >
+                Create Revised Estimate
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={copyEstimateMessage}
+              >
+                <Copy className="mr-2 h-4 w-4" />
+                Copy Link to Discuss
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              You can create a revised estimate or reach out to the customer to discuss their concerns.
+            </p>
+          </div>
+        )}
 
         {/* Line Items (Labor) */}
         <div className="rounded-lg border bg-card overflow-hidden">
