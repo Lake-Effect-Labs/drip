@@ -41,25 +41,34 @@ export default async function CustomerDetailPage({
     notFound();
   }
 
-  // Get customer's jobs
+  // Get customer's jobs (with payment information)
   const { data: jobs } = await supabase
     .from("jobs")
     .select("*")
     .eq("customer_id", id)
     .order("created_at", { ascending: false });
 
-  // Get customer's invoices
+  // Get customer's invoices (legacy - might be empty if using unified payment)
   const { data: invoices } = await supabase
     .from("invoices")
     .select("*")
     .eq("customer_id", id)
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false});
+
+  // Get job notes for aggregated notes view
+  const { data: jobNotes } = await supabase
+    .from("job_notes")
+    .select("*, job:jobs!inner(title)")
+    .eq("jobs.customer_id", id)
+    .order("created_at", { ascending: false })
+    .limit(50);
 
   return (
     <CustomerDetailView
       customer={customer}
       jobs={jobs || []}
       invoices={invoices || []}
+      jobNotes={jobNotes || []}
       companyId={companyUser.company_id}
     />
   );
