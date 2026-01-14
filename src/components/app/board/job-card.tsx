@@ -3,7 +3,7 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useRouter } from "next/navigation";
-import { useRef } from "react";
+import { useRef, useEffect } from "react";
 import { cn, formatDate } from "@/lib/utils";
 import type { Job, Customer } from "@/types/database";
 import { Calendar, MapPin, User } from "lucide-react";
@@ -16,7 +16,8 @@ interface JobCardProps {
 
 export function JobCard({ job }: JobCardProps) {
   const router = useRouter();
-  const dragStartPos = useRef<{ x: number; y: number } | null>(null);
+  const wasDragging = useRef(false);
+  const clickTimer = useRef<NodeJS.Timeout | null>(null);
 
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({
@@ -32,35 +33,42 @@ export function JobCard({ job }: JobCardProps) {
     .filter(Boolean)
     .join(", ");
 
-  const handleMouseDown = (e: React.MouseEvent) => {
-    dragStartPos.current = { x: e.clientX, y: e.clientY };
-  };
+  // Track dragging state - when drag starts, mark that we were dragging
+  useEffect(() => {
+    if (isDragging) {
+      // Drag started - mark that we're dragging and clear any pending timer
+      wasDragging.current = true;
+      if (clickTimer.current) {
+        clearTimeout(clickTimer.current);
+        clickTimer.current = null;
+      }
+    } else if (wasDragging.current) {
+      // Drag ended - delay reset to prevent click from firing immediately after drag
+      clickTimer.current = setTimeout(() => {
+        wasDragging.current = false;
+        clickTimer.current = null;
+      }, 150);
+    }
+
+    // Cleanup timer on unmount
+    return () => {
+      if (clickTimer.current) {
+        clearTimeout(clickTimer.current);
+        clickTimer.current = null;
+      }
+    };
+  }, [isDragging]);
 
   const handleClick = (e: React.MouseEvent) => {
-    // If we're dragging, don't navigate
-    if (isDragging) {
+    // Don't navigate if we just dragged
+    if (isDragging || wasDragging.current) {
       e.preventDefault();
       e.stopPropagation();
       return;
     }
 
-    // Check if mouse moved significantly (was a drag, not a click)
-    if (dragStartPos.current) {
-      const deltaX = Math.abs(e.clientX - dragStartPos.current.x);
-      const deltaY = Math.abs(e.clientY - dragStartPos.current.y);
-      
-      // If moved more than 5px, it was a drag
-      if (deltaX > 5 || deltaY > 5) {
-        e.preventDefault();
-        e.stopPropagation();
-        dragStartPos.current = null;
-        return;
-      }
-    }
-
     // It was a click, navigate
     router.push(`/app/jobs/${job.id}`);
-    dragStartPos.current = null;
   };
 
   return (
@@ -73,7 +81,6 @@ export function JobCard({ job }: JobCardProps) {
       )}
       {...listeners}
       {...attributes}
-      onMouseDown={handleMouseDown}
       onClick={handleClick}
     >
       <div className="block select-none">
