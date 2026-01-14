@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/server";
 import { PublicEstimateView } from "@/components/public/public-estimate-view";
+import type { EstimateMaterial } from "@/types/database";
 
 export default async function PublicEstimatePage({
   params,
@@ -122,7 +123,7 @@ export default async function PublicEstimatePage({
     .eq("job_id", jobWithEstimate.id)
     .single();
 
-  let materials = [];
+  let materials: EstimateMaterial[] = [];
   if (jobEstimate) {
     const { data: estimateMaterials } = await supabase
       .from("estimate_materials")

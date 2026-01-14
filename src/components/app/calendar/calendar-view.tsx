@@ -248,6 +248,11 @@ export function CalendarView({
                     const isStart = isJobStartDay(job, day);
                     const isEnd = isJobEndDay(job, day);
                     
+                    // Build title with date range for multi-day jobs
+                    const jobTitle = multiDay && job.scheduled_date && job.scheduled_end_date
+                      ? `${job.title} (${format(parseISO(job.scheduled_date), "MMM d")} - ${format(parseISO(job.scheduled_end_date), "MMM d")})`
+                      : job.title;
+                    
                     return (
                       <Link
                         key={`${job.id}-${dateKey}`}
@@ -262,7 +267,7 @@ export function CalendarView({
                           JOB_STATUS_COLORS[job.status as JobStatus],
                           multiDay && !isStart && !isEnd && "opacity-75"
                         )}
-                        title={multiDay ? `${job.title} (${format(parseISO(job.scheduled_date), "MMM d")} - ${format(parseISO(job.scheduled_end_date!), "MMM d")})` : job.title}
+                        title={jobTitle}
                       >
                         {isStart && job.scheduled_time && (
                           <span className="font-medium">

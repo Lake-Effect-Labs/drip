@@ -216,7 +216,7 @@ export function UnifiedPayment({
         const loadedItems = estimateLineItems.map(item => {
           // Determine type based on service_type
           let type: LineItemType = "other";
-          let areaType: "walls" | "ceilings" | "trim" | "doors" | undefined;
+          let areaType: "walls" | "ceilings" | "trim" | "doors" | "exterior_walls" | "exterior_trim" | "deck_fence" | "siding" | "other" | undefined;
 
           if (item.service_type === "sqft") {
             type = "area";
