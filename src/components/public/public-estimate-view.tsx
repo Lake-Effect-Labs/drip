@@ -357,18 +357,18 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
             {error && (
               <p className="text-sm text-destructive text-center">{error}</p>
             )}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Button
                 size="lg"
                 variant="outline"
-                className="w-full"
+                className="w-full order-2 sm:order-1"
                 onClick={() => setShowDenyDialog(true)}
               >
                 Decline
               </Button>
               <Button
                 size="lg"
-                className="w-full"
+                className="w-full order-1 sm:order-2"
                 onClick={() => setShowConfirmDialog(true)}
               >
                 Accept Estimate

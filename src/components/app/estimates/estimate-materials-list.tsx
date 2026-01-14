@@ -183,7 +183,7 @@ export function EstimateMaterialsList({
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3">
         <div>
           <h3 className="text-lg font-semibold">Materials</h3>
           <p className="text-sm text-gray-500">
@@ -191,17 +191,19 @@ export function EstimateMaterialsList({
           </p>
         </div>
         {isEditable && (
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             <Button
               variant="outline"
               size="sm"
               onClick={handleRegenerate}
               disabled={regenerating}
+              className="w-full sm:w-auto justify-start sm:justify-center"
             >
               <RefreshCw className="h-4 w-4 mr-1" />
-              {regenerating ? "Regenerating..." : "Regenerate from Line Items"}
+              <span className="hidden md:inline">{regenerating ? "Regenerating..." : "Regenerate from Line Items"}</span>
+              <span className="md:hidden">{regenerating ? "Regenerating..." : "Regenerate"}</span>
             </Button>
-            <Button variant="outline" size="sm" onClick={() => setIsAddingNew(true)}>
+            <Button variant="outline" size="sm" onClick={() => setIsAddingNew(true)} className="w-full sm:w-auto">
               <Plus className="h-4 w-4 mr-1" />
               Add Material
             </Button>
@@ -229,7 +231,7 @@ export function EstimateMaterialsList({
               {editingId === material.id ? (
                 // Edit Mode
                 <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <Label>Name</Label>
                       <Input
@@ -250,7 +252,7 @@ export function EstimateMaterialsList({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                     <div>
                       <Label>Product Line</Label>
                       <Input
@@ -280,7 +282,7 @@ export function EstimateMaterialsList({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                     <div>
                       <Label>Sheen</Label>
                       <Select
@@ -327,7 +329,7 @@ export function EstimateMaterialsList({
                     </div>
                   </div>
 
-                  <div className="flex justify-end gap-2">
+                  <div className="flex flex-col sm:flex-row justify-end gap-2">
                     <Button
                       variant="outline"
                       size="sm"
@@ -335,11 +337,12 @@ export function EstimateMaterialsList({
                         setEditingId(null);
                         setEditForm({});
                       }}
+                      className="w-full sm:w-auto"
                     >
                       <X className="h-4 w-4 mr-1" />
                       Cancel
                     </Button>
-                    <Button size="sm" onClick={() => handleSaveEdit(material.id)}>
+                    <Button size="sm" onClick={() => handleSaveEdit(material.id)} className="w-full sm:w-auto">
                       <Check className="h-4 w-4 mr-1" />
                       Save
                     </Button>
@@ -408,7 +411,7 @@ export function EstimateMaterialsList({
         <div className="border rounded-lg p-4 bg-gray-50 space-y-3">
           <h4 className="font-medium">Add New Material</h4>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <Label>Name *</Label>
               <Input
@@ -431,7 +434,7 @@ export function EstimateMaterialsList({
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
             <div>
               <Label>Product Line</Label>
               <Input
@@ -464,7 +467,7 @@ export function EstimateMaterialsList({
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
             <div>
               <Label>Sheen</Label>
               <Select
@@ -504,11 +507,12 @@ export function EstimateMaterialsList({
             </div>
           </div>
 
-          <div className="flex justify-end gap-2">
+          <div className="flex flex-col sm:flex-row justify-end gap-2">
             <Button
               variant="outline"
               size="sm"
               onClick={() => setIsAddingNew(false)}
+              className="w-full sm:w-auto"
             >
               Cancel
             </Button>
@@ -516,6 +520,7 @@ export function EstimateMaterialsList({
               size="sm"
               onClick={handleAddNew}
               disabled={!newMaterial.name || !newMaterial.quantity_gallons}
+              className="w-full sm:w-auto"
             >
               Add Material
             </Button>

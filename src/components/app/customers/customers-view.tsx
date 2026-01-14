@@ -226,15 +226,16 @@ export function CustomersView({
             <option value="vip">VIP</option>
             <option value="needs_followup">Needs Follow-up</option>
           </Select>
-          <div className="flex gap-2">
+          <div className="flex flex-col sm:flex-row gap-2">
             <Button
               variant="outline"
               onClick={() => setImportDialogOpen(true)}
+              className="w-full sm:w-auto"
             >
               <Upload className="mr-2 h-4 w-4" />
               Import
             </Button>
-            <Button onClick={() => setDialogOpen(true)}>
+            <Button onClick={() => setDialogOpen(true)} className="w-full sm:w-auto">
               <Plus className="mr-2 h-4 w-4" />
               Add Customer
             </Button>
@@ -368,7 +369,7 @@ export function CustomersView({
               />
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="city">City</Label>
                 <Input
@@ -396,15 +397,16 @@ export function CustomersView({
               </div>
             </div>
 
-            <div className="flex justify-end gap-3 pt-4">
+            <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => setDialogOpen(false)}
+                className="w-full sm:w-auto"
               >
                 Cancel
               </Button>
-              <Button type="submit" loading={saving}>
+              <Button type="submit" loading={saving} className="w-full sm:w-auto">
                 Add Customer
               </Button>
             </div>
@@ -446,7 +448,7 @@ Jane Doe,555-5678,jane@email.com,456 Oak Ave,Dallas,TX,75201"
               </ul>
             </div>
 
-            <div className="flex justify-end gap-3 pt-4">
+            <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4">
               <Button
                 type="button"
                 variant="outline"
@@ -454,10 +456,11 @@ Jane Doe,555-5678,jane@email.com,456 Oak Ave,Dallas,TX,75201"
                   setImportDialogOpen(false);
                   setCsvData("");
                 }}
+                className="w-full sm:w-auto"
               >
                 Cancel
               </Button>
-              <Button onClick={handleImportCustomers} loading={importing}>
+              <Button onClick={handleImportCustomers} loading={importing} className="w-full sm:w-auto">
                 <Upload className="mr-2 h-4 w-4" />
                 Import Customers
               </Button>

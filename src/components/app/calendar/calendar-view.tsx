@@ -192,15 +192,24 @@ export function CalendarView({
       </div>
 
       {/* Calendar Grid */}
-      <div className="flex-1 overflow-auto p-4">
+      <div className="flex-1 overflow-auto p-2 sm:p-4">
         {/* Day headers */}
         <div className="grid grid-cols-7 gap-px mb-px">
-          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+          {[
+            { full: "Sun", short: "S" },
+            { full: "Mon", short: "M" },
+            { full: "Tue", short: "T" },
+            { full: "Wed", short: "W" },
+            { full: "Thu", short: "T" },
+            { full: "Fri", short: "F" },
+            { full: "Sat", short: "S" },
+          ].map((day) => (
             <div
-              key={day}
+              key={day.full}
               className="bg-muted p-2 text-center text-sm font-medium text-muted-foreground"
             >
-              {day}
+              <span className="hidden sm:inline">{day.full}</span>
+              <span className="sm:hidden">{day.short}</span>
             </div>
           ))}
         </div>
@@ -216,7 +225,7 @@ export function CalendarView({
               <div
                 key={dateKey}
                 className={cn(
-                  "calendar-cell bg-card p-1 sm:p-2 transition-colors",
+                  "calendar-cell bg-card p-1 sm:p-2 transition-colors min-h-[60px] sm:min-h-[100px]",
                   !isCurrentMonth && "bg-muted/50",
                   isToday(day) && "ring-2 ring-primary ring-inset"
                 )}
@@ -235,14 +244,14 @@ export function CalendarView({
               >
                 <div
                   className={cn(
-                    "text-sm font-medium mb-1",
+                    "text-xs sm:text-sm font-medium mb-1",
                     !isCurrentMonth && "text-muted-foreground",
                     isToday(day) && "text-primary"
                   )}
                 >
                   {format(day, "d")}
                 </div>
-                <div className="space-y-1">
+                <div className="space-y-0.5 sm:space-y-1">
                   {dayJobs.slice(0, 3).map((job) => {
                     const multiDay = isMultiDayJob(job);
                     const isStart = isJobStartDay(job, day);
@@ -261,7 +270,7 @@ export function CalendarView({
                         onDragStart={() => isStart && setDraggedJob(job)}
                         onDragEnd={() => setDraggedJob(null)}
                         className={cn(
-                          "block rounded px-1.5 py-0.5 text-xs truncate",
+                          "block rounded px-1 sm:px-1.5 py-0.5 text-[10px] sm:text-xs truncate touch-target-sm",
                           isStart && "cursor-grab active:cursor-grabbing",
                           !isStart && multiDay && "cursor-pointer",
                           JOB_STATUS_COLORS[job.status as JobStatus],
@@ -279,8 +288,8 @@ export function CalendarView({
                     );
                   })}
                   {dayJobs.length > 3 && (
-                    <div className="text-xs text-muted-foreground px-1">
-                      +{dayJobs.length - 3} more
+                    <div className="text-[10px] sm:text-xs text-muted-foreground px-1">
+                      +{dayJobs.length - 3}
                     </div>
                   )}
                 </div>
