@@ -446,6 +446,11 @@ body {
   min-width: 44px;
 }
 
+.touch-target-sm {
+  min-height: 36px;
+  min-width: 36px;
+}
+
 /* Hide scrollbar but keep functionality */
 .scrollbar-hide {
   -ms-overflow-style: none;

@@ -363,8 +363,8 @@ export function ScheduleView({
           </div>
         ) : (
           <div className="relative">
-            {/* Left scroll button */}
-            {canScrollLeft && (view === "week" || view === "month") && (
+            {/* Left scroll button - only show on week view */}
+            {canScrollLeft && view === "week" && (
               <button
                 onClick={() => scroll("left")}
                 className="absolute left-2 top-1/2 -translate-y-1/2 z-10 bg-card border rounded-full p-2 shadow-lg hover:bg-muted transition-colors touch-target"
@@ -374,8 +374,8 @@ export function ScheduleView({
               </button>
             )}
 
-            {/* Right scroll button */}
-            {canScrollRight && (view === "week" || view === "month") && (
+            {/* Right scroll button - only show on week view */}
+            {canScrollRight && view === "week" && (
               <button
                 onClick={() => scroll("right")}
                 className="absolute right-2 top-1/2 -translate-y-1/2 z-10 bg-card border rounded-full p-2 shadow-lg hover:bg-muted transition-colors touch-target"
@@ -385,30 +385,30 @@ export function ScheduleView({
               </button>
             )}
 
-            <div 
+            <div
               ref={scrollContainerRef}
               onScroll={checkScroll}
               className="overflow-x-auto scrollbar-hide"
             >
               {view === "week" ? (
-                <div className="grid grid-cols-7 gap-1 sm:gap-2 min-w-[560px]">
+                <div className="grid grid-cols-7 gap-1 sm:gap-2">
                   {viewDays.map((day, index) => {
                     const dayKey = format(day, "yyyy-MM-dd");
                     const dayJobs = jobsByDate.get(dayKey) || [];
                     const isToday = isSameDay(day, new Date());
 
                     return (
-                      <div key={index} className="space-y-2 min-w-[80px]">
+                      <div key={index} className="space-y-2 min-w-[70px] sm:min-w-[80px]">
                         <div
                           className={cn(
-                            "text-center p-2 rounded-lg",
+                            "text-center p-1 sm:p-2 rounded-lg",
                             isToday && "bg-primary text-primary-foreground"
                           )}
                         >
-                          <div className="text-xs text-muted-foreground">
+                          <div className="text-[10px] sm:text-xs text-muted-foreground">
                             {format(day, "EEE")}
                           </div>
-                          <div className="text-lg font-semibold">
+                          <div className="text-base sm:text-lg font-semibold">
                             {format(day, "d")}
                           </div>
                         </div>
@@ -443,17 +443,26 @@ export function ScheduleView({
                   })}
                 </div>
               ) : (
-                <div className="min-w-[640px]">
+                <div className="w-full">
                   {/* Month view header */}
-                  <div className="grid grid-cols-7 gap-1 mb-2">
-                    {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
-                      <div key={day} className="text-center text-sm font-semibold text-muted-foreground py-2">
-                        {day}
+                  <div className="grid grid-cols-7 gap-px sm:gap-1 mb-1 sm:mb-2">
+                    {[
+                      { full: "Sun", short: "S" },
+                      { full: "Mon", short: "M" },
+                      { full: "Tue", short: "T" },
+                      { full: "Wed", short: "W" },
+                      { full: "Thu", short: "T" },
+                      { full: "Fri", short: "F" },
+                      { full: "Sat", short: "S" },
+                    ].map((day) => (
+                      <div key={day.full} className="text-center text-xs sm:text-sm font-semibold text-muted-foreground py-1 sm:py-2">
+                        <span className="hidden sm:inline">{day.full}</span>
+                        <span className="sm:hidden">{day.short}</span>
                       </div>
                     ))}
                   </div>
                   {/* Month view grid */}
-                  <div className="grid grid-cols-7 gap-1 auto-rows-fr" style={{ height: "calc(100vh - 280px)" }}>
+                  <div className="grid grid-cols-7 gap-px sm:gap-1 auto-rows-fr" style={{ minHeight: "400px" }}>
                     {viewDays.map((day, index) => {
                       const dayKey = format(day, "yyyy-MM-dd");
                       const dayJobs = jobsByDate.get(dayKey) || [];
@@ -464,33 +473,38 @@ export function ScheduleView({
                         <div
                           key={index}
                           className={cn(
-                            "border rounded-lg p-2 flex flex-col overflow-hidden",
+                            "border rounded p-1 sm:p-2 flex flex-col overflow-hidden min-h-[60px] sm:min-h-[100px]",
                             !isCurrentMonth && "bg-muted/30 text-muted-foreground",
-                            isToday && "ring-2 ring-primary"
+                            isToday && "ring-1 sm:ring-2 ring-primary"
                           )}
                         >
                           <div className={cn(
-                            "text-sm font-semibold mb-1 shrink-0",
+                            "text-xs sm:text-sm font-semibold mb-0.5 sm:mb-1 shrink-0",
                             isToday && "text-primary"
                           )}>
                             {format(day, "d")}
                           </div>
-                          <div className="space-y-1 overflow-y-auto flex-1">
-                            {dayJobs.map((job) => (
+                          <div className="space-y-0.5 sm:space-y-1 overflow-y-auto flex-1">
+                            {dayJobs.slice(0, 2).map((job) => (
                               <Link
                                 key={job.id}
                                 href={`/app/jobs/${job.id}`}
                                 className="block"
                               >
                                 <div className={cn(
-                                  "text-xs p-1 rounded border-l-2 truncate",
+                                  "text-[10px] sm:text-xs p-0.5 sm:p-1 rounded border-l-2 truncate touch-target-sm",
                                   JOB_STATUS_COLORS[job.status as JobStatus]
                                 )}>
-                                  {job.scheduled_time && `${formatTime(job.scheduled_time)} `}
+                                  <span className="hidden sm:inline">{job.scheduled_time && `${formatTime(job.scheduled_time)} `}</span>
                                   {job.title}
                                 </div>
                               </Link>
                             ))}
+                            {dayJobs.length > 2 && (
+                              <div className="text-[9px] sm:text-[10px] text-muted-foreground px-0.5">
+                                +{dayJobs.length - 2}
+                              </div>
+                            )}
                           </div>
                         </div>
                       );

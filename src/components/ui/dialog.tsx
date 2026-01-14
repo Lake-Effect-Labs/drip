@@ -85,14 +85,14 @@ function DialogContent({ children, className }: DialogContentProps) {
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
         className="fixed inset-0 bg-black/50 animate-fade-in"
         onClick={() => setOpen(false)}
       />
       <div
         className={cn(
-          "relative z-50 w-full max-w-lg max-h-[90vh] overflow-auto rounded-lg bg-card p-6 shadow-lg animate-slide-up",
+          "relative z-50 w-full max-w-lg max-h-[90vh] overflow-auto rounded-lg bg-card p-4 sm:p-6 shadow-lg animate-slide-up",
           className
         )}
       >

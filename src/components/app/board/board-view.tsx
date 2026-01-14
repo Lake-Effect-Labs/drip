@@ -340,32 +340,32 @@ export function BoardView({
 
       {/* Board */}
       <div className="flex-1 relative min-h-0">
-        {/* Left scroll button */}
+        {/* Left scroll button - desktop only */}
         {canScrollLeft && (
           <button
             onClick={() => scroll("left")}
-            className="absolute left-2 top-1/2 -translate-y-1/2 z-10 bg-card border rounded-full p-2 shadow-lg hover:bg-muted transition-colors touch-target"
+            className="hidden md:block absolute left-2 top-1/2 -translate-y-1/2 z-10 bg-card border rounded-full p-2 shadow-lg hover:bg-muted transition-colors touch-target"
             aria-label="Scroll left"
           >
             <ChevronLeft className="h-6 w-6" />
           </button>
         )}
 
-        {/* Right scroll button */}
+        {/* Right scroll button - desktop only */}
         {canScrollRight && (
           <button
             onClick={() => scroll("right")}
-            className="absolute right-2 top-1/2 -translate-y-1/2 z-10 bg-card border rounded-full p-2 shadow-lg hover:bg-muted transition-colors touch-target"
+            className="hidden md:block absolute right-2 top-1/2 -translate-y-1/2 z-10 bg-card border rounded-full p-2 shadow-lg hover:bg-muted transition-colors touch-target"
             aria-label="Scroll right"
           >
             <ChevronRight className="h-6 w-6" />
           </button>
         )}
 
-        <div 
+        <div
           ref={scrollContainerRef}
           onScroll={checkScroll}
-          className="h-full overflow-x-auto overflow-y-hidden p-4 scrollbar-hide" 
+          className="h-full overflow-x-auto md:overflow-x-auto overflow-y-auto md:overflow-y-hidden p-4 scrollbar-hide"
           style={{ maxHeight: 'calc(100vh - 14rem)' }}
         >
           {jobs.length === 0 ? (
@@ -391,7 +391,7 @@ export function BoardView({
             onDragStart={handleDragStart}
             onDragEnd={handleDragEnd}
           >
-            <div className="flex h-full gap-4">
+            <div className="flex flex-col md:flex-row h-full gap-4">
               {JOB_STATUSES.map((status) => (
                 <BoardColumn
                   key={status}

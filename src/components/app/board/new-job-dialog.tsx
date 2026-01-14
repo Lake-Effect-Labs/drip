@@ -463,7 +463,7 @@ export function NewJobDialog({
                 onChange={(e) => setAddress2(e.target.value)}
               />
             </div>
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="space-y-2">
                 <Label htmlFor="city">City</Label>
                 <Input
@@ -530,15 +530,16 @@ export function NewJobDialog({
           </div>
 
           {/* Actions */}
-          <div className="flex justify-end gap-3 pt-4">
+          <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4">
             <Button
               type="button"
               variant="outline"
               onClick={() => onOpenChange(false)}
+              className="w-full sm:w-auto"
             >
               Cancel
             </Button>
-            <Button type="submit" loading={loading}>
+            <Button type="submit" loading={loading} className="w-full sm:w-auto">
               Create Job
             </Button>
           </div>
