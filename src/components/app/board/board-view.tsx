@@ -9,6 +9,8 @@ import {
   rectIntersection,
   KeyboardSensor,
   PointerSensor,
+  TouchSensor,
+  MouseSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -80,9 +82,15 @@ export function BoardView({
   }, []);
 
   const sensors = useSensors(
-    useSensor(PointerSensor, {
+    useSensor(MouseSensor, {
       activationConstraint: {
-        distance: 8, // Reduced sensitivity for better drag feel
+        distance: 8, // Mouse needs less distance
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 150, // Delay before drag starts on touch
+        tolerance: 8, // Movement tolerance during delay
       },
     }),
     useSensor(KeyboardSensor, {
@@ -90,7 +98,7 @@ export function BoardView({
     })
   );
 
-  // Custom collision detection for better kanban board UX
+  // Custom collision detection optimized for both horizontal and vertical layouts
   const collisionDetectionStrategy = useCallback((args: any) => {
     // First, try pointer-within for intuitive column detection
     const pointerCollisions = pointerWithin(args);
@@ -98,7 +106,13 @@ export function BoardView({
       return pointerCollisions;
     }
 
-    // Fallback to rect intersection for edge cases
+    // Use closestCenter for better vertical layout support
+    const closestCenterCollisions = closestCenter(args);
+    if (closestCenterCollisions.length > 0) {
+      return closestCenterCollisions;
+    }
+
+    // Final fallback to rect intersection
     return rectIntersection(args);
   }, []);
 

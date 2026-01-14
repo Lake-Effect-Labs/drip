@@ -28,7 +28,7 @@ export function BoardColumn({ id, title, jobs, count, onStatusChange, onDuplicat
     <div
       ref={setNodeRef}
       className={cn(
-        "board-column flex w-full md:w-72 max-h-[600px] md:h-full md:flex-shrink-0 flex-col rounded-lg bg-muted/50 transition-all duration-200",
+        "board-column flex w-full md:w-72 max-h-[400px] md:h-full md:flex-shrink-0 flex-col rounded-lg bg-muted/50 transition-all duration-200",
         isOver && "bg-primary/10 ring-2 ring-primary shadow-lg scale-[1.02]"
       )}
     >
