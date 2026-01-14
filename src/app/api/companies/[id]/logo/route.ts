@@ -61,13 +61,14 @@ export async function POST(
     const storagePath = `${companyId}/logo/${logoId}.${fileExt}`;
 
     // Delete old logo if exists
-    const { data: companyData } = await supabase
+    const { data: companyData, error: companyDataError } = await supabase
       .from("companies")
       .select("logo_url")
       .eq("id", companyId)
       .single();
 
-    if (companyData?.logo_url) {
+    // Only try to delete old logo if query succeeded and logo_url exists
+    if (!companyDataError && companyData?.logo_url) {
       // Extract path from URL if it's a storage URL
       const oldPath = companyData.logo_url.includes("/storage/v1/object/public/company-logos/")
         ? companyData.logo_url.split("/company-logos/")[1]

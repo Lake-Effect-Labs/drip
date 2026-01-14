@@ -18,6 +18,9 @@ export interface Database {
           stripe_account_id: string | null;
           stripe_enabled: boolean;
           stripe_onboarding_complete: boolean;
+          logo_url: string | null;
+          contact_phone: string | null;
+          contact_email: string | null;
           created_at: string;
         };
         Insert: {
@@ -28,6 +31,9 @@ export interface Database {
           stripe_account_id?: string | null;
           stripe_enabled?: boolean;
           stripe_onboarding_complete?: boolean;
+          logo_url?: string | null;
+          contact_phone?: string | null;
+          contact_email?: string | null;
           created_at?: string;
         };
         Update: {
@@ -38,6 +44,9 @@ export interface Database {
           stripe_account_id?: string | null;
           stripe_enabled?: boolean;
           stripe_onboarding_complete?: boolean;
+          logo_url?: string | null;
+          contact_phone?: string | null;
+          contact_email?: string | null;
           created_at?: string;
         };
         Relationships: [];
