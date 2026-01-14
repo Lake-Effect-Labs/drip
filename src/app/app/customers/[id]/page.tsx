@@ -55,20 +55,15 @@ export default async function CustomerDetailPage({
     .eq("customer_id", id)
     .order("created_at", { ascending: false});
 
-  // Get job notes for aggregated notes view
-  const { data: jobNotes } = await supabase
-    .from("job_notes")
-    .select("*, job:jobs!inner(title)")
-    .eq("jobs.customer_id", id)
-    .order("created_at", { ascending: false })
-    .limit(50);
+  // Job notes table doesn't exist yet - passing empty array
+  const jobNotes: never[] = [];
 
   return (
     <CustomerDetailView
       customer={customer}
       jobs={jobs || []}
       invoices={invoices || []}
-      jobNotes={jobNotes || []}
+      jobNotes={jobNotes}
       companyId={companyUser.company_id}
     />
   );
