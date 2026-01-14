@@ -50,6 +50,7 @@ interface CustomerDetailViewProps {
   customer: Customer;
   jobs: Job[];
   invoices: Invoice[];
+  jobNotes?: Array<{ id: string; note: string; created_at: string; job: { title: string } }>;
   companyId: string;
 }
 
@@ -68,6 +69,7 @@ export function CustomerDetailView({
   customer: initialCustomer,
   jobs,
   invoices,
+  jobNotes = [],
   companyId,
 }: CustomerDetailViewProps) {
   const router = useRouter();
@@ -157,17 +159,36 @@ export function CustomerDetailView({
     .filter(Boolean)
     .join(", ");
 
-  const totalPaid = invoices
+  // Calculate totals from both invoices (legacy) and jobs (unified payment)
+  const invoiceTotalPaid = invoices
     .filter((inv) => inv.status === "paid")
     .reduce((sum, inv) => sum + inv.amount_total, 0);
 
-  const totalInvoiced = invoices.reduce((sum, inv) => sum + inv.amount_total, 0);
-  const pendingAmount = invoices
+  const jobTotalPaid = jobs
+    .filter((job: any) => job.payment_state === "paid" && job.payment_amount)
+    .reduce((sum, job: any) => sum + (job.payment_amount || 0), 0);
+
+  const totalPaid = invoiceTotalPaid + jobTotalPaid;
+
+  const invoiceTotalAmount = invoices.reduce((sum, inv) => sum + inv.amount_total, 0);
+  const jobTotalAmount = jobs
+    .filter((job: any) => job.payment_amount && job.payment_amount > 0)
+    .reduce((sum, job: any) => sum + (job.payment_amount || 0), 0);
+
+  const totalInvoiced = invoiceTotalAmount + jobTotalAmount;
+
+  const pendingInvoices = invoices
     .filter((inv) => inv.status !== "paid")
     .reduce((sum, inv) => sum + inv.amount_total, 0);
 
-  // Calculate payment history
-  const paidInvoices = invoices
+  const pendingJobs = jobs
+    .filter((job: any) => job.payment_amount && job.payment_amount > 0 && job.payment_state !== "paid")
+    .reduce((sum, job: any) => sum + (job.payment_amount || 0), 0);
+
+  const pendingAmount = pendingInvoices + pendingJobs;
+
+  // Calculate payment history from both invoices and jobs
+  const paidInvoicesHistory = invoices
     .filter((inv) => inv.status === "paid" && inv.paid_at)
     .map((inv) => {
       const createdDate = new Date(inv.created_at);
@@ -176,12 +197,34 @@ export function CustomerDetailView({
         (paidDate.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24)
       );
       return {
-        ...inv,
-        daysToPay: Math.max(0, daysToPay), // Ensure non-negative
+        id: inv.id,
+        amount: inv.amount_total,
+        paidAt: inv.paid_at!,
+        daysToPay: Math.max(0, daysToPay),
+        type: 'invoice' as const,
       };
-    })
-    .filter((inv) => inv.daysToPay >= 0) // Filter out any invalid dates
-    .sort((a, b) => new Date(b.paid_at!).getTime() - new Date(a.paid_at!).getTime());
+    });
+
+  const paidJobsHistory = jobs
+    .filter((job: any) => job.payment_state === "paid" && job.payment_paid_at && job.payment_amount)
+    .map((job: any) => {
+      const createdDate = new Date(job.created_at);
+      const paidDate = new Date(job.payment_paid_at);
+      const daysToPay = Math.round(
+        (paidDate.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24)
+      );
+      return {
+        id: job.id,
+        amount: job.payment_amount,
+        paidAt: job.payment_paid_at,
+        daysToPay: Math.max(0, daysToPay),
+        type: 'job' as const,
+      };
+    });
+
+  const paidInvoices = [...paidInvoicesHistory, ...paidJobsHistory]
+    .filter((item) => item.daysToPay >= 0)
+    .sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime());
 
   const averageDaysToPay =
     paidInvoices.length > 0
@@ -208,6 +251,29 @@ export function CustomerDetailView({
     if (averageDaysToPay < 30) return "secondary";
     return "warning";
   }
+
+  // Create a combined list of payments (invoices + jobs with payment)
+  const allPayments = [
+    ...invoices.map((inv) => ({
+      id: inv.id,
+      type: "invoice" as const,
+      amount: inv.amount_total,
+      status: inv.status,
+      created_at: inv.created_at,
+      title: `Invoice #${inv.id.slice(0, 8)}`,
+    })),
+    ...jobs
+      .filter((job: any) => job.payment_amount && job.payment_amount > 0)
+      .map((job: any) => ({
+        id: job.id,
+        type: "job" as const,
+        amount: job.payment_amount,
+        status: job.payment_state === "paid" ? "paid" : job.payment_state === "sent" ? "sent" : "draft",
+        created_at: job.created_at,
+        title: job.title,
+        jobTitle: job.title,
+      })),
+  ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
   // Create a combined timeline of jobs and invoices
   const timeline = [
@@ -495,7 +561,7 @@ export function CustomerDetailView({
                   </TabsTrigger>
                   <TabsTrigger value="invoices" className="shrink-0">
                     <Receipt className="mr-1.5 h-4 w-4 shrink-0" />
-                    <span className="whitespace-nowrap">Invoices ({invoices.length})</span>
+                    <span className="whitespace-nowrap">Payments ({allPayments.length})</span>
                   </TabsTrigger>
                   <TabsTrigger value="notes" className="shrink-0">
                     <FileText className="mr-1.5 h-4 w-4 shrink-0" />
@@ -585,40 +651,40 @@ export function CustomerDetailView({
                   )}
                 </TabsContent>
 
-                {/* Invoices Tab */}
+                {/* Invoices/Payments Tab */}
                 <TabsContent value="invoices" className="space-y-4">
-                  {invoices.length === 0 ? (
+                  {allPayments.length === 0 ? (
                     <div className="rounded-lg border bg-card p-8 text-center text-muted-foreground">
                       <Receipt className="mx-auto h-8 w-8 mb-2" />
-                      <p>No invoices yet</p>
+                      <p>No invoices or payments yet</p>
                     </div>
                   ) : (
                     <div className="rounded-lg border bg-card divide-y">
-                      {invoices.map((invoice) => (
+                      {allPayments.map((payment) => (
                         <Link
-                          key={invoice.id}
-                          href={`/app/invoices/${invoice.id}`}
+                          key={`${payment.type}-${payment.id}`}
+                          href={payment.type === "invoice" ? `/app/invoices/${payment.id}` : `/app/jobs/${payment.id}`}
                           className="block p-4 hover:bg-muted/50 transition-colors"
                         >
                           <div className="flex items-center justify-between">
                             <div>
                               <p className="font-medium">
-                                {formatCurrency(invoice.amount_total)}
+                                {formatCurrency(payment.amount)}
                               </p>
                               <p className="text-sm text-muted-foreground">
-                                {formatDate(invoice.created_at)}
+                                {payment.type === "job" && payment.jobTitle ? payment.jobTitle : payment.title} • {formatDate(payment.created_at)}
                               </p>
                             </div>
                             <Badge
                               variant={
-                                invoice.status === "paid"
+                                payment.status === "paid"
                                   ? "success"
-                                  : invoice.status === "sent"
+                                  : payment.status === "sent"
                                   ? "secondary"
                                   : "outline"
                               }
                             >
-                              {invoice.status}
+                              {payment.status}
                             </Badge>
                           </div>
                         </Link>
@@ -629,15 +695,41 @@ export function CustomerDetailView({
 
                 {/* Notes Tab */}
                 <TabsContent value="notes" className="space-y-4">
+                  {/* Customer Notes */}
                   <div className="rounded-lg border bg-card p-4">
+                    <h4 className="font-semibold text-sm mb-2">Customer Notes</h4>
                     {customer.notes ? (
-                      <p className="whitespace-pre-wrap">{customer.notes}</p>
+                      <p className="whitespace-pre-wrap text-sm">{customer.notes}</p>
                     ) : (
-                      <p className="text-muted-foreground">
-                        No notes yet. Click Edit to add notes.
+                      <p className="text-muted-foreground text-sm">
+                        No customer notes yet. Click Edit to add notes.
                       </p>
                     )}
                   </div>
+
+                  {/* Job Notes */}
+                  {jobNotes.length > 0 && (
+                    <div className="rounded-lg border bg-card">
+                      <div className="p-4 border-b">
+                        <h4 className="font-semibold text-sm">Job Notes ({jobNotes.length})</h4>
+                      </div>
+                      <div className="divide-y">
+                        {jobNotes.map((note) => (
+                          <div key={note.id} className="p-4">
+                            <div className="flex items-start justify-between gap-2 mb-2">
+                              <p className="text-xs font-medium text-muted-foreground">
+                                {note.job.title}
+                              </p>
+                              <p className="text-xs text-muted-foreground shrink-0">
+                                {formatDate(note.created_at)}
+                              </p>
+                            </div>
+                            <p className="text-sm whitespace-pre-wrap">{note.note}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </TabsContent>
               </Tabs>
             )}
@@ -750,20 +842,20 @@ export function CustomerDetailView({
                     <span>Paid</span>
                     <span className="text-right">Days</span>
                   </div>
-                  {paidInvoices.slice(0, 5).map((invoice) => (
-                    <div key={invoice.id} className="grid grid-cols-3 gap-2 text-sm">
+                  {paidInvoices.slice(0, 5).map((payment) => (
+                    <div key={`${payment.type}-${payment.id}`} className="grid grid-cols-3 gap-2 text-sm">
                       <span className="font-medium truncate">
-                        {formatCurrency(invoice.amount_total)}
+                        {formatCurrency(payment.amount)}
                       </span>
                       <span className="text-muted-foreground truncate">
-                        {formatDate(invoice.paid_at!)}
+                        {formatDate(payment.paidAt)}
                       </span>
                       <span className={cn(
                         "text-right font-medium",
-                        invoice.daysToPay < 7 ? "text-success" : 
-                        invoice.daysToPay < 30 ? "text-foreground" : "text-warning"
+                        payment.daysToPay < 7 ? "text-success" :
+                        payment.daysToPay < 30 ? "text-foreground" : "text-warning"
                       )}>
-                        {invoice.daysToPay}d
+                        {payment.daysToPay}d
                       </span>
                     </div>
                   ))}

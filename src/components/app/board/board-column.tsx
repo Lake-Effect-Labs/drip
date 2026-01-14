@@ -28,12 +28,12 @@ export function BoardColumn({ id, title, jobs, count, onStatusChange, onDuplicat
     <div
       ref={setNodeRef}
       className={cn(
-        "board-column flex w-full md:w-72 h-full md:flex-shrink-0 flex-col rounded-lg bg-muted/50 transition-all duration-200",
+        "board-column flex w-full md:w-72 max-h-[400px] md:h-full md:flex-shrink-0 flex-col rounded-lg bg-muted/50 transition-all duration-200",
         isOver && "bg-primary/10 ring-2 ring-primary shadow-lg scale-[1.02]"
       )}
     >
       {/* Column header */}
-      <div className="flex items-center justify-between p-3">
+      <div className="flex items-center justify-between p-3 flex-shrink-0">
         <h3 className="text-sm font-semibold text-foreground">{title}</h3>
         <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-muted px-1.5 text-xs font-medium text-muted-foreground">
           {count}
@@ -49,8 +49,8 @@ export function BoardColumn({ id, title, jobs, count, onStatusChange, onDuplicat
           {jobs.length === 0 ? (
             <div className={cn(
               "flex h-full min-h-[180px] items-center justify-center rounded-lg border-2 border-dashed transition-all",
-              isOver 
-                ? "border-primary bg-primary/5 text-primary font-medium" 
+              isOver
+                ? "border-primary bg-primary/5 text-primary font-medium"
                 : "border-muted text-muted-foreground"
             )}>
               Drop here
