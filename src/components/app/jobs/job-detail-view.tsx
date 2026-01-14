@@ -54,6 +54,7 @@ import {
   Trash2,
   ExternalLink,
   X,
+  XCircle,
   Pencil,
   Share2,
   Archive,
@@ -1574,145 +1575,216 @@ export function JobDetailView({
 
               {/* Scheduling Section */}
               <div className="rounded-lg border bg-card p-4 space-y-4">
-                {!editingSchedule && scheduledDate && scheduledTime ? (
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <h3 className="font-semibold">Schedule</h3>
+                    {(job as any).schedule_state === "accepted" && (
+                      <Badge variant="success">
+                        <CheckCircle className="h-3 w-3 mr-1" />
+                        Confirmed
+                      </Badge>
+                    )}
+                    {(job as any).schedule_state === "proposed" && (
+                      <Badge variant="secondary">Awaiting Confirmation</Badge>
+                    )}
+                    {(job as any).schedule_state === "denied" && (
+                      <Badge variant="destructive">Declined by Customer</Badge>
+                    )}
+                  </div>
+                  {scheduledDate && scheduledTime && !editingSchedule && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setEditingSchedule(true)}
+                      className="touch-target min-h-[44px]"
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+
+                {editingSchedule || !scheduledDate || !scheduledTime ? (
+                  /* Edit/Set Schedule Form */
+                  <div className="space-y-4">
+                    <DateTimePicker
+                      date={scheduledDate || null}
+                      time={scheduledTime || null}
+                      onDateChange={(date) => setScheduledDate(date)}
+                      onTimeChange={(time) => setScheduledTime(time)}
+                      label={isMultiDay ? "Start date and daily arrival time" : "Date and time"}
+                    />
+
+                    {/* Multi-day toggle */}
+                    <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/30">
+                      <input
+                        type="checkbox"
+                        id="multiDayToggle"
+                        checked={isMultiDay}
+                        onChange={(e) => {
+                          setIsMultiDay(e.target.checked);
+                          if (!e.target.checked) {
+                            setScheduledEndDate("");
+                          }
+                        }}
+                        className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary cursor-pointer"
+                      />
+                      <label htmlFor="multiDayToggle" className="text-sm font-medium cursor-pointer flex-1">
+                        Multi-day job
+                      </label>
+                    </div>
+
+                    {/* End date field - only visible when multi-day is enabled */}
+                    {isMultiDay && (
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">
+                          End date
+                        </label>
+                        <input
+                          type="date"
+                          value={scheduledEndDate}
+                          onChange={(e) => setScheduledEndDate(e.target.value)}
+                          min={scheduledDate || undefined}
+                          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 min-h-[44px]"
+                        />
+                        {scheduledEndDate && scheduledEndDate < scheduledDate && (
+                          <p className="text-xs text-destructive flex items-center gap-1">
+                            <span>⚠️</span>
+                            End date must be after start date
+                          </p>
+                        )}
+                        {scheduledEndDate && scheduledEndDate >= scheduledDate && scheduledTime && (
+                          <div className="p-3 rounded-lg bg-primary/10 border border-primary/20">
+                            <p className="text-xs text-foreground flex items-start gap-2">
+                              <Calendar className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                              <span>
+                                Crew will arrive at <strong>{formatTime(scheduledTime)}</strong> each day from <strong>{formatDate(scheduledDate)}</strong> to <strong>{formatDate(scheduledEndDate)}</strong>
+                              </span>
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      {scheduledDate && scheduledTime && (
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setEditingSchedule(false);
+                            // Reset to saved values
+                            setScheduledDate(job.scheduled_date || "");
+                            setScheduledEndDate(job.scheduled_end_date || "");
+                            setScheduledTime(job.scheduled_time || "");
+                            setIsMultiDay(!!job.scheduled_end_date);
+                          }}
+                          className="w-full sm:w-auto"
+                        >
+                          Cancel
+                        </Button>
+                      )}
+                      <Button onClick={handleSaveSchedule} className="w-full sm:flex-1">
+                        <Calendar className="mr-2 h-4 w-4" />
+                        {(job as any).schedule_state === "proposed" ? "Update Schedule" : "Propose Schedule"}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  /* Schedule Summary */
                   <>
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-1">
-                          <h3 className="font-semibold">Scheduling</h3>
-                          {(job as any).schedule_state === "accepted" && (
-                            <Badge variant="default">Accepted</Badge>
-                          )}
-                          {(job as any).schedule_state === "proposed" && (
-                            <Badge variant="secondary">Proposed</Badge>
-                          )}
-                          {(job as any).schedule_state === "denied" && (
-                            <Badge variant="destructive">Denied</Badge>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                          <Clock className="h-4 w-4" />
-                          <span>
+                    <div className="p-4 rounded-lg bg-muted/30 space-y-3">
+                      <div className="flex items-start gap-3">
+                        <Calendar className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-muted-foreground">
+                            {scheduledEndDate && scheduledEndDate !== scheduledDate ? "Date Range" : "Date"}
+                          </p>
+                          <p className="font-medium">
                             {scheduledEndDate && scheduledEndDate !== scheduledDate
                               ? `${formatDate(scheduledDate)} - ${formatDate(scheduledEndDate)}`
                               : formatDate(scheduledDate)}
-                            {scheduledTime && ` at ${formatTime(scheduledTime)}`}
-                          </span>
-                        </div>
-                        {scheduledEndDate && scheduledEndDate !== scheduledDate && (
-                          <p className="text-xs text-muted-foreground mt-1 ml-6">
-                            Daily arrival: {formatTime(scheduledTime)}
                           </p>
-                        )}
+                        </div>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setEditingSchedule(true)}
-                        className="touch-target min-h-[44px]"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
+                      <div className="flex items-start gap-3">
+                        <Clock className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-muted-foreground">
+                            {scheduledEndDate && scheduledEndDate !== scheduledDate ? "Daily Arrival Time" : "Time"}
+                          </p>
+                          <p className="font-medium">{formatTime(scheduledTime)}</p>
+                        </div>
+                      </div>
                     </div>
+
+                    {/* Actions */}
                     {(job as any).schedule_state === "proposed" && (
-                      <div className="flex gap-2">
+                      <div className="flex flex-col sm:flex-row gap-2">
                         <Button
                           variant="outline"
                           onClick={async () => {
                             await ensureScheduleToken();
                             setShowShareScheduleDialog(true);
                           }}
-                          className="flex-1"
+                          className="w-full sm:flex-1"
                         >
                           <Share2 className="mr-2 h-4 w-4" />
-                          Share Schedule
+                          Share with Customer
                         </Button>
                         <Button
                           onClick={handleAcceptSchedule}
-                          className="flex-1"
+                          className="w-full sm:flex-1"
                         >
                           <CheckCircle className="mr-2 h-4 w-4" />
-                          Accept Schedule
+                          Mark Confirmed
                         </Button>
                       </div>
                     )}
-                  </>
-                ) : (
-                  <>
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-semibold">Scheduling</h3>
-                      {editingSchedule && scheduledDate && scheduledTime && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setEditingSchedule(false)}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
-                    <div className="space-y-4">
-                      <DateTimePicker
-                        date={scheduledDate || null}
-                        time={scheduledTime || null}
-                        onDateChange={(date) => setScheduledDate(date)}
-                        onTimeChange={(time) => setScheduledTime(time)}
-                        label={isMultiDay ? "Start date and daily arrival time" : "Date and time"}
-                      />
-                      
-                      {/* Multi-day toggle */}
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          id="multiDayToggle"
-                          checked={isMultiDay}
-                          onChange={(e) => {
-                            setIsMultiDay(e.target.checked);
-                            if (!e.target.checked) {
-                              setScheduledEndDate("");
-                            }
-                          }}
-                          className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-2 focus:ring-primary"
-                        />
-                        <label htmlFor="multiDayToggle" className="text-sm font-medium cursor-pointer">
-                          Multi-day job
-                        </label>
-                      </div>
 
-                      {/* End date field - only visible when multi-day is enabled */}
-                      {isMultiDay && (
-                        <div>
-                          <label className="text-sm font-medium mb-1 block">
-                            End date
-                          </label>
-                          <input
-                            type="date"
-                            value={scheduledEndDate}
-                            onChange={(e) => setScheduledEndDate(e.target.value)}
-                            min={scheduledDate || undefined}
-                            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                          />
-                          {scheduledEndDate && scheduledEndDate < scheduledDate && (
-                            <p className="text-xs text-destructive mt-1">
-                              End date must be after start date
-                            </p>
-                          )}
-                          {scheduledEndDate && scheduledEndDate >= scheduledDate && scheduledTime && (
-                            <p className="text-xs text-muted-foreground mt-2 flex items-start gap-1">
-                              <span className="text-primary">ℹ️</span>
-                              <span>
-                                Crew will arrive at {formatTime(scheduledTime)} each day from {formatDate(scheduledDate)} to {formatDate(scheduledEndDate)}
-                              </span>
-                            </p>
-                          )}
-                        </div>
-                      )}
-                      
-                      <Button onClick={handleSaveSchedule} className="w-full">
-                        <Save className="mr-2 h-4 w-4" />
-                        Save Schedule
+                    {(job as any).schedule_state === "accepted" && (
+                      <div className="p-3 rounded-lg bg-success/10 border border-success/20 text-sm">
+                        <p className="flex items-center gap-2 text-success">
+                          <CheckCircle className="h-4 w-4" />
+                          <span>Customer confirmed on {formatDate((job as any).schedule_accepted_at)}</span>
+                        </p>
+                      </div>
+                    )}
+
+                    {(job as any).schedule_state === "denied" && (
+                      <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 space-y-2">
+                        <p className="flex items-center gap-2 text-destructive text-sm font-medium">
+                          <XCircle className="h-4 w-4" />
+                          Customer declined this schedule
+                        </p>
+                        {(job as any).schedule_denial_reason && (
+                          <p className="text-sm text-muted-foreground pl-6">
+                            Reason: {(job as any).schedule_denial_reason}
+                          </p>
+                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setEditingSchedule(true)}
+                          className="w-full sm:w-auto"
+                        >
+                          <Calendar className="mr-2 h-4 w-4" />
+                          Propose New Time
+                        </Button>
+                      </div>
+                    )}
+
+                    {!((job as any).schedule_state) && (
+                      <Button
+                        variant="outline"
+                        onClick={async () => {
+                          await ensureScheduleToken();
+                          setShowShareScheduleDialog(true);
+                        }}
+                        className="w-full"
+                      >
+                        <Share2 className="mr-2 h-4 w-4" />
+                        Share with Customer
                       </Button>
-                    </div>
+                    )}
                   </>
                 )}
               </div>
