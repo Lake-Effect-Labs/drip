@@ -74,6 +74,7 @@ export default function JoinPage({
             data: {
               full_name: fullName,
             },
+            emailRedirectTo: `${window.location.origin}/auth/confirm?next=/join/${token}`,
           },
         });
 
@@ -90,6 +91,26 @@ export default function JoinPage({
         userId = authData.user.id;
         userEmail = email;
         userName = fullName;
+
+        // Check if email confirmation is required
+        if (authData.session === null && authData.user.identities && authData.user.identities.length === 0) {
+          // Email confirmation is required
+          addToast("Please check your email to confirm your account. Click the link in the email to continue joining the team.", "success");
+          setLoading(false);
+          return;
+        } else if (!authData.session) {
+          // No session but not clear if email confirmation required
+          // Wait for session to be established
+          await new Promise(resolve => setTimeout(resolve, 1000));
+
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session) {
+            // Still no session, likely needs email confirmation
+            addToast("Please check your email to confirm your account, then use this link again to join the team.", "success");
+            setLoading(false);
+            return;
+          }
+        }
       } else {
         // Sign in existing user
         const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
@@ -112,16 +133,6 @@ export default function JoinPage({
         userName = authData.user.user_metadata?.full_name || null;
       }
 
-      // Wait for the session to be established
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      // Refresh the session multiple times to ensure it's available
-      for (let i = 0; i < 3; i++) {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) break;
-        await new Promise(resolve => setTimeout(resolve, 500));
-      }
-
       // Join company via invite
       const response = await fetch(`/api/invites/${token}/join`, {
         method: "POST",
@@ -141,7 +152,6 @@ export default function JoinPage({
 
       addToast("Welcome to the team!", "success");
       router.push("/app");
-      router.refresh();
     } catch {
       addToast("An unexpected error occurred", "error");
     } finally {
