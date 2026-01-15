@@ -594,13 +594,13 @@ export function UnifiedPayment({
         // Don't throw - estimate creation is optional for sharing
       } else if (estimateData && estimateId) {
         setCurrentPublicToken(estimateData.public_token);
-        
+
         // Delete old estimate line items
         await supabase
           .from("estimate_line_items")
           .delete()
           .eq("estimate_id", estimateId);
-        
+
         // Create estimate line items with paint details
         const estimateLineItems = lineItems
             .filter(item => {
@@ -680,7 +680,9 @@ export function UnifiedPayment({
         addToast("Estimate saved", "success");
       }
       setEditingEstimate(false);
-      onUpdate();
+
+      // Call onUpdate asynchronously to avoid blocking UI
+      setTimeout(() => onUpdate(), 100);
     } catch (err: any) {
       console.error("Failed to save payment:", err);
       console.error("Error details:", {

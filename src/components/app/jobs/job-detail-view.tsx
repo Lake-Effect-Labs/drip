@@ -453,7 +453,6 @@ export function JobDetailView({
       setScheduleToken(token);
       setEditingSchedule(false);
       addToast("Schedule saved - awaiting customer confirmation", "success");
-      router.refresh();
     } catch (err) {
       console.error("Save error:", err);
       addToast("Failed to save schedule", "error");
@@ -484,7 +483,6 @@ export function JobDetailView({
         status: "scheduled",
       } as any));
       addToast("Schedule accepted!", "success");
-      router.refresh();
     } catch (err) {
       console.error("Accept error:", err);
       addToast("Failed to accept schedule", "error");
@@ -1568,8 +1566,26 @@ export function JobDetailView({
                 estimateStatus={estimatesList[0]?.status || null}
                 estimateDeniedAt={estimatesList[0]?.denied_at || null}
                 estimateDenialReason={estimatesList[0]?.denial_reason || null}
-                onUpdate={() => {
-                  router.refresh();
+                onUpdate={async () => {
+                  // Refresh just the estimates list without full page reload
+                  const { data: estimatesData } = await supabase
+                    .from("estimates")
+                    .select("*")
+                    .eq("job_id", job.id)
+                    .order("created_at", { ascending: false });
+
+                  if (estimatesData) {
+                    const estimatesWithLineItems = await Promise.all(
+                      estimatesData.map(async (est) => {
+                        const { data: lineItems } = await supabase
+                          .from("estimate_line_items")
+                          .select("*")
+                          .eq("estimate_id", est.id);
+                        return { ...est, line_items: lineItems || [] };
+                      })
+                    );
+                    setEstimatesList(estimatesWithLineItems);
+                  }
                 }}
               />
 
