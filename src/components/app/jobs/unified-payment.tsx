@@ -1383,9 +1383,7 @@ export function UnifiedPayment({
                   })}
                   className="flex-1 touch-target min-h-[44px]"
                 >
-                  {currentPaymentState === "paid" || currentPaymentState === "due"
-                    ? "Update Payment"
-                    : currentPaymentState === "proposed"
+                  {currentPaymentState === "proposed" || (currentPaymentState === "approved" && editingEstimate)
                     ? "Update Estimate"
                     : "Create Estimate"}
                 </Button>
