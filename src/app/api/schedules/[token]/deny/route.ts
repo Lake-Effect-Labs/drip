@@ -48,6 +48,11 @@ export async function POST(
     // Try to include denial reason, but don't fail if column doesn't exist
     if (denialReason !== null) {
       updateData.schedule_denial_reason = denialReason;
+
+      // Also append to notes
+      const currentNotes = job.notes || "";
+      const denialNote = `\n\nSchedule declined by customer (${new Date().toLocaleDateString()}): ${denialReason}`;
+      updateData.notes = currentNotes + denialNote;
     }
 
     // Update job schedule state to denied
