@@ -66,15 +66,31 @@ export default function SignupPage() {
 
         if (authError) {
           addToast(authError.message, "error");
+          setLoading(false);
           return;
         }
 
         if (!authData.user) {
           addToast("Failed to create account", "error");
+          setLoading(false);
           return;
         }
 
         userId = authData.user.id;
+        
+        // Wait for the session to be established after signup
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Refresh the session to ensure it's available
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          // Try refreshing a few more times
+          for (let i = 0; i < 3; i++) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+            const { data: { session: retrySession } } = await supabase.auth.getSession();
+            if (retrySession) break;
+          }
+        }
       }
 
       // Check if company already exists for this user
@@ -87,6 +103,7 @@ export default function SignupPage() {
       if (existingCompanyUser) {
         // Already has company, go to app
         addToast("Account already set up! Redirecting...", "success");
+        setLoading(false);
         router.push("/app");
         router.refresh();
         return;
@@ -105,15 +122,23 @@ export default function SignupPage() {
       });
 
       if (!companyResponse.ok) {
-        const data = await companyResponse.json();
-        addToast(data.error || "Failed to create company", "error");
+        let errorMessage = "Failed to create company";
+        try {
+          const data = await companyResponse.json();
+          errorMessage = data.error || errorMessage;
+        } catch {
+          // Response is not JSON, use default message
+        }
+        addToast(errorMessage, "error");
+        setLoading(false);
         return;
       }
 
       addToast("Account created! Redirecting...", "success");
       router.push("/app");
       router.refresh();
-    } catch {
+    } catch (error) {
+      console.error("Signup error:", error);
       addToast("An unexpected error occurred", "error");
     } finally {
       setLoading(false);
