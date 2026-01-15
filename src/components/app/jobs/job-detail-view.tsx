@@ -431,7 +431,7 @@ export function JobDetailView({
           scheduled_date: scheduledDate || null,
           scheduled_end_date: scheduledEndDate || null,
           scheduled_time: scheduledTime || null,
-          schedule_state: "proposed",
+          schedule_state: "awaiting_confirmation",
           schedule_token: token,
           updated_at: new Date().toISOString(),
         })
@@ -447,13 +447,12 @@ export function JobDetailView({
         scheduled_date: scheduledDate || null,
         scheduled_end_date: scheduledEndDate || null,
         scheduled_time: scheduledTime || null,
-        schedule_state: "proposed",
+        schedule_state: "awaiting_confirmation",
         schedule_token: token,
       } as any));
       setScheduleToken(token);
       setEditingSchedule(false);
-      addToast("Schedule saved and ready to share", "success");
-      router.refresh();
+      addToast("Schedule saved - awaiting customer confirmation", "success");
     } catch (err) {
       console.error("Save error:", err);
       addToast("Failed to save schedule", "error");
@@ -484,7 +483,6 @@ export function JobDetailView({
         status: "scheduled",
       } as any));
       addToast("Schedule accepted!", "success");
-      router.refresh();
     } catch (err) {
       console.error("Accept error:", err);
       addToast("Failed to accept schedule", "error");
@@ -1568,8 +1566,26 @@ export function JobDetailView({
                 estimateStatus={estimatesList[0]?.status || null}
                 estimateDeniedAt={estimatesList[0]?.denied_at || null}
                 estimateDenialReason={estimatesList[0]?.denial_reason || null}
-                onUpdate={() => {
-                  router.refresh();
+                onUpdate={async () => {
+                  // Refresh just the estimates list without full page reload
+                  const { data: estimatesData } = await supabase
+                    .from("estimates")
+                    .select("*")
+                    .eq("job_id", job.id)
+                    .order("created_at", { ascending: false });
+
+                  if (estimatesData) {
+                    const estimatesWithLineItems = await Promise.all(
+                      estimatesData.map(async (est) => {
+                        const { data: lineItems } = await supabase
+                          .from("estimate_line_items")
+                          .select("*")
+                          .eq("estimate_id", est.id);
+                        return { ...est, line_items: lineItems || [] };
+                      })
+                    );
+                    setEstimatesList(estimatesWithLineItems);
+                  }
                 }}
               />
 
@@ -1584,7 +1600,7 @@ export function JobDetailView({
                         Confirmed
                       </Badge>
                     )}
-                    {(job as any).schedule_state === "proposed" && (
+                    {((job as any).schedule_state === "proposed" || (job as any).schedule_state === "awaiting_confirmation") && (
                       <Badge variant="secondary">Awaiting Confirmation</Badge>
                     )}
                     {(job as any).schedule_state === "denied" && (
@@ -1684,40 +1700,40 @@ export function JobDetailView({
                       )}
                       <Button onClick={handleSaveSchedule} className="w-full sm:flex-1">
                         <Calendar className="mr-2 h-4 w-4" />
-                        {(job as any).schedule_state === "proposed" ? "Update Schedule" : "Propose Schedule"}
+                        {scheduledDate && scheduledTime && job.scheduled_date ? "Update Schedule" : "Save Schedule"}
                       </Button>
                     </div>
                   </div>
                 ) : (
                   /* Schedule Summary */
                   <>
-                    <div className="p-4 rounded-lg bg-muted/30 space-y-3">
-                      <div className="flex items-start gap-3">
-                        <Calendar className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                    <div className="p-3 sm:p-4 rounded-lg bg-muted/30 space-y-3">
+                      <div className="flex items-start gap-2 sm:gap-3 min-w-0">
+                        <Calendar className="h-4 w-4 sm:h-5 sm:w-5 text-primary shrink-0 mt-1" />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-xs sm:text-sm text-muted-foreground">
                             {scheduledEndDate && scheduledEndDate !== scheduledDate ? "Date Range" : "Date"}
                           </p>
-                          <p className="font-medium">
+                          <p className="font-medium text-sm sm:text-base break-words">
                             {scheduledEndDate && scheduledEndDate !== scheduledDate
                               ? `${formatDate(scheduledDate)} - ${formatDate(scheduledEndDate)}`
                               : formatDate(scheduledDate)}
                           </p>
                         </div>
                       </div>
-                      <div className="flex items-start gap-3">
-                        <Clock className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                      <div className="flex items-start gap-2 sm:gap-3 min-w-0">
+                        <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-primary shrink-0 mt-1" />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-xs sm:text-sm text-muted-foreground">
                             {scheduledEndDate && scheduledEndDate !== scheduledDate ? "Daily Arrival Time" : "Time"}
                           </p>
-                          <p className="font-medium">{formatTime(scheduledTime)}</p>
+                          <p className="font-medium text-sm sm:text-base">{formatTime(scheduledTime)}</p>
                         </div>
                       </div>
                     </div>
 
                     {/* Actions */}
-                    {(job as any).schedule_state === "proposed" && (
+                    {((job as any).schedule_state === "proposed" || (job as any).schedule_state === "awaiting_confirmation") && (
                       <div className="flex flex-col sm:flex-row gap-2">
                         <Button
                           variant="outline"

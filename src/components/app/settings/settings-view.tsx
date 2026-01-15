@@ -883,13 +883,9 @@ export function SettingsView({
             <div className="rounded-lg border bg-card p-4 space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold">Crew Members</h3>
-                <Button size="sm" onClick={handleCreateInviteLink}>
-                  <Plus className="mr-2 h-4 w-4" />
-                  Invite Crew Member
-                </Button>
               </div>
               <p className="text-sm text-muted-foreground">
-                Invite your crew to access jobs, estimates, and customer info. Everyone sees the same data.
+                Your crew members have access to jobs, estimates, and customer info. Everyone sees the same data.
               </p>
 
               <div className="divide-y">
@@ -924,49 +920,6 @@ export function SettingsView({
                 ))}
               </div>
             </div>
-
-            {inviteLinks.length > 0 && (
-              <div className="rounded-lg border bg-card p-4 space-y-4">
-                <h3 className="font-semibold">Active Invite Links</h3>
-                <div className="divide-y">
-                  {inviteLinks.map((link) => (
-                    <div
-                      key={link.id}
-                      className="py-3 flex items-center justify-between gap-4"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <code className="text-xs bg-muted px-2 py-1 rounded truncate block">
-                          {origin ? `${origin}/join/${link.token}` : `/join/${link.token}`}
-                        </code>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Expires {formatDate(link.expires_at)}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            const url = `${origin || (typeof window !== "undefined" ? window.location.origin : "")}/join/${link.token}`;
-                            copyToClipboard(url);
-                            addToast("Link copied!", "success");
-                          }}
-                        >
-                          <Copy className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleRevokeInvite(link.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </TabsContent>
 
           {/* Exports Tab */}

@@ -306,27 +306,27 @@ export function BoardView({
       </div>
       
       {/* Header */}
-      <div className="flex flex-col gap-4 border-b bg-card p-4">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-2 sm:gap-3 border-b bg-card p-3 sm:p-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold">Board</h1>
-            <p className="text-sm text-muted-foreground">
+            <h1 className="text-xl sm:text-2xl font-bold">Board</h1>
+            <p className="text-xs sm:text-sm text-muted-foreground">
               {filteredJobs.length} of {jobs.length} job{jobs.length !== 1 ? "s" : ""}
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <Select
               value={filter}
               onChange={(e) => setFilter(e.target.value as FilterType)}
-              className="w-40"
+              className="w-32 sm:w-40 text-sm"
             >
               <option value="all">All jobs</option>
               <option value="mine">Assigned to me</option>
               <option value="unassigned">Unassigned</option>
             </Select>
-            <Button onClick={() => setNewJobOpen(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              New Job
+            <Button onClick={() => setNewJobOpen(true)} size="sm" className="sm:size-default">
+              <Plus className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">New Job</span>
             </Button>
           </div>
         </div>
@@ -335,10 +335,10 @@ export function BoardView({
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             type="search"
-            placeholder="Search jobs by title, customer, or address..."
+            placeholder="Search jobs..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-9 pr-10 min-h-[44px]"
+            className="pl-9 pr-10 h-9 sm:h-10 text-sm"
           />
           {searchQuery && (
             <button
@@ -379,8 +379,11 @@ export function BoardView({
         <div
           ref={scrollContainerRef}
           onScroll={checkScroll}
-          className="h-full overflow-x-auto md:overflow-x-auto overflow-y-auto md:overflow-y-hidden p-4 scrollbar-hide"
-          style={{ maxHeight: 'calc(100vh - 14rem)' }}
+          className="h-full overflow-auto p-4 scrollbar-hide"
+          style={{
+            maxHeight: 'calc(100vh - 14rem)',
+            WebkitOverflowScrolling: 'touch'
+          }}
         >
           {jobs.length === 0 ? (
           <div className="flex h-full items-center justify-center">

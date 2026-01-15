@@ -90,7 +90,8 @@ export default function HomePage() {
             <div className="w-3 h-3 rounded-full bg-yellow-400"></div>
             <div className="w-3 h-3 rounded-full bg-green-400"></div>
           </div>
-          <div className="grid grid-cols-7 gap-3 overflow-x-auto">
+          {/* Desktop: horizontal board */}
+          <div className="hidden md:grid grid-cols-7 gap-3 overflow-x-auto">
             {["New", "Quoted", "Scheduled", "In Progress", "Done", "Paid", "Archive"].map(
               (status, i) => (
                 <div key={status} className="min-w-[140px]">
@@ -109,6 +110,34 @@ export default function HomePage() {
                       </div>
                     )}
                     {i === 1 && (
+                      <div className="bg-stone-50 rounded-lg p-3 border border-stone-200">
+                        <div className="text-sm font-medium text-stone-800 mb-1">Lee Bedroom</div>
+                        <div className="text-xs text-stone-500">555 Elm St</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            )}
+          </div>
+          {/* Mobile: vertical board */}
+          <div className="md:hidden space-y-4">
+            {["New", "Quoted", "Scheduled", "In Progress"].slice(0, 3).map(
+              (status, i) => (
+                <div key={status}>
+                  <div className="text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2">
+                    {status}
+                  </div>
+                  <div className="space-y-2">
+                    <div className="bg-stone-50 rounded-lg p-3 border border-stone-200">
+                      <div className="text-sm font-medium text-stone-800 mb-1">
+                        {["Johnson Exterior", "Smith Kitchen", "Garcia Living Room"][i]}
+                      </div>
+                      <div className="text-xs text-stone-500">
+                        {["123 Oak St", "456 Maple Ave", "789 Pine Rd"][i]}
+                      </div>
+                    </div>
+                    {i === 0 && (
                       <div className="bg-stone-50 rounded-lg p-3 border border-stone-200">
                         <div className="text-sm font-medium text-stone-800 mb-1">Lee Bedroom</div>
                         <div className="text-xs text-stone-500">555 Elm St</div>

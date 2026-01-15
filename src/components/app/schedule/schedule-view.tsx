@@ -322,33 +322,33 @@ export function ScheduleView({
                     )}>
                       <div className="flex items-start justify-between gap-4">
                         <div className="flex-1 min-w-0 space-y-2">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <h3 className="font-semibold truncate flex-1">{job.title}</h3>
-                            <Badge className={cn("shrink-0", JOB_STATUS_COLORS[job.status as JobStatus])}>
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-2 min-w-0">
+                            <h3 className="font-semibold flex-1">{job.title}</h3>
+                            <Badge className={cn("shrink-0 self-start sm:self-center", JOB_STATUS_COLORS[job.status as JobStatus])}>
                               {JOB_STATUS_LABELS[job.status as JobStatus]}
                             </Badge>
                           </div>
-                          <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+                          <div className="flex flex-col gap-2 text-sm text-muted-foreground">
                             {job.scheduled_time && (
-                              <div className="flex items-center gap-1.5 shrink-0">
+                              <div className="flex items-center gap-2">
                                 <Clock className="h-4 w-4 shrink-0" />
-                                <span className="whitespace-nowrap">{formatTime(job.scheduled_time)}</span>
+                                <span>{formatTime(job.scheduled_time)}</span>
                               </div>
                             )}
                             {job.customer && (
-                              <div className="flex items-center gap-1.5 min-w-0">
+                              <div className="flex items-center gap-2 min-w-0">
                                 <User className="h-4 w-4 shrink-0" />
                                 <span className="truncate">{job.customer.name}</span>
                               </div>
                             )}
                             {job.address1 && (
-                              <div className="flex items-start gap-1.5 min-w-0 flex-1">
+                              <div className="flex items-start gap-2 min-w-0">
                                 <MapPin className="h-4 w-4 shrink-0 mt-0.5" />
-                                <span className="break-words text-xs">{[job.address1, job.city, job.state].filter(Boolean).join(", ")}</span>
+                                <span className="break-words">{[job.address1, job.city, job.state].filter(Boolean).join(", ")}</span>
                               </div>
                             )}
                             {job.assigned_user_id && (
-                              <div className="text-xs shrink-0 whitespace-nowrap">
+                              <div className="text-xs">
                                 Assigned to: {getTeamMemberName(job.assigned_user_id)}
                               </div>
                             )}
