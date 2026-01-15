@@ -457,10 +457,10 @@ export function CustomerDetailView({
       <div className="max-w-4xl mx-auto p-4">
         <div className="grid gap-6 lg:grid-cols-3">
           {/* Main content */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-2 space-y-6 min-w-0">
             {editing ? (
               /* Edit Form */
-              <div className="rounded-lg border bg-card p-4 space-y-4">
+              <div className="rounded-lg border bg-card p-4 space-y-4 overflow-hidden">
                 <h3 className="font-semibold">Edit Customer</h3>
                 <div className="space-y-4">
                   <div className="space-y-2">
@@ -470,26 +470,29 @@ export function CustomerDetailView({
                       value={name}
                       onChange={(e) => setName(e.target.value)}
                       required
+                      className="w-full"
                     />
                   </div>
 
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="space-y-2">
+                  <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
+                    <div className="space-y-2 min-w-0">
                       <Label htmlFor="phone">Phone</Label>
                       <Input
                         id="phone"
                         type="tel"
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
+                        className="w-full"
                       />
                     </div>
-                    <div className="space-y-2">
+                    <div className="space-y-2 min-w-0">
                       <Label htmlFor="email">Email</Label>
                       <Input
                         id="email"
                         type="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
+                        className="w-full"
                       />
                     </div>
                   </div>
@@ -500,33 +503,37 @@ export function CustomerDetailView({
                       id="address1"
                       value={address1}
                       onChange={(e) => setAddress1(e.target.value)}
+                      className="w-full"
                     />
                   </div>
 
-                  <div className="grid gap-4 sm:grid-cols-3">
-                    <div className="space-y-2">
+                  <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
+                    <div className="space-y-2 min-w-0">
                       <Label htmlFor="city">City</Label>
                       <Input
                         id="city"
                         value={city}
                         onChange={(e) => setCity(e.target.value)}
+                        className="w-full"
                       />
                     </div>
-                    <div className="space-y-2">
+                    <div className="space-y-2 min-w-0">
                       <Label htmlFor="state">State</Label>
                       <Input
                         id="state"
                         maxLength={2}
                         value={state}
                         onChange={(e) => setState(e.target.value.toUpperCase())}
+                        className="w-full"
                       />
                     </div>
-                    <div className="space-y-2">
+                    <div className="space-y-2 min-w-0">
                       <Label htmlFor="zip">ZIP</Label>
                       <Input
                         id="zip"
                         value={zip}
                         onChange={(e) => setZip(e.target.value)}
+                        className="w-full"
                       />
                     </div>
                   </div>
@@ -539,10 +546,11 @@ export function CustomerDetailView({
                       value={notes}
                       onChange={(e) => setNotes(e.target.value)}
                       placeholder="Internal notes about this customer..."
+                      className="w-full"
                     />
                   </div>
 
-                  <Button onClick={handleSave} loading={saving}>
+                  <Button onClick={handleSave} loading={saving} className="w-full sm:w-auto">
                     Save Changes
                   </Button>
                 </div>
@@ -736,36 +744,36 @@ export function CustomerDetailView({
           </div>
 
           {/* Sidebar */}
-          <div className="space-y-4">
+          <div className="space-y-4 min-w-0">
             {/* Contact Info */}
-            <div className="rounded-lg border bg-card p-4 space-y-3">
+            <div className="rounded-lg border bg-card p-4 space-y-3 overflow-hidden">
               <h3 className="font-semibold">Contact Info</h3>
               {customer.phone && (
-                <div className="flex items-center gap-3">
-                  <Phone className="h-4 w-4 text-muted-foreground" />
+                <div className="flex items-center gap-3 min-w-0">
+                  <Phone className="h-4 w-4 text-muted-foreground shrink-0" />
                   <a
                     href={`tel:${customer.phone}`}
-                    className="text-sm hover:underline"
+                    className="text-sm hover:underline truncate"
                   >
                     {formatPhone(customer.phone)}
                   </a>
                 </div>
               )}
               {customer.email && (
-                <div className="flex items-center gap-3">
-                  <Mail className="h-4 w-4 text-muted-foreground" />
+                <div className="flex items-center gap-3 min-w-0">
+                  <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
                   <a
                     href={`mailto:${customer.email}`}
-                    className="text-sm hover:underline"
+                    className="text-sm hover:underline truncate"
                   >
                     {customer.email}
                   </a>
                 </div>
               )}
               {address && (
-                <div className="flex items-start gap-3">
+                <div className="flex items-start gap-3 min-w-0">
                   <MapPin className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
-                  <span className="text-sm break-words">{address}</span>
+                  <span className="text-sm break-words min-w-0">{address}</span>
                 </div>
               )}
               {!customer.phone && !customer.email && !address && (

@@ -282,14 +282,15 @@ export function EstimateMaterialsList({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                    <div>
+                  <div className="space-y-3 sm:space-y-0 sm:grid sm:grid-cols-2 md:grid-cols-3 gap-3">
+                    <div className="sm:col-span-2 md:col-span-1">
                       <Label>Sheen</Label>
                       <Select
                         value={editForm.sheen || ""}
                         onChange={(e) =>
                           setEditForm({ ...editForm, sheen: e.target.value })
                         }
+                        className="w-full"
                       >
                         <option value="">Select sheen</option>
                         {PAINT_SHEENS.map((s) => (
@@ -311,6 +312,7 @@ export function EstimateMaterialsList({
                             quantity_gallons: parseFloat(e.target.value) || 0,
                           })
                         }
+                        className="w-full text-base"
                       />
                     </div>
                     <div>
@@ -325,6 +327,7 @@ export function EstimateMaterialsList({
                             cost_per_gallon: parseFloat(e.target.value) || 0,
                           })
                         }
+                        className="w-full text-base"
                       />
                     </div>
                   </div>

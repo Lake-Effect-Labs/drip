@@ -69,25 +69,25 @@ export function PaintChipAnimator() {
       />
 
       {/* Paint chip display */}
-      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 pointer-events-none z-10">
-        <div className="flex items-center gap-3 bg-white/95 backdrop-blur-sm px-4 py-2.5 rounded-xl shadow-lg border border-stone-200 transition-all duration-1000">
+      <div className="fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 pointer-events-none z-10">
+        <div className="flex items-center gap-2 sm:gap-3 bg-white/95 backdrop-blur-sm px-2.5 sm:px-4 py-1.5 sm:py-2.5 rounded-lg sm:rounded-xl shadow-lg border border-stone-200 transition-all duration-1000">
           {/* Paint chip */}
-          <div 
-            className="relative w-16 h-12 rounded-lg shadow-md transition-all duration-[2000ms] transform"
+          <div
+            className="relative w-10 h-8 sm:w-16 sm:h-12 rounded-md sm:rounded-lg shadow-md transition-all duration-[2000ms] transform"
             style={{
               backgroundColor: currentColor.hex,
               transform: isTransitioning ? 'scale(0.95) rotate(-2deg)' : 'scale(1) rotate(0deg)',
             }}
           >
             {/* Shine effect */}
-            <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-white/40 via-transparent to-transparent" />
+            <div className="absolute inset-0 rounded-md sm:rounded-lg bg-gradient-to-br from-white/40 via-transparent to-transparent" />
           </div>
-          
+
           {/* Color name */}
           <div className="flex flex-col">
-            <span className="text-xs text-stone-500 font-medium">Sherwin-Williams</span>
-            <span 
-              className="text-sm font-semibold text-stone-800 transition-opacity duration-500"
+            <span className="text-[10px] sm:text-xs text-stone-500 font-medium">Sherwin-Williams</span>
+            <span
+              className="text-xs sm:text-sm font-semibold text-stone-800 transition-opacity duration-500"
               style={{
                 opacity: isTransitioning ? 0.5 : 1,
               }}

@@ -214,11 +214,11 @@ export function PublicScheduleView({ job: initialJob, token }: PublicScheduleVie
               </div>
             )}
             {address && (
-              <div className="flex items-start gap-2">
+              <div className="flex items-start gap-2 min-w-0">
                 <MapPin className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
-                <div>
+                <div className="min-w-0 flex-1">
                   <p className="text-sm text-muted-foreground">Location</p>
-                  <p className="font-medium">{address}</p>
+                  <p className="font-medium break-words">{address}</p>
                 </div>
               </div>
             )}
@@ -231,11 +231,11 @@ export function PublicScheduleView({ job: initialJob, token }: PublicScheduleVie
             <CardTitle className="text-lg">Scheduled Time</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center gap-3">
-              <Calendar className="h-5 w-5 text-muted-foreground" />
-              <div>
+            <div className="flex items-start gap-3 min-w-0">
+              <Calendar className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
+              <div className="min-w-0 flex-1">
                 <p className="text-sm text-muted-foreground">Date</p>
-                <p className="font-medium text-lg">
+                <p className="font-medium text-base sm:text-lg break-words">
                   {job.scheduled_end_date && job.scheduled_end_date !== job.scheduled_date
                     ? `${formatDate(job.scheduled_date)} - ${formatDate(job.scheduled_end_date)}`
                     : formatDate(job.scheduled_date)}
@@ -243,15 +243,15 @@ export function PublicScheduleView({ job: initialJob, token }: PublicScheduleVie
               </div>
             </div>
             {job.scheduled_time && (
-              <div className="flex items-center gap-3">
-                <Clock className="h-5 w-5 text-muted-foreground" />
-                <div>
+              <div className="flex items-start gap-3 min-w-0">
+                <Clock className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
+                <div className="min-w-0 flex-1">
                   <p className="text-sm text-muted-foreground">
                     {job.scheduled_end_date && job.scheduled_end_date !== job.scheduled_date
                       ? "Daily Arrival Time"
                       : "Time"}
                   </p>
-                  <p className="font-medium text-lg">
+                  <p className="font-medium text-base sm:text-lg">
                     {formatTime(job.scheduled_time)}
                   </p>
                   {job.scheduled_end_date && job.scheduled_end_date !== job.scheduled_date && (
@@ -270,7 +270,7 @@ export function PublicScheduleView({ job: initialJob, token }: PublicScheduleVie
           {error && (
             <p className="text-sm text-destructive text-center">{error}</p>
           )}
-          <div className="flex gap-3">
+          <div className="flex flex-col sm:flex-row gap-3">
             <Button
               size="lg"
               variant="outline"
