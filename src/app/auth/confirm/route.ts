@@ -6,44 +6,54 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
   const next = searchParams.get("next") ?? "/app";
+  const type = searchParams.get("type"); // Can be 'recovery', 'signup', 'invite', etc.
 
-  console.log("🔐 Auth confirm - code:", !!code, "next:", next);
+  console.log("🔐 Auth confirm - code:", !!code, "next:", next, "type:", type);
 
   if (code) {
-    const cookieStore = await cookies();
     const supabase = await createClient();
-    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
-    console.log("Exchange result - error:", error?.message, "session:", !!data?.session);
+    try {
+      const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
-    if (!error && data.session) {
-      console.log("✅ Session exchanged successfully, redirecting to:", next);
-      
-      // Create redirect response
-      const redirectUrl = new URL(next, request.url);
-      const response = NextResponse.redirect(redirectUrl);
-      
-      // Ensure all auth cookies are properly set in the response
-      // The Supabase client should have already set them via setAll, but we ensure they're in the response
-      const authCookies = cookieStore.getAll().filter(cookie => 
-        cookie.name.startsWith('sb-') || cookie.name.includes('auth')
-      );
-      
-      authCookies.forEach(cookie => {
-        response.cookies.set(cookie.name, cookie.value, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: 'lax',
-          path: '/',
-        });
-      });
-      
-      return response;
+      console.log("Exchange result - error:", error?.message, "session:", !!data?.session, "user:", data?.user?.email);
+
+      if (!error && data.session) {
+        console.log("✅ Session exchanged successfully for user:", data.user?.email);
+        console.log("Session type:", data.session.user?.app_metadata);
+
+        // Create redirect URL
+        const redirectUrl = new URL(next, request.url);
+
+        // Add success parameter for password reset flows
+        if (next.includes("reset-password")) {
+          redirectUrl.searchParams.set("session", "active");
+        }
+
+        const response = NextResponse.redirect(redirectUrl);
+
+        // The Supabase client has already set cookies via the cookie handler
+        // but we'll ensure they're properly set in the response
+        console.log("✅ Redirecting to:", redirectUrl.toString());
+
+        return response;
+      }
+
+      console.error("❌ Exchange failed:", error);
+
+      // Provide more specific error messages
+      if (error?.message?.includes("expired")) {
+        return NextResponse.redirect(
+          new URL("/login?error=Link+expired.+Please+request+a+new+one.", request.url)
+        );
+      }
+    } catch (err) {
+      console.error("❌ Unexpected error during code exchange:", err);
     }
-    
-    console.error("❌ Exchange failed:", error);
   }
 
-  console.log("Redirecting to login");
-  return NextResponse.redirect(new URL("/login?error=Invalid+reset+link", request.url));
+  console.log("No code or exchange failed, redirecting to login");
+  return NextResponse.redirect(
+    new URL("/login?error=Invalid+or+expired+link", request.url)
+  );
 }

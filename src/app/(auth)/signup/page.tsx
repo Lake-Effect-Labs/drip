@@ -46,9 +46,10 @@ export default function SignupPage() {
     try {
       // Check if user already exists
       const { data: { user: existingUser } } = await supabase.auth.getUser();
-      
+
       let userId: string;
-      
+      let needsEmailConfirmation = false;
+
       if (existingUser) {
         // User already logged in, use existing user
         userId = existingUser.id;
@@ -61,6 +62,7 @@ export default function SignupPage() {
             data: {
               full_name: fullName,
             },
+            emailRedirectTo: `${window.location.origin}/auth/confirm?next=/app`,
           },
         });
 
@@ -77,20 +79,31 @@ export default function SignupPage() {
         }
 
         userId = authData.user.id;
-        
-        // Wait for the session to be established after signup
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        // Refresh the session to ensure it's available
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-          // Try refreshing a few more times
-          for (let i = 0; i < 3; i++) {
-            await new Promise(resolve => setTimeout(resolve, 500));
-            const { data: { session: retrySession } } = await supabase.auth.getSession();
-            if (retrySession) break;
+
+        // Check if email confirmation is required
+        if (authData.session === null && authData.user.identities && authData.user.identities.length === 0) {
+          // Email confirmation is required
+          addToast("Please check your email to confirm your account before continuing.", "success");
+          needsEmailConfirmation = true;
+        } else if (!authData.session) {
+          // No session but not clear if email confirmation required
+          // Wait for session to be established
+          await new Promise(resolve => setTimeout(resolve, 1000));
+
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session) {
+            // Still no session, likely needs email confirmation
+            addToast("Please check your email to confirm your account.", "success");
+            setLoading(false);
+            return;
           }
         }
+      }
+
+      // If email confirmation needed, don't proceed with company creation
+      if (needsEmailConfirmation) {
+        setLoading(false);
+        return;
       }
 
       // Check if company already exists for this user
@@ -105,7 +118,6 @@ export default function SignupPage() {
         addToast("Account already set up! Redirecting...", "success");
         setLoading(false);
         router.push("/app");
-        router.refresh();
         return;
       }
 
@@ -136,7 +148,6 @@ export default function SignupPage() {
 
       addToast("Account created! Redirecting...", "success");
       router.push("/app");
-      router.refresh();
     } catch (error) {
       console.error("Signup error:", error);
       addToast("An unexpected error occurred", "error");
