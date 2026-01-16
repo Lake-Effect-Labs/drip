@@ -12,7 +12,11 @@ export function formatCurrency(amount: number): string {
   }).format(amount / 100);
 }
 
-export function formatDate(date: Date | string): string {
+export function formatDate(date: Date | string | null | undefined): string {
+  if (!date) {
+    return "";
+  }
+  
   let d: Date;
   
   if (typeof date === "string") {
@@ -29,6 +33,11 @@ export function formatDate(date: Date | string): string {
     }
   } else {
     d = date;
+  }
+  
+  // Check if date is valid
+  if (isNaN(d.getTime())) {
+    return "";
   }
   
   return d.toLocaleDateString("en-US", {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/server";
 import { createClient } from "@/lib/supabase/server";
+import { generateToken } from "@/lib/utils";
 
 // Create job (uses admin client to bypass RLS)
 export async function POST(request: Request) {
@@ -53,6 +54,9 @@ export async function POST(request: Request) {
       );
     }
 
+    // Generate unified job token for persistent public link
+    const unifiedJobToken = generateToken(24);
+
     // Create job (using admin client to bypass RLS)
     const { data: job, error: jobError } = await adminSupabase
       .from("jobs")
@@ -68,6 +72,7 @@ export async function POST(request: Request) {
         notes: notes || null,
         assigned_user_id: assigned_user_id || null,
         status,
+        unified_job_token: unifiedJobToken,
       })
       .select("*")
       .single();

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/server";
+import { generateToken } from "@/lib/utils";
 
 // Default materials per service type
 const SERVICE_MATERIALS: Record<string, string[]> = {
@@ -92,6 +93,9 @@ export async function POST(
 
     // Create job if doesn't exist
     if (!jobId) {
+      // Generate unified job token
+      const unifiedJobToken = generateToken(32);
+      
       const { data: newJob, error: jobError } = await supabase
         .from("jobs")
         .insert({
@@ -108,6 +112,7 @@ export async function POST(
           city: job?.city || customer?.city,
           state: job?.state || customer?.state,
           zip: job?.zip || customer?.zip,
+          unified_job_token: unifiedJobToken,
         })
         .select()
         .single();
@@ -124,6 +129,18 @@ export async function POST(
 
       jobId = newJob.id;
     } else {
+      // Ensure unified_job_token exists for existing job
+      const { data: existingJob } = await supabase
+        .from("jobs")
+        .select("unified_job_token")
+        .eq("id", jobId)
+        .single();
+      
+      let unifiedJobToken = existingJob?.unified_job_token;
+      if (!unifiedJobToken) {
+        unifiedJobToken = generateToken(32);
+      }
+      
       // Update existing job status to quoted and payment state to approved
       await supabase
         .from("jobs")
@@ -132,10 +149,20 @@ export async function POST(
           payment_state: "approved",
           payment_approved_at: new Date().toISOString(),
           payment_amount: paymentAmount > 0 ? paymentAmount : undefined,
+          unified_job_token: unifiedJobToken,
           updated_at: new Date().toISOString() 
         })
         .eq("id", jobId);
     }
+    
+    // Get unified_job_token for response
+    const { data: jobData } = await supabase
+      .from("jobs")
+      .select("unified_job_token")
+      .eq("id", jobId)
+      .single();
+    
+    const unifiedJobToken = jobData?.unified_job_token;
 
     // Update estimate
     const { error: updateError } = await supabase
@@ -277,9 +304,9 @@ export async function POST(
 
     return NextResponse.json({
       success: true,
-      job_id: jobId,
-      materials_auto_generated: materialsCreated > 0,
-      materials_count: materialsCreated
+      jobId,
+      materialsCreated,
+      unified_job_token: unifiedJobToken,
     });
   } catch (error) {
     if (process.env.NODE_ENV === "development") {

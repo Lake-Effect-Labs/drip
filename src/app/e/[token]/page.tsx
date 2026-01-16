@@ -12,13 +12,80 @@ export default async function PublicEstimatePage({
   const supabase = createAdminClient();
 
   // First try to find by estimate token (old system, for backwards compatibility)
-  const { data: estimate } = await supabase
+  // When there are multiple estimates with the same token (revisions), get the most recent "sent" one
+  // This ensures clients see the latest revision that needs approval, not an old accepted one
+  const { data: estimates } = await supabase
     .from("estimates")
     .select("*")
     .eq("public_token", token)
-    .single();
+    .order("created_at", { ascending: false });
+  
+  // Get the most recent "sent" estimate, or fall back to the most recent one
+  const estimate = estimates?.find(e => e.status === "sent") || estimates?.[0];
 
   if (estimate) {
+    // If estimate has a job_id, ALWAYS show unified view (not just after acceptance)
+    // This provides a persistent link with all tabs (Estimate, Schedule, Progress, Payment)
+    if (estimate.job_id) {
+      const { data: job } = await supabase
+        .from("jobs")
+        .select("*, customer:customers(*), company:companies(name, logo_url, contact_phone, contact_email)")
+        .eq("id", estimate.job_id)
+        .single();
+
+      if (job) {
+        // Ensure unified_job_token exists
+        if (!job.unified_job_token) {
+          const { generateToken } = await import("@/lib/utils");
+          const unifiedToken = generateToken(32);
+          await supabase
+            .from("jobs")
+            .update({ unified_job_token: unifiedToken })
+            .eq("id", job.id);
+          job.unified_job_token = unifiedToken;
+        }
+
+        // Fetch payment line items
+        const { data: paymentLineItems } = await supabase
+          .from("job_payment_line_items")
+          .select("*")
+          .eq("job_id", job.id)
+          .order("sort_order");
+
+        // Convert payment line items to estimate line items format
+        const lineItems = (paymentLineItems || []).map(item => ({
+          id: item.id,
+          name: item.title,
+          price: item.price,
+          description: null,
+          sqft: null,
+          rate_per_sqft: null,
+          paint_color_name_or_code: null,
+          sheen: null,
+          product_line: null,
+          gallons_estimate: null,
+        }));
+
+        // Fetch materials
+        const { data: materials } = await supabase
+          .from("estimate_materials")
+          .select("*")
+          .eq("estimate_id", estimate.id);
+
+        const jobWithDetails = {
+          ...job,
+          estimate: {
+            ...estimate,
+            line_items: lineItems,
+            materials: materials || [],
+          },
+        };
+
+        const { UnifiedPublicJobView } = await import("@/components/public/unified-public-job-view");
+        return <UnifiedPublicJobView job={jobWithDetails as any} token={token} />;
+      }
+    }
+
     // Check if this is a unified payment estimate (has job_id and uses job_payment_line_items)
     let lineItems;
 
@@ -73,7 +140,7 @@ export default async function PublicEstimatePage({
     if (estimate.job_id) {
       const { data } = await supabase
         .from("jobs")
-        .select("*")
+        .select("*, customer:customers(*), company:companies(name, logo_url, contact_phone, contact_email)")
         .eq("id", estimate.job_id)
         .single();
       job = data;

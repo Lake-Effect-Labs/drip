@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import type { Estimate, EstimateLineItem, EstimateMaterial, Customer, Job, Company } from "@/types/database";
 import { Button } from "@/components/ui/button";
@@ -34,17 +34,20 @@ interface PublicEstimateViewProps {
 }
 
 export function PublicEstimateView({ estimate: initialEstimate, token }: PublicEstimateViewProps) {
+  // Constants for consistent rendering
+  const ESTIMATE_DETAILS_TITLE = "Estimate Details";
+  
   const [estimate, setEstimate] = useState(initialEstimate);
   const [accepting, setAccepting] = useState(false);
   const [denying, setDenying] = useState(false);
-  const [accepted, setAccepted] = useState(estimate.status === "accepted");
-  const [denied, setDenied] = useState(estimate.status === "denied");
+  const [accepted, setAccepted] = useState(initialEstimate.status === "accepted");
+  const [denied, setDenied] = useState(initialEstimate.status === "denied");
   const [error, setError] = useState("");
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [showDenyDialog, setShowDenyDialog] = useState(false);
   const [denialReason, setDenialReason] = useState("");
   const [showSignoff, setShowSignoff] = useState(
-    estimate.requires_signoff && !estimate.signoff_completed_at
+    initialEstimate.requires_signoff && !initialEstimate.signoff_completed_at
   );
 
   function handleSignoffComplete() {
@@ -55,12 +58,14 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
     }));
   }
 
-  // Calculate totals
-  const laborTotal = estimate.labor_total || estimate.line_items.reduce((sum, li) => sum + li.price, 0);
+  // Calculate totals - use initialEstimate for consistent server/client rendering
+  const laborTotal = initialEstimate.labor_total || (initialEstimate.line_items?.length > 0 
+    ? initialEstimate.line_items.reduce((sum, li) => sum + li.price, 0)
+    : 0);
   const total = laborTotal;
 
-  const address = estimate.job
-    ? [estimate.job.address1, estimate.job.city, estimate.job.state, estimate.job.zip]
+  const address = initialEstimate.job
+    ? [initialEstimate.job.address1, initialEstimate.job.city, initialEstimate.job.state, initialEstimate.job.zip]
         .filter(Boolean)
         .join(", ")
     : "";
@@ -80,15 +85,13 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
         throw new Error(data.error || "Failed to accept estimate");
       }
 
-      setAccepted(true);
-      setEstimate((prev) => ({
-        ...prev,
-        status: "accepted",
-        accepted_at: new Date().toISOString(),
-      }));
+      const data = await response.json();
+      
+      // Immediately reload page to show unified view (stays on same URL)
+      // Server-side code will detect accepted status and show UnifiedPublicJobView
+      window.location.reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
-    } finally {
       setAccepting(false);
     }
   }
@@ -124,7 +127,16 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
     }
   }
 
-  if (accepted) {
+  // If estimate is already accepted, server-side should have shown unified view
+  // If we're still here, reload to get the unified view
+  useEffect(() => {
+    if (initialEstimate.status === "accepted" && initialEstimate.job_id) {
+      window.location.reload();
+    }
+  }, [initialEstimate.status, initialEstimate.job_id]);
+  
+  // Don't render anything if estimate is accepted - let server-side handle it
+  if (initialEstimate.status === "accepted" && initialEstimate.job_id) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-stone-100 via-stone-50 to-white flex items-center justify-center p-4 relative">
         <PaintChipAnimator />
@@ -134,12 +146,7 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
               <CheckCircle className="w-8 h-8 text-success" />
             </div>
             <h1 className="text-2xl font-bold mb-2">Estimate Accepted!</h1>
-            <p className="text-muted-foreground mb-6">
-              Thank you for accepting this estimate. {estimate.company?.name} will be in touch soon to schedule your project.
-            </p>
-            <div className="text-sm text-muted-foreground">
-              Accepted on {formatDate(estimate.accepted_at || new Date().toISOString())}
-            </div>
+            <p className="text-muted-foreground mb-6">Loading your job details...</p>
           </CardContent>
         </Card>
       </div>
@@ -159,19 +166,19 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
             </div>
             <h1 className="text-2xl font-bold mb-2">Estimate Declined</h1>
             <p className="text-muted-foreground mb-4">
-              Thank you for your response. {estimate.company?.name} has been notified of your decision.
+              Thank you for your response. {initialEstimate.company?.name} has been notified of your decision.
             </p>
-            {estimate.denial_reason && (
+            {(estimate.denial_reason || initialEstimate.denial_reason) && (
               <div className="text-sm text-left bg-muted p-3 rounded-lg mb-4">
                 <p className="font-medium mb-1">Your feedback:</p>
-                <p className="text-muted-foreground">{estimate.denial_reason}</p>
+                <p className="text-muted-foreground">{estimate.denial_reason || initialEstimate.denial_reason}</p>
               </div>
             )}
             <div className="text-sm text-muted-foreground">
-              Declined on {formatDate(estimate.denied_at || new Date().toISOString())}
+              Declined on {formatDate(estimate.denied_at || initialEstimate.denied_at || new Date().toISOString())}
             </div>
             <p className="text-xs text-muted-foreground mt-4">
-              {estimate.company?.name} may follow up with a revised estimate.
+              {initialEstimate.company?.name} may follow up with a revised estimate.
             </p>
           </CardContent>
         </Card>
@@ -184,10 +191,10 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
       {/* Header */}
       <header className="border-b bg-card/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
-          {(estimate.company as any)?.logo_url ? (
+          {(initialEstimate.company as any)?.logo_url ? (
             <img 
-              src={(estimate.company as any).logo_url} 
-              alt={estimate.company?.name || "Company Logo"}
+              src={(initialEstimate.company as any).logo_url} 
+              alt={initialEstimate.company?.name || "Company Logo"}
               className="w-10 h-10 rounded-lg object-cover"
             />
           ) : (
@@ -196,7 +203,7 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
             </div>
           )}
           <div>
-            <span className="font-bold">{estimate.company?.name}</span>
+            <span className="font-bold">{initialEstimate.company?.name}</span>
             <p className="text-xs text-muted-foreground">Estimate</p>
           </div>
         </div>
@@ -209,20 +216,20 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
             <div className="flex items-start justify-between">
               <div>
                 <CardTitle className="text-xl">
-                  Estimate for {estimate.customer?.name || "Your Project"}
+                  Estimate for {initialEstimate.customer?.name || "Your Project"}
                 </CardTitle>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Created {formatDate(estimate.created_at)}
+                  Created {formatDate(initialEstimate.created_at)}
                 </p>
               </div>
-              <Badge variant="secondary">{estimate.status}</Badge>
+              <Badge variant="secondary">{initialEstimate.status}</Badge>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            {estimate.customer && (
+            {initialEstimate.customer && (
               <div className="flex items-center gap-2 text-sm">
                 <User className="h-4 w-4 text-muted-foreground" />
-                <span>{estimate.customer.name}</span>
+                <span>{initialEstimate.customer.name}</span>
               </div>
             )}
             {address && (
@@ -237,19 +244,49 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
         {/* Line Items with Materials */}
         <Card>
           <CardHeader>
-            <CardTitle>Estimate Details</CardTitle>
+            <CardTitle className="font-semibold leading-none tracking-tight text-lg">
+              {ESTIMATE_DETAILS_TITLE}
+            </CardTitle>
           </CardHeader>
           <CardContent className="p-0">
             <div className="divide-y">
-              {estimate.line_items.map((item) => {
+              {((initialEstimate.line_items || [])).map((item) => {
                 const hasPaintDetails = item.product_line || item.paint_color_name_or_code || item.sheen || item.gallons_estimate;
                 
+                // Parse notes from description field (format: "BRAND:brand|PRODUCT_LINE:line|NOTES:notes")
+                let lineItemNotes: string | null = null;
+                if (item.description) {
+                  const notesMatch = item.description.match(/NOTES:([^|]+)/);
+                  if (notesMatch) {
+                    lineItemNotes = notesMatch[1];
+                  }
+                }
+                
                 // Find materials for this line item (match by ID or by area name)
-                const itemMaterials = estimate.materials?.filter(
-                  (m: EstimateMaterial) => 
-                    m.estimate_line_item_id === item.id ||
-                    m.area_description?.toLowerCase().includes(item.name?.toLowerCase()) ||
-                    item.name?.toLowerCase().includes(m.area_description?.toLowerCase() || '')
+                // Use more flexible matching to catch variations like "Ceilings" vs "Ceiling"
+                const itemNameLower = item.name?.toLowerCase() || '';
+                const itemMaterials = (initialEstimate.materials || [])?.filter(
+                  (m: EstimateMaterial) => {
+                    // Direct ID match (most reliable)
+                    if (m.estimate_line_item_id === item.id) return true;
+                    
+                    // Area description match (normalize both sides)
+                    const areaDescLower = m.area_description?.toLowerCase() || '';
+                    if (areaDescLower && itemNameLower) {
+                      // Check if either contains the other (handles "Ceilings" vs "Ceiling")
+                      if (areaDescLower.includes(itemNameLower) || itemNameLower.includes(areaDescLower)) {
+                        return true;
+                      }
+                      // Also check for partial matches (e.g., "Interior Walls" contains "Walls")
+                      const itemWords = itemNameLower.split(/\s+/);
+                      const areaWords = areaDescLower.split(/\s+/);
+                      // If any significant word matches, consider it a match
+                      if (itemWords.some(word => word.length > 3 && areaWords.includes(word))) {
+                        return true;
+                      }
+                    }
+                    return false;
+                  }
                 ) || [];
                 
                 return (
@@ -265,11 +302,6 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
                             </span>
                           )}
                         </div>
-                        {item.description && (
-                          <p className="text-sm text-muted-foreground mt-1">
-                            {item.description}
-                          </p>
-                        )}
                       </div>
                       <p className="font-medium ml-4 shrink-0">{formatCurrency(item.price)}</p>
                     </div>
@@ -284,10 +316,14 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
                                 {material.paint_product && (
                                   <div className="font-medium text-foreground">
                                     {material.paint_product}
-                                    {material.product_line && ` ${material.product_line}`}
                                   </div>
                                 )}
-                                {!material.paint_product && (
+                                {!material.paint_product && material.product_line && (
+                                  <div className="font-medium text-foreground">
+                                    {material.product_line}
+                                  </div>
+                                )}
+                                {!material.paint_product && !material.product_line && (
                                   <div className="font-medium text-foreground">
                                     {material.name}
                                   </div>
@@ -299,6 +335,12 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
                                     <span className="ml-1">- {material.sheen}</span>
                                   )}
                                 </div>
+                                {/* Show notes from material or line item */}
+                                {(material.notes || lineItemNotes) && (
+                                  <div className="mt-1 text-xs italic text-muted-foreground">
+                                    {material.notes || lineItemNotes}
+                                  </div>
+                                )}
                               </div>
                               {material.quantity_gallons && (
                                 <span className="text-xs text-muted-foreground shrink-0">
@@ -308,6 +350,13 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
                             </div>
                           </div>
                         ))}
+                      </div>
+                    )}
+                    
+                    {/* Show notes if no materials but notes exist */}
+                    {itemMaterials.length === 0 && lineItemNotes && (
+                      <div className="mt-2 text-sm text-muted-foreground italic border-l-2 border-muted pl-3">
+                        {lineItemNotes}
                       </div>
                     )}
                     
@@ -346,11 +395,11 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
         {/* Signoff or Accept/Deny Buttons */}
         {showSignoff ? (
           <EstimateSignoff
-            estimate={estimate}
+            estimate={initialEstimate}
             token={token}
             onSignoffComplete={handleSignoffComplete}
-            companyLogo={estimate.company?.logo_url}
-            companyName={estimate.company?.name}
+            companyLogo={initialEstimate.company?.logo_url}
+            companyName={initialEstimate.company?.name}
           />
         ) : (
           <div className="space-y-3">
@@ -381,14 +430,14 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
         )}
 
         {/* Footer with contact info */}
-        {((estimate.company as any)?.contact_phone || (estimate.company as any)?.contact_email) && (
+        {((initialEstimate.company as any)?.contact_phone || (initialEstimate.company as any)?.contact_email) && (
           <div className="mt-8 pt-6 border-t text-center text-sm text-muted-foreground space-y-1">
-            <p className="font-medium text-foreground">{estimate.company?.name}</p>
-            {(estimate.company as any)?.contact_phone && (
-              <p>{(estimate.company as any).contact_phone}</p>
+            <p className="font-medium text-foreground">{initialEstimate.company?.name}</p>
+            {(initialEstimate.company as any)?.contact_phone && (
+              <p>{(initialEstimate.company as any).contact_phone}</p>
             )}
-            {(estimate.company as any)?.contact_email && (
-              <p>{(estimate.company as any).contact_email}</p>
+            {(initialEstimate.company as any)?.contact_email && (
+              <p>{(initialEstimate.company as any).contact_email}</p>
             )}
           </div>
         )}
@@ -401,7 +450,7 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
             <DialogTitle>Accept This Estimate?</DialogTitle>
             <DialogDescription>
               By accepting this {formatCurrency(total)} estimate, you agree to proceed with the project.
-              {estimate.company?.name} will contact you to schedule the work.
+              {initialEstimate.company?.name} will contact you to schedule the work.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -427,7 +476,7 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
           <DialogHeader>
             <DialogTitle>Decline This Estimate?</DialogTitle>
             <DialogDescription>
-              Let {estimate.company?.name} know why you're declining. They may be able to adjust the estimate to better meet your needs.
+              Let {initialEstimate.company?.name} know why you're declining. They may be able to adjust the estimate to better meet your needs.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -441,7 +490,7 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
                 rows={4}
               />
               <p className="text-xs text-muted-foreground">
-                Your feedback helps {estimate.company?.name} provide better service.
+                Your feedback helps {initialEstimate.company?.name} provide better service.
               </p>
             </div>
           </div>

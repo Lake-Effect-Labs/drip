@@ -28,9 +28,16 @@ export async function generateEstimateMaterials(estimateId: string): Promise<Est
   // Generate materials from line items with paint details
   const materialsToInsert: InsertTables<"estimate_materials">[] = [];
 
+  // Known product lines that should be prefixed with brand
+  const KNOWN_PRODUCT_LINES = ["Duration", "Emerald", "SuperPaint", "ProClassic", "Cashmere", "Harmony", "Captivate"];
+  
   for (const item of lineItems) {
-    // Only create materials for items with paint details
-    if (item.gallons_estimate && item.gallons_estimate > 0) {
+    // Create materials for items with paint details (brand, product line, color, or sheen)
+    // Even if gallons_estimate is not set, we should still create a material entry
+    const hasPaintDetails = item.product_line || item.paint_color_name_or_code || item.sheen || 
+                           (item.description && (item.description.includes('BRAND:') || item.description.includes('PRODUCT_LINE:')));
+    
+    if (hasPaintDetails) {
       // Parse color code from paint_color_name_or_code (e.g., "SW 7029" or "Agreeable Gray")
       const colorCode = item.paint_color_name_or_code?.match(/[A-Z]{1,3}\s*\d+/i)?.[0] || null;
       const colorName = colorCode
@@ -41,27 +48,53 @@ export async function generateEstimateMaterials(estimateId: string): Promise<Est
       const costPerGallon = null;
       const lineTotal = null;
 
-      // Create descriptive material name
-      const paintProduct = item.product_line
-        ? `${item.product_line}${item.sheen ? ` ${item.sheen}` : ''}`
-        : 'Paint';
+      // Parse brand, product line, and notes from description if available
+      let brand: string | null = null;
+      let productLine: string | null = item.product_line || null;
+      let notes: string | null = null;
+      
+      if (item.description) {
+        const brandMatch = item.description.match(/BRAND:([^|]+)/);
+        const productLineMatch = item.description.match(/PRODUCT_LINE:([^|]+)/);
+        const notesMatch = item.description.match(/NOTES:([^|]+)/);
+        if (brandMatch) brand = brandMatch[1];
+        if (productLineMatch) productLine = productLineMatch[1];
+        if (notesMatch) notes = notesMatch[1];
+      }
 
-      const materialName = `${paintProduct} - ${item.name}`;
+      // Determine paint_product: combine brand + product line if both exist
+      let paintProduct: string | null = null;
+      if (productLine) {
+        // If product_line is a known product line, prepend brand (default to "Sherwin Williams" if no brand)
+        if (KNOWN_PRODUCT_LINES.includes(productLine)) {
+          paintProduct = brand ? `${brand} ${productLine}` : `Sherwin Williams ${productLine}`;
+        } else {
+          // If product_line is a brand name (like "Sherwin-Williams"), use it as-is
+          paintProduct = productLine;
+        }
+      } else if (brand) {
+        paintProduct = brand;
+      }
+
+      // Create descriptive material name
+      const paintProductName = paintProduct || productLine || 'Paint';
+      const materialName = `${paintProductName} - ${item.name}`;
 
       materialsToInsert.push({
         estimate_id: estimateId,
         estimate_line_item_id: item.id,
         name: materialName,
-        paint_product: item.product_line || null,
-        product_line: item.product_line,
+        paint_product: paintProduct,
+        product_line: productLine, // Store just the product line, not the brand
         color_name: colorName,
         color_code: colorCode,
         sheen: item.sheen,
-        area_description: item.name, // e.g., "Interior Walls", "Living Room"
-        quantity_gallons: item.gallons_estimate,
+        area_description: item.name, // e.g., "Interior Walls", "Ceilings"
+        quantity_gallons: item.gallons_estimate || null, // Allow null if not specified
         cost_per_gallon: costPerGallon,
         line_total: lineTotal,
         vendor_sku: item.vendor_sku,
+        notes: notes, // Store notes from line item
         is_auto_generated: true,
       });
     }

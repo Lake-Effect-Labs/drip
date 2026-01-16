@@ -55,7 +55,7 @@ export function AppShell({ children, user, company, isOwner }: AppShellProps) {
   }, [company.themeId]);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background overflow-x-hidden max-w-full">
       {/* Desktop sidebar */}
       <aside className={cn(
         "fixed left-0 top-0 z-40 hidden h-screen border-r bg-muted/50 lg:block transition-all duration-300",
@@ -114,8 +114,8 @@ export function AppShell({ children, user, company, isOwner }: AppShellProps) {
       </aside>
 
       {/* Mobile header */}
-      <header className="flex h-14 items-center justify-between border-b bg-background px-4 lg:hidden">
-        <div className="flex items-center gap-2 min-w-0">
+      <header className="flex h-14 items-center justify-between border-b bg-background px-4 lg:hidden w-full max-w-full overflow-hidden">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary shrink-0">
             <Paintbrush className="h-5 w-5 text-primary-foreground" />
           </div>
@@ -125,12 +125,12 @@ export function AppShell({ children, user, company, isOwner }: AppShellProps) {
 
       {/* Main content */}
       <main className={cn(
-        "min-h-screen pb-16 lg:pt-0 lg:pb-0 transition-all duration-300",
+        "min-h-screen pb-16 lg:pt-0 lg:pb-0 transition-all duration-300 w-full max-w-full overflow-x-hidden",
         sidebarCollapsed ? "lg:pl-16" : "lg:pl-64"
       )}>{children}</main>
 
       {/* Mobile bottom nav */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 flex h-16 items-center justify-around border-t bg-background/95 backdrop-blur-sm safe-area-inset-bottom lg:hidden">
+      <nav className="fixed bottom-0 left-0 right-0 z-40 flex h-16 items-center justify-around border-t bg-background/95 backdrop-blur-sm safe-area-inset-bottom lg:hidden w-full max-w-full overflow-hidden">
         {navItems.map((item) => {
           const isActive =
             pathname === item.href || pathname.startsWith(item.href + "/");

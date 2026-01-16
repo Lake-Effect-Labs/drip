@@ -82,6 +82,7 @@ export function JobCard({ job }: JobCardProps) {
       {...listeners}
       {...attributes}
       onClick={handleClick}
+      suppressHydrationWarning
     >
       <div className="block select-none">
         <h4 className="font-medium text-foreground line-clamp-1">{job.title}</h4>

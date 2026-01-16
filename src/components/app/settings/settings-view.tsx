@@ -247,6 +247,53 @@ export function SettingsView({
     }
   }
 
+  async function handleCopyInviteLink() {
+    try {
+      // First, try to find an existing active invite link
+      const { data: existingLinks } = await supabase
+        .from("invite_links")
+        .select("token")
+        .eq("company_id", company.id)
+        .is("revoked_at", null)
+        .gt("expires_at", new Date().toISOString())
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      let token: string;
+
+      if (existingLinks && existingLinks.length > 0) {
+        // Use existing active link
+        token = existingLinks[0].token;
+      } else {
+        // Create a new invite link
+        token = generateToken(24);
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 7);
+
+        const { data, error } = await supabase
+          .from("invite_links")
+          .insert({
+            company_id: company.id,
+            token,
+            expires_at: expiresAt.toISOString(),
+            created_by_user_id: currentUserId,
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        setInviteLinks((prev) => [data, ...prev]);
+      }
+
+      const inviteUrl = `${origin || (typeof window !== "undefined" ? window.location.origin : "")}/join/${token}`;
+      copyToClipboard(inviteUrl);
+      addToast("Invite link copied! Share it with your crew.", "success");
+    } catch {
+      addToast("Failed to copy invite link", "error");
+    }
+  }
+
   async function handleCreateInviteLink() {
     try {
       const token = generateToken(24);
@@ -883,6 +930,12 @@ export function SettingsView({
             <div className="rounded-lg border bg-card p-4 space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold">Crew Members</h3>
+                {isOwner && (
+                  <Button onClick={handleCopyInviteLink}>
+                    <Copy className="mr-2 h-4 w-4" />
+                    Copy Link to Invite
+                  </Button>
+                )}
               </div>
               <p className="text-sm text-muted-foreground">
                 Your crew members have access to jobs, estimates, and customer info. Everyone sees the same data.

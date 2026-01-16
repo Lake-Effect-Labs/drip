@@ -115,6 +115,7 @@ export function JobDetailView({
 
   const [job, setJob] = useState(initialJob);
   const [materials, setMaterials] = useState(initialMaterials);
+  const [progressValue, setProgressValue] = useState(initialJob.progress_percentage || 0);
   const [estimatesList, setEstimatesList] = useState(estimates);
   const [invoicesList, setInvoicesList] = useState(invoices);
   const [pickupLocations, setPickupLocations] = useState<Array<{ id: string; name: string }>>([]);
@@ -148,12 +149,13 @@ export function JobDetailView({
     setMaterials(initialMaterials);
     setEstimatesList(estimates);
     setInvoicesList(invoices);
+    setProgressValue(initialJob.progress_percentage || 0);
     // Update schedule states when job changes
     setScheduledDate(initialJob.scheduled_date || "");
     setScheduledEndDate(initialJob.scheduled_end_date || "");
     setScheduledTime(initialJob.scheduled_time || "");
     setIsMultiDay(!!initialJob.scheduled_end_date);
-  }, [initialJob.id, initialJob.scheduled_date, initialJob.scheduled_end_date, initialJob.scheduled_time, initialMaterials.length, estimates.length, invoices.length]);
+  }, [initialJob.id, initialJob.scheduled_date, initialJob.scheduled_end_date, initialJob.scheduled_time, initialJob.progress_percentage, initialMaterials.length, estimates.length, invoices.length]);
 
   // Real-time subscription for estimate updates
   useEffect(() => {
@@ -203,6 +205,11 @@ export function JobDetailView({
         (payload) => {
           // Update job with new data
           setJob((prev) => ({ ...prev, ...payload.new }));
+          
+          // Update progress value if it changed
+          if (payload.new.progress_percentage !== undefined) {
+            setProgressValue(payload.new.progress_percentage || 0);
+          }
           
           // Also update schedule-related state if schedule fields changed
           if (payload.new.scheduled_date !== undefined) {
@@ -409,6 +416,8 @@ export function JobDetailView({
   }
 
   // Save handlers (no auto-save)
+  const [savingSchedule, setSavingSchedule] = useState(false);
+
   async function handleSaveSchedule() {
     if (!scheduledDate || !scheduledTime) {
       addToast("Please set both date and time", "error");
@@ -421,8 +430,9 @@ export function JobDetailView({
       return;
     }
 
+    setSavingSchedule(true);
     try {
-      // Generate token if it doesn't exist
+      // Generate token if it doesn't exist (for public view link)
       const token = scheduleToken || generateToken(24);
       
       const { error } = await supabase
@@ -431,8 +441,9 @@ export function JobDetailView({
           scheduled_date: scheduledDate || null,
           scheduled_end_date: scheduledEndDate || null,
           scheduled_time: scheduledTime || null,
-          schedule_state: "awaiting_confirmation",
+          schedule_state: "accepted", // Directly set as accepted since no confirmation needed
           schedule_token: token,
+          status: job.status === "new" || job.status === "quoted" ? "scheduled" : job.status, // Update status if needed
           updated_at: new Date().toISOString(),
         })
         .eq("id", job.id);
@@ -447,47 +458,21 @@ export function JobDetailView({
         scheduled_date: scheduledDate || null,
         scheduled_end_date: scheduledEndDate || null,
         scheduled_time: scheduledTime || null,
-        schedule_state: "awaiting_confirmation",
+        schedule_state: "accepted",
         schedule_token: token,
+        status: prev.status === "new" || prev.status === "quoted" ? "scheduled" : prev.status,
       } as any));
       setScheduleToken(token);
       setEditingSchedule(false);
-      addToast("Schedule saved - awaiting customer confirmation", "success");
+      addToast("Schedule saved", "success");
     } catch (err) {
       console.error("Save error:", err);
       addToast("Failed to save schedule", "error");
+    } finally {
+      setSavingSchedule(false);
     }
   }
 
-  async function handleAcceptSchedule() {
-    try {
-      const { error } = await supabase
-        .from("jobs")
-        .update({
-          schedule_state: "accepted",
-          schedule_accepted_at: new Date().toISOString(),
-          status: "scheduled",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", job.id);
-
-      if (error) {
-        addToast("Failed to accept schedule", "error");
-        return;
-      }
-
-      setJob((prev) => ({
-        ...prev,
-        schedule_state: "accepted",
-        schedule_accepted_at: new Date().toISOString(),
-        status: "scheduled",
-      } as any));
-      addToast("Schedule accepted!", "success");
-    } catch (err) {
-      console.error("Accept error:", err);
-      addToast("Failed to accept schedule", "error");
-    }
-  }
 
   async function handleSaveAssignment() {
     try {
@@ -1294,10 +1279,10 @@ export function JobDetailView({
           : formatDate(scheduledDate))
       : "[date]";
     const timeStr = scheduledTime ? formatTime(scheduledTime) : "[time]";
-    const confirmUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/s/${token}`;
-    const message = `Hey ${customerName} — we'd like to schedule your project for ${dateStr}${scheduledTime ? ` at ${timeStr}` : ""}. Please confirm this works for you: ${confirmUrl}`;
+    const scheduleUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/s/${token}`;
+    const message = `Hey ${customerName} — your project is scheduled for ${dateStr}${scheduledTime ? ` at ${timeStr}` : ""}. View details: ${scheduleUrl}`;
     copyToClipboard(message);
-    addToast("Schedule confirmation message copied!", "success");
+    addToast("Schedule message copied!", "success");
   }
 
   function copyReminderMessage() {
@@ -1600,14 +1585,8 @@ export function JobDetailView({
                         Confirmed
                       </Badge>
                     )}
-                    {((job as any).schedule_state === "proposed" || (job as any).schedule_state === "awaiting_confirmation") && (
-                      <Badge variant="secondary">Awaiting Confirmation</Badge>
-                    )}
-                    {(job as any).schedule_state === "denied" && (
-                      <Badge variant="destructive">Declined by Customer</Badge>
-                    )}
                   </div>
-                  {scheduledDate && scheduledTime && !editingSchedule && (
+                  {!editingSchedule && (
                     <Button
                       variant="ghost"
                       size="sm"
@@ -1619,7 +1598,7 @@ export function JobDetailView({
                   )}
                 </div>
 
-                {editingSchedule || !scheduledDate || !scheduledTime ? (
+                {editingSchedule ? (
                   /* Edit/Set Schedule Form */
                   <div className="space-y-4">
                     <DateTimePicker
@@ -1698,7 +1677,12 @@ export function JobDetailView({
                           Cancel
                         </Button>
                       )}
-                      <Button onClick={handleSaveSchedule} className="w-full sm:flex-1">
+                      <Button 
+                        onClick={handleSaveSchedule} 
+                        className="w-full sm:flex-1"
+                        loading={savingSchedule}
+                        disabled={!scheduledDate || !scheduledTime || (scheduledEndDate && scheduledEndDate < scheduledDate)}
+                      >
                         <Calendar className="mr-2 h-4 w-4" />
                         {scheduledDate && scheduledTime && job.scheduled_date ? "Update Schedule" : "Save Schedule"}
                       </Button>
@@ -1733,7 +1717,7 @@ export function JobDetailView({
                     </div>
 
                     {/* Actions */}
-                    {((job as any).schedule_state === "proposed" || (job as any).schedule_state === "awaiting_confirmation") && (
+                    {job.scheduled_date && (
                       <div className="flex flex-col sm:flex-row gap-2">
                         <Button
                           variant="outline"
@@ -1745,45 +1729,6 @@ export function JobDetailView({
                         >
                           <Share2 className="mr-2 h-4 w-4" />
                           Share with Customer
-                        </Button>
-                        <Button
-                          onClick={handleAcceptSchedule}
-                          className="w-full sm:flex-1"
-                        >
-                          <CheckCircle className="mr-2 h-4 w-4" />
-                          Mark Confirmed
-                        </Button>
-                      </div>
-                    )}
-
-                    {(job as any).schedule_state === "accepted" && (
-                      <div className="p-3 rounded-lg bg-success/10 border border-success/20 text-sm">
-                        <p className="flex items-center gap-2 text-success">
-                          <CheckCircle className="h-4 w-4" />
-                          <span>Customer confirmed on {formatDate((job as any).schedule_accepted_at)}</span>
-                        </p>
-                      </div>
-                    )}
-
-                    {(job as any).schedule_state === "denied" && (
-                      <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 space-y-2">
-                        <p className="flex items-center gap-2 text-destructive text-sm font-medium">
-                          <XCircle className="h-4 w-4" />
-                          Customer declined this schedule
-                        </p>
-                        {(job as any).schedule_denial_reason && (
-                          <p className="text-sm text-muted-foreground pl-6">
-                            Reason: {(job as any).schedule_denial_reason}
-                          </p>
-                        )}
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setEditingSchedule(true)}
-                          className="w-full sm:w-auto"
-                        >
-                          <Calendar className="mr-2 h-4 w-4" />
-                          Propose New Time
                         </Button>
                       </div>
                     )}
@@ -1803,6 +1748,100 @@ export function JobDetailView({
                     )}
                   </>
                 )}
+              </div>
+
+              {/* Job Progress Section */}
+              <div className="rounded-lg border bg-card p-4 space-y-3">
+                <div className="flex items-center justify-between mb-2">
+                  <Label className="text-base font-semibold">Job Progress</Label>
+                  <span className="text-sm font-medium">{progressValue}%</span>
+                </div>
+                <div className="relative">
+                  <div className="w-full bg-muted rounded-full h-8 overflow-hidden cursor-pointer touch-none" 
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      
+                      const handleMove = (moveEvent: MouseEvent) => {
+                        const x = moveEvent.clientX - rect.left;
+                        const percentage = Math.max(0, Math.min(100, Math.round((x / rect.width) * 100)));
+                        setProgressValue(percentage);
+                      };
+                      
+                      const handleUp = () => {
+                        document.removeEventListener('mousemove', handleMove);
+                        document.removeEventListener('mouseup', handleUp);
+                      };
+                      
+                      // Set initial value on click
+                      const x = e.clientX - rect.left;
+                      const percentage = Math.max(0, Math.min(100, Math.round((x / rect.width) * 100)));
+                      setProgressValue(percentage);
+                      document.addEventListener('mousemove', handleMove);
+                      document.addEventListener('mouseup', handleUp);
+                    }}
+                    onTouchStart={(e) => {
+                      e.preventDefault();
+                      const rect = e.currentTarget.getBoundingClientRect();
+                      const touch = e.touches[0];
+                      
+                      const handleMove = (moveEvent: TouchEvent) => {
+                        if (moveEvent.touches.length === 0) return;
+                        moveEvent.preventDefault();
+                        const touch = moveEvent.touches[0];
+                        const x = touch.clientX - rect.left;
+                        const percentage = Math.max(0, Math.min(100, Math.round((x / rect.width) * 100)));
+                        setProgressValue(percentage);
+                      };
+                      
+                      const handleEnd = () => {
+                        document.removeEventListener('touchmove', handleMove);
+                        document.removeEventListener('touchend', handleEnd);
+                      };
+                      
+                      // Set initial value on touch
+                      const x = touch.clientX - rect.left;
+                      const percentage = Math.max(0, Math.min(100, Math.round((x / rect.width) * 100)));
+                      setProgressValue(percentage);
+                      document.addEventListener('touchmove', handleMove, { passive: false });
+                      document.addEventListener('touchend', handleEnd);
+                    }}
+                  >
+                    <div 
+                      className="bg-primary h-full transition-all duration-100"
+                      style={{ width: `${progressValue}%` }}
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center justify-between mt-3">
+                  <p className="text-xs text-muted-foreground">
+                    Drag to set progress. Click Save to update.
+                  </p>
+                  <Button
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        const response = await fetch(`/api/jobs/${job.id}/progress`, {
+                          method: 'PUT',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ progress_percentage: progressValue }),
+                        });
+                        if (!response.ok) throw new Error('Failed to save progress');
+                        setJob(prev => ({ ...prev, progress_percentage: progressValue }));
+                        addToast('Progress updated', 'success');
+                      } catch (error) {
+                        console.error('Error saving progress:', error);
+                        addToast('Failed to save progress', 'error');
+                        // Revert on error
+                        setProgressValue(job.progress_percentage || 0);
+                      }
+                    }}
+                    disabled={progressValue === (job.progress_percentage || 0)}
+                  >
+                    <Save className="mr-2 h-4 w-4" />
+                    Save
+                  </Button>
+                </div>
               </div>
 
               {/* Materials Section */}

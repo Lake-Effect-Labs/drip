@@ -8,8 +8,89 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Trash2, ExternalLink, Copy, Edit2, Check, DollarSign, Clock, Ruler, Users, Share2, MessageSquare, Pencil } from "lucide-react";
-import { formatCurrency, formatDate, copyToClipboard, generateToken } from "@/lib/utils";
+import { Plus, Trash2, ExternalLink, Copy, Edit2, Check, DollarSign, Clock, Ruler, Users, Share2, MessageSquare, Pencil, ChevronDown, ChevronUp } from "lucide-react";
+import { formatCurrency, formatDate, copyToClipboard, generateToken, PAINT_SHEENS } from "@/lib/utils";
+
+// Product Lines by Brand
+const PRODUCT_LINES_BY_BRAND: Record<string, string[]> = {
+  "Sherwin-Williams": [
+    "Duration",
+    "Emerald",
+    "SuperPaint",
+    "ProClassic",
+    "Cashmere",
+    "Harmony",
+    "Resilience",
+    "A-100",
+    "Captivate",
+    "Classic 99",
+    "ProMar 200",
+    "ProMar 400",
+    "ProMar 700",
+    "Other"
+  ],
+  "Benjamin Moore": [
+    "Aura",
+    "Regal Select",
+    "Ben",
+    "Advance",
+    "Command",
+    "Coronado",
+    "Grand Entrance",
+    "Ultra Spec",
+    "Scuff-X",
+    "Other"
+  ],
+  "Behr": [
+    "Premium Plus",
+    "Ultra",
+    "Marquee",
+    "Scuff Defense",
+    "Premium Plus Ultra",
+    "Pro",
+    "Other"
+  ],
+  "PPG": [
+    "Pittsburgh Paints",
+    "Olympic",
+    "Porter Paints",
+    "PPG Timeless",
+    "Speedhide",
+    "Other"
+  ],
+  "Other": [],
+} as const;
+
+// Common Sherwin-Williams Colors
+const COMMON_SW_COLORS = [
+  { code: "SW 7008", name: "Alabaster" },
+  { code: "SW 7029", name: "Agreeable Gray" },
+  { code: "SW 7015", name: "Repose Gray" },
+  { code: "SW 7005", name: "Pure White" },
+  { code: "SW 7006", name: "Extra White" },
+  { code: "SW 7013", name: "Greek Villa" },
+  { code: "SW 7014", name: "Classic Light Buff" },
+  { code: "SW 7016", name: "Classic Gray" },
+  { code: "SW 7018", name: "Classic French Gray" },
+  { code: "SW 7023", name: "Classic Gray" },
+  { code: "SW 7030", name: "Accessible Beige" },
+  { code: "SW 7031", name: "Mindful Gray" },
+  { code: "SW 7032", name: "Worldly Gray" },
+  { code: "SW 7042", name: "Urbane Bronze" },
+  { code: "SW 7043", name: "Iron Ore" },
+  { code: "SW 7044", name: "Naval" },
+  { code: "SW 7045", name: "Evergreen Fog" },
+  { code: "SW 7048", name: "Peppercorn" },
+  { code: "SW 7049", name: "Colonel Sanders" },
+  { code: "SW 7050", name: "Copper Penny" },
+  { code: "SW 7051", name: "Coral Reef" },
+  { code: "SW 7052", name: "Sea Salt" },
+  { code: "SW 7053", name: "Watery" },
+  { code: "SW 7054", name: "Raindrops" },
+  { code: "SW 7055", name: "Jade Dragon" },
+  { code: "SW 7056", name: "Sage Green" },
+  { code: "SW 7057", name: "Hale Navy" },
+] as const;
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/toast";
 import { useRouter } from "next/navigation";
@@ -37,6 +118,9 @@ interface PaymentLineItem {
   paintSheen?: string; // "Eggshell", etc.
   paintQuantity?: string; // number as string
   paintQuantityUnit?: string; // "gal", "qt", "pt", "oz"
+  paintProductLine?: string; // "Duration", "Emerald", etc.
+  paintNotes?: string; // Advanced notes
+  paintAdvancedMode?: boolean; // Toggle for advanced options
 }
 
 interface UnifiedPaymentProps {
@@ -100,6 +184,13 @@ export function UnifiedPayment({
     setCurrentPaymentMethod(paymentMethod);
   }, [paymentMethod]);
 
+  // Update saved line items when initialLineItems prop changes (from parent refresh)
+  useEffect(() => {
+    if (initialLineItems.length > 0) {
+      setSavedLineItems(initialLineItems);
+    }
+  }, [initialLineItems]);
+
   const [lineItems, setLineItems] = useState<PaymentLineItem[]>(
     initialLineItems.length > 0
       ? initialLineItems.map(item => ({ 
@@ -111,7 +202,10 @@ export function UnifiedPayment({
           paintColor: "",
           paintSheen: "",
           paintQuantity: "",
-          paintQuantityUnit: "gal"
+          paintQuantityUnit: "gal",
+          paintProductLine: "",
+          paintNotes: "",
+          paintAdvancedMode: false
         }))
       : [{ 
           type: "other", 
@@ -121,9 +215,14 @@ export function UnifiedPayment({
           paintColor: "",
           paintSheen: "",
           paintQuantity: "",
-          paintQuantityUnit: "gal"
+          paintQuantityUnit: "gal",
+          paintProductLine: "",
+          paintNotes: "",
+          paintAdvancedMode: false
         }]
   );
+  const [savedLineItems, setSavedLineItems] = useState(initialLineItems);
+  const [fullEstimateLineItems, setFullEstimateLineItems] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
   const [markPaidDialogOpen, setMarkPaidDialogOpen] = useState(false);
   const [paidMethod, setPaidMethod] = useState("cash");
@@ -131,6 +230,7 @@ export function UnifiedPayment({
   const [loadingEstimateData, setLoadingEstimateData] = useState(false);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [sharePaymentDialogOpen, setSharePaymentDialogOpen] = useState(false);
+  const [estimateMaterials, setEstimateMaterials] = useState<any[]>([]);
   const [selectedPaymentMethods, setSelectedPaymentMethods] = useState<string[]>(["cash", "check", "venmo", "stripe"]);
   const [currentPublicToken, setCurrentPublicToken] = useState<string | undefined>(publicToken);
   const [currentPaymentToken, setCurrentPaymentToken] = useState<string | undefined>();
@@ -189,10 +289,52 @@ export function UnifiedPayment({
     fetchPaymentToken();
   }, [jobId, paymentState, currentPaymentToken, supabase]);
 
+  // Fetch materials and full estimate line items when estimate is displayed
+  useEffect(() => {
+    async function fetchEstimateData() {
+      // Fetch estimate data for proposed, approved, and paid states
+      if (!jobId || (currentPaymentState !== "proposed" && currentPaymentState !== "approved" && currentPaymentState !== "paid")) return;
+      
+      try {
+        // Get the latest estimate for this job (most recently created)
+        // This ensures we get the new revision if one was created
+        const { data: estimate } = await supabase
+          .from("estimates")
+          .select("id")
+          .eq("job_id", jobId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        if (estimate) {
+          // Fetch materials
+          const { data: materials } = await supabase
+            .from("estimate_materials")
+            .select("*")
+            .eq("estimate_id", estimate.id);
+          setEstimateMaterials(materials || []);
+
+          // Fetch full estimate line items with square footage
+          const { data: estimateLineItems } = await supabase
+            .from("estimate_line_items")
+            .select("*")
+            .eq("estimate_id", estimate.id)
+            .order("created_at", { ascending: true });
+          setFullEstimateLineItems(estimateLineItems || []);
+        }
+      } catch (error) {
+        console.error("Error fetching estimate data:", error);
+      }
+    }
+    
+    fetchEstimateData();
+  }, [jobId, currentPaymentState, supabase]);
+
   // Load existing estimate line items when editing
   async function loadExistingEstimate() {
     setLoadingEstimateData(true);
     try {
+      // Always try to load from database first to get full details
       // Fetch the estimate
       const { data: estimate } = await supabase
         .from("estimates")
@@ -201,6 +343,28 @@ export function UnifiedPayment({
         .maybeSingle();
       
       if (!estimate) {
+        // If no estimate exists, use saved or initial line items as fallback
+        const itemsToUse = savedLineItems.length > 0 ? savedLineItems : initialLineItems;
+        if (itemsToUse.length > 0) {
+          const loadedItems = itemsToUse.map(item => ({
+            id: item.id,
+            type: "other" as LineItemType,
+            title: item.title,
+            price: (item.price / 100).toFixed(2),
+            areaType: undefined,
+            sqft: "",
+            ratePerSqft: "",
+            paintBrand: "",
+            paintColor: "",
+            paintSheen: "",
+            paintQuantity: "",
+            paintQuantityUnit: "gal" as const,
+            paintProductLine: "",
+            paintNotes: "",
+            paintAdvancedMode: false
+          }));
+          setLineItems(loadedItems);
+        }
         setLoadingEstimateData(false);
         return;
       }
@@ -211,6 +375,14 @@ export function UnifiedPayment({
         .select("*")
         .eq("estimate_id", estimate.id)
         .order("created_at", { ascending: true });
+
+      // Fetch materials for this estimate
+      const { data: materials } = await supabase
+        .from("estimate_materials")
+        .select("*")
+        .eq("estimate_id", estimate.id);
+      
+      setEstimateMaterials(materials || []);
 
       if (estimateLineItems && estimateLineItems.length > 0) {
         const loadedItems = estimateLineItems.map(item => {
@@ -233,6 +405,32 @@ export function UnifiedPayment({
             else areaType = "other";
           }
 
+          // Parse brand and product line from description if available
+          let paintBrand = "";
+          let paintProductLine = "";
+          let paintNotes = "";
+          
+          if (item.description) {
+            const brandMatch = item.description.match(/BRAND:([^|]+)/);
+            const productLineMatch = item.description.match(/PRODUCT_LINE:([^|]+)/);
+            const notesMatch = item.description.match(/NOTES:([^|]+)/);
+            
+            if (brandMatch) paintBrand = brandMatch[1];
+            if (productLineMatch) paintProductLine = productLineMatch[1];
+            if (notesMatch) paintNotes = notesMatch[1];
+          }
+          
+          // Fallback: if no brand/product line in description, use product_line as product line
+          // and check if product_line is a brand name
+          if (!paintBrand && !paintProductLine && item.product_line) {
+            const knownBrands = ["Sherwin-Williams", "Benjamin Moore", "Behr", "PPG", "Other"];
+            if (knownBrands.includes(item.product_line)) {
+              paintBrand = item.product_line;
+            } else {
+              paintProductLine = item.product_line;
+            }
+          }
+
           return {
             id: item.id,
             type,
@@ -241,15 +439,40 @@ export function UnifiedPayment({
             areaType,
             sqft: (item as any).sqft?.toString() || "",
             ratePerSqft: (item as any).rate_per_sqft?.toString() || "",
-            paintBrand: item.product_line || "",
+            paintBrand: paintBrand || "",
             paintColor: item.paint_color_name_or_code || "",
             paintSheen: item.sheen || "",
             paintQuantity: item.gallons_estimate?.toString() || "",
-            paintQuantityUnit: "gal"
+            paintQuantityUnit: "gal" as const,
+            paintProductLine: paintProductLine || "",
+            paintNotes: paintNotes || "",
+            paintAdvancedMode: false
           };
         });
 
         setLineItems(loadedItems);
+      } else {
+        // No line items in DB, use initial line items if available
+        if (initialLineItems.length > 0) {
+          const loadedItems = initialLineItems.map(item => ({
+            id: item.id,
+            type: "other" as LineItemType,
+            title: item.title,
+            price: (item.price / 100).toFixed(2),
+            areaType: undefined,
+            sqft: "",
+            ratePerSqft: "",
+            paintBrand: "",
+            paintColor: "",
+            paintSheen: "",
+            paintQuantity: "",
+            paintQuantityUnit: "gal" as const,
+            paintProductLine: "",
+            paintNotes: "",
+            paintAdvancedMode: false
+          }));
+          setLineItems(loadedItems);
+        }
       }
     } catch (error) {
       console.error("Error loading estimate:", error);
@@ -293,6 +516,21 @@ export function UnifiedPayment({
         estimateData = data;
         estimateError = error;
       } else {
+        // Ensure job has unified_job_token
+        const { data: jobData } = await supabase
+          .from("jobs")
+          .select("unified_job_token")
+          .eq("id", jobId)
+          .single();
+        
+        if (jobData && !jobData.unified_job_token) {
+          const unifiedToken = generateToken(24);
+          await supabase
+            .from("jobs")
+            .update({ unified_job_token: unifiedToken })
+            .eq("id", jobId);
+        }
+
         // Create new estimate
         const { data, error } = await supabase
           .from("estimates")
@@ -417,7 +655,10 @@ export function UnifiedPayment({
       paintColor: "",
       paintSheen: "",
       paintQuantity: "",
-      paintQuantityUnit: "gal"
+      paintQuantityUnit: "gal",
+      paintProductLine: "",
+      paintNotes: "",
+      paintAdvancedMode: false
     }]);
   };
 
@@ -555,22 +796,134 @@ export function UnifiedPayment({
       let estimateError;
 
       if (existingEstimate) {
-        // Update existing estimate and reset approval status
-        const { data, error } = await supabase
+        // Check if estimate is accepted - if so, we need to handle it differently
+        // The database trigger prevents modifying accepted estimates, so we need to
+        // first check the status and handle accordingly
+        const { data: currentEstimate } = await supabase
           .from("estimates")
-          .update({
+          .select("status")
+          .eq("id", existingEstimate.id)
+          .single();
+        
+        // If estimate is accepted or denied, we can't modify it directly due to database constraints
+        // Instead, we'll create a new estimate or update only if status allows
+        if (currentEstimate?.status === "accepted" || currentEstimate?.status === "denied") {
+          // For accepted or denied estimates, create a new estimate revision
+          // First, update the old estimate to use a different token (archive it)
+          // Then create the new estimate with the original token so the client link works
+          const oldToken = generateToken(24);
+          const { error: updateOldError } = await supabase
+            .from("estimates")
+            .update({
+              public_token: oldToken, // Archive old estimate with new token
+            })
+            .eq("id", existingEstimate.id);
+          
+          if (updateOldError) {
+            console.error("Error updating old estimate token:", {
+              message: updateOldError.message,
+              details: updateOldError.details,
+              hint: updateOldError.hint,
+              code: updateOldError.code,
+            });
+            estimateError = updateOldError;
+          } else {
+            // Now create the new estimate with the original token
+            const { data, error } = await supabase
+              .from("estimates")
+              .insert({
+                company_id: companyId,
+                job_id: jobId,
+                customer_id: customerId,
+                status: "sent",
+                public_token: token, // Use original token so client link works
+              })
+              .select("id, public_token")
+              .single();
+            estimateData = data;
+            estimateError = error;
+            estimateId = data?.id || "";
+            
+            // If there was an error, log it properly
+            if (error) {
+              console.error("Error creating new estimate revision:", {
+                message: error.message,
+                details: error.details,
+                hint: error.hint,
+                code: error.code,
+              });
+            } else {
+              // Reset job approval status since we're creating a new estimate revision
+              // Get current job status first
+              const { data: currentJobForRevision } = await supabase
+                .from("jobs")
+                .select("status")
+                .eq("id", jobId)
+                .single();
+              
+              const { error: jobUpdateError } = await supabase
+                .from("jobs")
+                .update({
+                  payment_state: "proposed",
+                  payment_approved_at: null,
+                  status: currentJobForRevision?.status === "quoted" ? "new" : currentJobForRevision?.status || "new", // Reset from quoted if it was quoted
+                  updated_at: new Date().toISOString(),
+                })
+                .eq("id", jobId);
+              
+              if (jobUpdateError) {
+                console.error("Error updating job after creating revision:", jobUpdateError);
+              }
+            }
+          }
+        } else {
+          // Update existing estimate and reset approval status
+          const updateData: any = {
             public_token: token,
             status: "sent",
-            customer_id: customerId,
-            accepted_at: null, // Reset acceptance if revising
             updated_at: new Date().toISOString(),
-          })
-          .eq("id", existingEstimate.id)
-          .select("id, public_token")
-          .single();
-        estimateData = data;
-        estimateError = error;
-        estimateId = existingEstimate.id;
+          };
+          
+          // Only update customer_id if provided
+          if (customerId) {
+            updateData.customer_id = customerId;
+          }
+          
+          // Reset acceptance if revising
+          updateData.accepted_at = null;
+          updateData.denied_at = null;
+          updateData.denial_reason = null;
+          
+          const { data, error } = await supabase
+            .from("estimates")
+            .update(updateData)
+            .eq("id", existingEstimate.id)
+            .select("id, public_token")
+            .single();
+          estimateData = data;
+          estimateError = error;
+          estimateId = existingEstimate.id;
+          
+          // Reset job approval status since we're revising the estimate
+          // Check if job was previously approved
+          const { data: currentJob } = await supabase
+            .from("jobs")
+            .select("payment_state, status")
+            .eq("id", jobId)
+            .single();
+          
+          if (currentJob?.payment_state === "approved") {
+            await supabase
+              .from("jobs")
+              .update({
+                payment_state: "proposed",
+                payment_approved_at: null,
+                status: currentJob.status === "quoted" ? "new" : currentJob.status, // Reset from quoted if it was quoted
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", jobId);
+          }
+        }
       } else {
         // Create new estimate
         const { data, error } = await supabase
@@ -590,7 +943,12 @@ export function UnifiedPayment({
       }
 
       if (estimateError) {
-        console.error("Estimate create/update error:", estimateError);
+        console.error("Estimate create/update error:", {
+          message: estimateError.message,
+          details: estimateError.details,
+          hint: estimateError.hint,
+          code: estimateError.code,
+        });
         // Don't throw - estimate creation is optional for sharing
       } else if (estimateData && estimateId) {
         setCurrentPublicToken(estimateData.public_token);
@@ -640,19 +998,31 @@ export function UnifiedPayment({
                 price = Math.round((parseFloat(item.price) || 0) * 100);
               }
 
+              // Store brand and product line information in description for material generation
+              // Format: "BRAND:brand_name|PRODUCT_LINE:product_line|NOTES:notes"
+              let description = "";
+              if (item.paintBrand || item.paintProductLine || item.paintNotes) {
+                const parts: string[] = [];
+                if (item.paintBrand) parts.push(`BRAND:${item.paintBrand}`);
+                if (item.paintProductLine) parts.push(`PRODUCT_LINE:${item.paintProductLine}`);
+                if (item.paintNotes) parts.push(`NOTES:${item.paintNotes}`);
+                description = parts.join("|");
+              }
+
               return {
                 estimate_id: estimateId,
                 service_key: "other",
                 service_type: serviceType,
                 name,
-                description: null,
+                description: description || null,
                 price,
                 sqft: item.type === "area" && item.sqft ? parseFloat(item.sqft) : null,
                 rate_per_sqft: item.type === "area" && item.ratePerSqft ? parseFloat(item.ratePerSqft) : null,
                 paint_color_name_or_code: item.paintColor || null,
                 sheen: item.paintSheen || null,
-                product_line: item.paintBrand || null,
+                product_line: item.paintProductLine || item.paintBrand || null, // Store product line if exists, otherwise brand
                 gallons_estimate: item.paintQuantity ? parseFloat(item.paintQuantity) : null,
+                vendor_sku: null,
               };
             });
           
@@ -681,8 +1051,87 @@ export function UnifiedPayment({
       }
       setEditingEstimate(false);
 
-      // Call onUpdate asynchronously to avoid blocking UI
-      setTimeout(() => onUpdate(), 100);
+      // Reload estimate data to ensure details are properly displayed
+      if (estimateId) {
+        try {
+          // Fetch updated line items from database
+          const { data: updatedLineItems } = await supabase
+            .from("estimate_line_items")
+            .select("*")
+            .eq("estimate_id", estimateId)
+            .order("created_at");
+
+          // Fetch materials after saving
+          const { data: materials } = await supabase
+            .from("estimate_materials")
+            .select("*")
+            .eq("estimate_id", estimateId);
+          setEstimateMaterials(materials || []);
+
+          // Update full estimate line items
+          setFullEstimateLineItems(updatedLineItems || []);
+
+          // Update saved line items from database
+          if (updatedLineItems && updatedLineItems.length > 0) {
+            const savedItems = updatedLineItems.map((item) => ({
+              id: item.id,
+              title: item.name,
+              price: item.price,
+            }));
+            setSavedLineItems(savedItems);
+          } else {
+            // Fallback to current line items if database fetch fails
+            const savedItems = lineItems
+              .filter(item => {
+                if (item.type === "area") {
+                  return item.ratePerSqft && item.sqft && parseFloat(item.ratePerSqft) > 0 && parseFloat(item.sqft) > 0;
+                } else if (item.type === "labor") {
+                  return item.hours && item.ratePerHour && parseFloat(item.hours) > 0 && parseFloat(item.ratePerHour) > 0;
+                } else {
+                  return item.title.trim() && item.price.trim() && parseFloat(item.price) > 0;
+                }
+              })
+              .map((item, index) => {
+                let title = "";
+                let price = 0;
+
+                if (item.type === "area" && item.areaType && item.ratePerSqft && item.sqft) {
+                  const areaLabels: Record<string, string> = {
+                    walls: "Interior Walls",
+                    ceilings: "Ceilings",
+                    trim: "Interior Trim",
+                    doors: "Doors",
+                    exterior_walls: "Exterior Walls",
+                    exterior_trim: "Exterior Trim",
+                    deck_fence: "Deck/Fence",
+                    siding: "Siding",
+                    other: "Other"
+                  };
+                  title = `${areaLabels[item.areaType]} - ${item.sqft} sqft @ $${item.ratePerSqft}/sqft`;
+                  price = Math.round((parseFloat(item.ratePerSqft) || 0) * (parseFloat(item.sqft) || 0) * 100);
+                } else if (item.type === "labor" && item.hours && item.ratePerHour) {
+                  title = `Labor - ${item.hours} hrs @ $${item.ratePerHour}/hr`;
+                  price = Math.round((parseFloat(item.hours) || 0) * (parseFloat(item.ratePerHour) || 0) * 100);
+                } else {
+                  title = item.title.trim();
+                  price = Math.round((parseFloat(item.price) || 0) * 100);
+                }
+
+                return {
+                  id: `saved-${index}-${Date.now()}`,
+                  title,
+                  price,
+                };
+              });
+            setSavedLineItems(savedItems);
+          }
+        } catch (error) {
+          console.error("Failed to reload estimate data:", error);
+        }
+      }
+
+      // Call onUpdate to refresh parent component data
+      onUpdate();
     } catch (err: any) {
       console.error("Failed to save payment:", err);
       console.error("Error details:", {
@@ -962,14 +1411,14 @@ export function UnifiedPayment({
                     <Label className="text-sm text-muted-foreground">Payment Link</Label>
                     <div className="flex gap-2 mt-2">
                       <Input 
-                        value={typeof window !== "undefined" && currentPaymentToken ? `${window.location.origin}/p/${currentPaymentToken}` : ""} 
+                        value={typeof window !== "undefined" && currentPaymentToken ? `${window.location.origin}/j/${currentPaymentToken}?tab=payment` : ""} 
                         readOnly 
                         className="font-mono text-sm"
                       />
                       <Button 
                         variant="outline"
                         onClick={() => {
-                          const link = `${window.location.origin}/p/${currentPaymentToken}`;
+                          const link = `${window.location.origin}/j/${currentPaymentToken}?tab=payment`;
                           copyToClipboard(link);
                           addToast("Payment link copied", "success");
                         }}
@@ -984,14 +1433,14 @@ export function UnifiedPayment({
                   <div>
                     <Label className="text-sm text-muted-foreground">Pre-written Message</Label>
                     <Textarea 
-                      value={`Hey there — here's your invoice for ${formatCurrency(paymentAmount || 0)}: ${typeof window !== "undefined" && currentPaymentToken ? `${window.location.origin}/p/${currentPaymentToken}` : "[link will be generated]"}. Thank you!`}
+                      value={`Hey there — here's your invoice for ${formatCurrency(paymentAmount || 0)}: ${typeof window !== "undefined" && currentPaymentToken ? `${window.location.origin}/j/${currentPaymentToken}?tab=payment` : "[link will be generated]"}. Thank you!`}
                       readOnly 
                       rows={4}
                       className="mt-2 font-sans"
                     />
                     <Button 
                       onClick={() => {
-                        const link = `${window.location.origin}/p/${currentPaymentToken}`;
+                        const link = `${window.location.origin}/j/${currentPaymentToken}?tab=payment`;
                         const customerName = "there"; // Could be passed as prop if needed
                         const message = `Hey ${customerName} — here's your invoice for ${formatCurrency(paymentAmount || 0)}: ${link}. Thank you!`;
                         copyToClipboard(message);
@@ -1033,7 +1482,7 @@ export function UnifiedPayment({
         </div>
 
         {/* DENIED ESTIMATE ALERT */}
-        {estimateStatus === "denied" && (
+        {estimateStatus === "denied" && !editingEstimate && (
           <div className="rounded-lg border-2 border-destructive bg-destructive/10 p-4 space-y-3">
             <div className="flex items-start gap-3">
               <div className="w-6 h-6 rounded-full bg-destructive text-white flex items-center justify-center shrink-0 mt-0.5">
@@ -1074,65 +1523,40 @@ export function UnifiedPayment({
           </div>
         )}
 
-        {/* PROPOSED STATE - Create/Edit Estimate */}
-        {((currentPaymentState === "none" || currentPaymentState === "proposed") || (currentPaymentState === "approved" && editingEstimate)) && (
+        {/* EDITING MODE - Show form when editing any state */}
+        {editingEstimate && (
           <div className="space-y-4">
-            {/* Simple view when estimate exists */}
-            {currentPaymentState === "proposed" && initialLineItems.length > 0 && !editingEstimate ? (
-              <>
-                <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-medium text-sm">Estimate Total</h4>
-                    <span className="text-lg font-bold">{formatCurrency(paymentAmount || totalAmount)}</span>
-                  </div>
-                  <div className="space-y-1">
-                    {initialLineItems.map((item) => (
-                      <div key={item.id} className="flex justify-between text-sm text-muted-foreground">
-                        <span>{item.title}</span>
-                        <span>{formatCurrency(item.price)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={async () => {
-                      await ensurePublicToken();
-                      setShareDialogOpen(true);
-                    }}
-                    className="flex-1"
-                  >
-                    <Share2 className="mr-2 h-4 w-4" />
-                    Share Estimate
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={async () => {
-                      await loadExistingEstimate();
-                      setEditingEstimate(true);
-                    }}
-                    disabled={loadingEstimateData}
-                    className="flex-1"
-                  >
-                    <Pencil className="mr-2 h-4 w-4" />
-                    {loadingEstimateData ? "Loading..." : "Edit"}
-                  </Button>
-                  {customerId && (
-                    <Button
-                      variant="default"
-                      onClick={handleApprove}
-                      loading={saving}
-                      className="flex-1"
-                    >
-                      <Check className="mr-2 h-4 w-4" />
-                      Approve
-                    </Button>
-                  )}
-                </div>
-              </>
-            ) : (
-              <>
+            {/* Context message when editing approved/denied estimate */}
+            {(currentPaymentState === "approved" || estimateStatus === "denied") && (
+              <div className="rounded-lg border bg-warning/10 border-warning/20 p-4">
+                {currentPaymentState === "approved" ? (
+                  <>
+                    <p className="text-sm font-medium text-warning mb-2">
+                      Revising Approved Estimate
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Current approved price: {formatCurrency(paymentAmount || 0)}
+                    </p>
+                    {paymentApprovedAt && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Originally approved {formatDate(paymentApprovedAt)}
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm font-medium text-warning mb-2">
+                      Revising Denied Estimate
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Make changes based on customer feedback and resend.
+                    </p>
+                  </>
+                )}
+              </div>
+            )}
+            
+            {/* Editing Form */}
             <div className="rounded-lg border bg-muted/30 p-4 space-y-4">
               {lineItems.map((item, index) => {
                 const itemTotal = item.type === "area" && item.ratePerSqft && item.sqft
@@ -1221,7 +1645,26 @@ export function UnifiedPayment({
                         
                         {/* Paint Details - Only for Area type */}
                         <div className="pt-3 border-t space-y-3">
-                          <Label className="text-xs font-semibold">Paint Details</Label>
+                          <div className="flex items-center justify-between">
+                            <Label className="text-xs font-semibold">Paint Details</Label>
+                            <button
+                              type="button"
+                              onClick={() => updateLineItem(index, "paintAdvancedMode", !item.paintAdvancedMode)}
+                              className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
+                            >
+                              {item.paintAdvancedMode ? (
+                                <>
+                                  <ChevronUp className="h-3 w-3" />
+                                  Hide Advanced
+                                </>
+                              ) : (
+                                <>
+                                  <ChevronDown className="h-3 w-3" />
+                                  Advanced Options
+                                </>
+                              )}
+                            </button>
+                          </div>
 
                           <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-2">
@@ -1241,57 +1684,102 @@ export function UnifiedPayment({
                             </div>
                             <div className="space-y-2">
                               <Label className="text-xs text-muted-foreground">Color</Label>
-                              <Input
-                                placeholder="e.g., SW 7008 Alabaster"
-                                value={item.paintColor || ""}
-                                onChange={(e) => updateLineItem(index, "paintColor", e.target.value)}
-                                className="min-h-[44px]"
-                              />
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-2">
-                              <Label className="text-xs text-muted-foreground">Sheen</Label>
-                              <Select
-                                value={item.paintSheen || ""}
-                                onChange={(e) => updateLineItem(index, "paintSheen", e.target.value)}
-                                className="min-h-[44px]"
-                              >
-                                <option value="">Select sheen...</option>
-                                <option value="Flat">Flat</option>
-                                <option value="Matte">Matte</option>
-                                <option value="Eggshell">Eggshell</option>
-                                <option value="Satin">Satin</option>
-                                <option value="Semi-Gloss">Semi-Gloss</option>
-                                <option value="Gloss">Gloss</option>
-                              </Select>
-                            </div>
-                            <div className="space-y-2">
-                              <Label className="text-xs text-muted-foreground">Quantity</Label>
-                              <div className="flex gap-2">
+                              <div className="relative">
                                 <Input
-                                  type="number"
-                                  min="0"
-                                  step="0.25"
-                                  placeholder="e.g., 3"
-                                  value={item.paintQuantity || ""}
-                                  onChange={(e) => updateLineItem(index, "paintQuantity", e.target.value)}
-                                  className="min-h-[44px] flex-1"
+                                  placeholder="e.g., SW 7008 Alabaster"
+                                  value={item.paintColor || ""}
+                                  onChange={(e) => updateLineItem(index, "paintColor", e.target.value)}
+                                  className="min-h-[44px] pr-8"
+                                  list={`color-suggestions-${index}`}
                                 />
-                                <Select
-                                  value={item.paintQuantityUnit || "gal"}
-                                  onChange={(e) => updateLineItem(index, "paintQuantityUnit", e.target.value)}
-                                  className="min-h-[44px] w-28"
-                                >
-                                  <option value="gal">Gallons</option>
-                                  <option value="qt">Quarts</option>
-                                  <option value="pt">Pints</option>
-                                  <option value="oz">Oz</option>
-                                </Select>
+                                <datalist id={`color-suggestions-${index}`}>
+                                  {COMMON_SW_COLORS.map((color) => (
+                                    <option key={color.code} value={`${color.code} ${color.name}`}>
+                                      {color.name}
+                                    </option>
+                                  ))}
+                                </datalist>
                               </div>
                             </div>
                           </div>
+
+
+                          <div className="space-y-2">
+                            <Label className="text-xs text-muted-foreground">Quantity</Label>
+                            <div className="flex gap-2">
+                              <Input
+                                type="number"
+                                min="0"
+                                step="0.25"
+                                placeholder="e.g., 3"
+                                value={item.paintQuantity || ""}
+                                onChange={(e) => updateLineItem(index, "paintQuantity", e.target.value)}
+                                className="min-h-[44px] flex-1"
+                              />
+                              <Select
+                                value={item.paintQuantityUnit || "gal"}
+                                onChange={(e) => updateLineItem(index, "paintQuantityUnit", e.target.value)}
+                                className="min-h-[44px] w-28"
+                              >
+                                <option value="gal">Gallons</option>
+                                <option value="qt">Quarts</option>
+                                <option value="pt">Pints</option>
+                                <option value="oz">Oz</option>
+                              </Select>
+                            </div>
+                          </div>
+
+                          {/* Advanced Options */}
+                          {item.paintAdvancedMode && (
+                            <div className="rounded-lg border bg-muted/30 p-4 space-y-3 mt-3">
+                              {/* Product Line - Show when a brand with product lines is selected */}
+                              {item.paintBrand && PRODUCT_LINES_BY_BRAND[item.paintBrand] && PRODUCT_LINES_BY_BRAND[item.paintBrand].length > 0 && (
+                                <div className="space-y-2">
+                                  <Label className="text-xs text-muted-foreground">Product Line</Label>
+                                  <Select
+                                    value={item.paintProductLine || ""}
+                                    onChange={(e) => updateLineItem(index, "paintProductLine", e.target.value)}
+                                    className="min-h-[44px]"
+                                  >
+                                    <option value="">Select product line...</option>
+                                    {PRODUCT_LINES_BY_BRAND[item.paintBrand].map((line) => (
+                                      <option key={line} value={line}>
+                                        {line}
+                                      </option>
+                                    ))}
+                                  </Select>
+                                </div>
+                              )}
+                              <div className="space-y-2">
+                                <Label className="text-xs text-muted-foreground">Sheen</Label>
+                                <Select
+                                  value={item.paintSheen || ""}
+                                  onChange={(e) => updateLineItem(index, "paintSheen", e.target.value)}
+                                  className="min-h-[44px]"
+                                >
+                                  <option value="">Select sheen...</option>
+                                  {PAINT_SHEENS.map((sheen) => (
+                                    <option key={sheen} value={sheen}>
+                                      {sheen}
+                                    </option>
+                                  ))}
+                                </Select>
+                              </div>
+                              <div className="space-y-2">
+                                <Label className="text-xs text-muted-foreground">Notes</Label>
+                                <Textarea
+                                  placeholder="e.g., Back wall only, Second coat needed, Special prep required..."
+                                  value={item.paintNotes || ""}
+                                  onChange={(e) => updateLineItem(index, "paintNotes", e.target.value)}
+                                  rows={3}
+                                  className="text-sm"
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                  Add any special instructions or notes about this paint application
+                                </p>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     ) : item.type === "labor" ? (
@@ -1383,22 +1871,28 @@ export function UnifiedPayment({
                   })}
                   className="flex-1 touch-target min-h-[44px]"
                 >
-                  {currentPaymentState === "proposed" || (currentPaymentState === "approved" && editingEstimate)
+                  {currentPaymentState === "proposed" || currentPaymentState === "approved" || estimateStatus === "denied"
                     ? "Update Estimate"
                     : "Create Estimate"}
                 </Button>
               </div>
-            </div>
-
-            {editingEstimate && (
+              
+              {/* Cancel button */}
               <div className="flex gap-2">
                 <Button
                   variant="outline"
                   onClick={() => {
                     setEditingEstimate(false);
-                    // Reset line items to initial state
+                    // Reset line items to saved state
                     setLineItems(
-                      initialLineItems.length > 0
+                      savedLineItems.length > 0
+                        ? savedLineItems.map(item => ({ 
+                            id: item.id, 
+                            type: "other" as LineItemType,
+                            title: item.title, 
+                            price: (item.price / 100).toFixed(2) 
+                          }))
+                        : initialLineItems.length > 0
                         ? initialLineItems.map(item => ({ 
                             id: item.id, 
                             type: "other" as LineItemType,
@@ -1413,52 +1907,252 @@ export function UnifiedPayment({
                   Cancel
                 </Button>
               </div>
-            )}
-            </>
-            )}
+            </div>
           </div>
         )}
 
-        {/* APPROVED STATE - Price Locked */}
-        {currentPaymentState === "approved" && !editingEstimate && (
-          <div className="space-y-4">
-            <div className="rounded-lg border bg-success/10 border-success/20 p-4">
-              <p className="text-sm font-medium text-success mb-2">
-                ✓ Thanks for approving!
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Price is locked at {formatCurrency(paymentAmount || 0)}
-              </p>
-              {paymentApprovedAt && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  Approved {formatDate(paymentApprovedAt)}
-                </p>
-              )}
-            </div>
+        {/* VIEW MODE - Show details when NOT editing */}
+        {!editingEstimate && (
+          <>
+            {/* NONE/PROPOSED STATE */}
+            {(currentPaymentState === "none" || currentPaymentState === "proposed") && (
+              <div className="space-y-4">
+                {(savedLineItems.length > 0 || initialLineItems.length > 0) ? (
+                  <>
+                    <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h4 className="font-medium text-sm">Estimate Total</h4>
+                        <span className="text-lg font-bold">{formatCurrency(paymentAmount || totalAmount)}</span>
+                      </div>
+                      <div className="space-y-3">
+                        {(savedLineItems.length > 0 ? savedLineItems : initialLineItems).map((item) => {
+                          // Find matching full estimate line item to get square footage
+                          const fullItem = fullEstimateLineItems.find((eli: any) => eli.id === item.id);
+                          const itemMaterials = estimateMaterials.filter(
+                            (m: any) => {
+                              if (m.estimate_line_item_id && item.id && m.estimate_line_item_id === item.id) {
+                                return true;
+                              }
+                              const itemNameLower = item.title?.toLowerCase() || '';
+                              const areaDescLower = m.area_description?.toLowerCase() || '';
+                              if (areaDescLower && itemNameLower) {
+                                if (areaDescLower.includes(itemNameLower) || itemNameLower.includes(areaDescLower)) {
+                                  return true;
+                                }
+                                const itemWords = itemNameLower.split(/\s+/);
+                                const areaWords = areaDescLower.split(/\s+/);
+                                if (itemWords.some(word => word.length > 3 && areaWords.includes(word))) {
+                                  return true;
+                                }
+                              }
+                              return false;
+                            }
+                          );
 
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={async () => {
-                  await loadExistingEstimate();
-                  setEditingEstimate(true);
-                }}
-                disabled={loadingEstimateData}
-                className="flex-1"
-              >
-                <Edit2 className="mr-2 h-4 w-4" />
-                {loadingEstimateData ? "Loading..." : "Revise Estimate"}
-              </Button>
-              <Button
-                onClick={handleMarkDue}
-                loading={saving}
-                className="flex-1"
-              >
-                <DollarSign className="mr-2 h-4 w-4" />
-                Finalize Payment
-              </Button>
-            </div>
-          </div>
+                          return (
+                            <div key={item.id} className="space-y-2">
+                              <div className="flex justify-between text-sm">
+                                <div>
+                                  <span className="font-medium">{item.title}</span>
+                                  {fullItem && fullItem.service_type === "sqft" && fullItem.sqft && fullItem.rate_per_sqft && (
+                                    <span className="text-xs text-muted-foreground ml-2">
+                                      ({fullItem.sqft} sqft @ ${fullItem.rate_per_sqft}/sqft)
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="font-medium">{formatCurrency(item.price)}</span>
+                              </div>
+                              
+                              {itemMaterials.length > 0 && (
+                                <div className="ml-4 pl-3 border-l-2 border-muted space-y-1 text-xs text-muted-foreground">
+                                  {itemMaterials.map((material: any) => (
+                                    <div key={material.id} className="space-y-0.5">
+                                      {material.paint_product && (
+                                        <div className="font-medium text-foreground">
+                                          {material.paint_product}
+                                        </div>
+                                      )}
+                                      {(material.color_name || material.color_code || material.sheen) && (
+                                        <div>
+                                          {material.color_name && <span>{material.color_name}</span>}
+                                          {material.color_code && <span className="ml-1">({material.color_code})</span>}
+                                          {material.sheen && <span className="ml-1">- {material.sheen}</span>}
+                                        </div>
+                                      )}
+                                      {material.quantity_gallons && (
+                                        <div className="text-xs">
+                                          {material.quantity_gallons} {material.quantity_gallons === 1 ? 'gallon' : 'gallons'}
+                                        </div>
+                                      )}
+                                      {material.notes && (
+                                        <div className="italic text-muted-foreground mt-1">
+                                          {material.notes}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={async () => {
+                          await loadExistingEstimate();
+                          setEditingEstimate(true);
+                        }}
+                        className="flex-1 touch-target min-h-[44px]"
+                      >
+                        Edit Estimate
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={async () => {
+                          await ensurePublicToken();
+                          setShareDialogOpen(true);
+                        }}
+                        className="flex-1 touch-target min-h-[44px]"
+                      >
+                        <Share2 className="mr-2 h-4 w-4" />
+                        Share Estimate
+                      </Button>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={() => setEditingEstimate(true)}
+                      className="flex-1 touch-target min-h-[44px]"
+                    >
+                      Create Estimate
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* APPROVED STATE */}
+            {currentPaymentState === "approved" && (
+              <div className="space-y-4">
+                <div className="rounded-lg border bg-success/10 border-success/20 p-4">
+                  <p className="text-sm font-medium text-success mb-2">
+                    ✓ Thanks for approving!
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    Price is locked at {formatCurrency(paymentAmount || 0)}
+                  </p>
+                  {paymentApprovedAt && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Approved {formatDate(paymentApprovedAt)}
+                    </p>
+                  )}
+                </div>
+
+                {(savedLineItems.length > 0 || initialLineItems.length > 0) && (
+                  <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-medium text-sm">Estimate Details</h4>
+                      <span className="text-lg font-bold">{formatCurrency(paymentAmount || totalAmount)}</span>
+                    </div>
+                    <div className="space-y-3">
+                      {(savedLineItems.length > 0 ? savedLineItems : initialLineItems).map((item) => {
+                        const itemMaterials = estimateMaterials.filter(
+                          (m: any) => {
+                            if (m.estimate_line_item_id && item.id && m.estimate_line_item_id === item.id) {
+                              return true;
+                            }
+                            const itemNameLower = item.title?.toLowerCase() || '';
+                            const areaDescLower = m.area_description?.toLowerCase() || '';
+                            if (areaDescLower && itemNameLower) {
+                              if (areaDescLower.includes(itemNameLower) || itemNameLower.includes(areaDescLower)) {
+                                return true;
+                              }
+                              const itemWords = itemNameLower.split(/\s+/);
+                              const areaWords = areaDescLower.split(/\s+/);
+                              if (itemWords.some(word => word.length > 3 && areaWords.includes(word))) {
+                                return true;
+                              }
+                            }
+                            return false;
+                          }
+                        );
+
+                        return (
+                          <div key={item.id} className="space-y-2">
+                            <div className="flex justify-between text-sm">
+                              <span className="font-medium">{item.title}</span>
+                              <span className="font-medium">{formatCurrency(item.price)}</span>
+                            </div>
+                            
+                            {itemMaterials.length > 0 && (
+                              <div className="ml-4 pl-3 border-l-2 border-muted space-y-1 text-xs text-muted-foreground">
+                                {itemMaterials.map((material: any) => (
+                                  <div key={material.id} className="space-y-0.5">
+                                    {material.paint_product && (
+                                      <div className="font-medium text-foreground">
+                                        {material.paint_product}
+                                      </div>
+                                    )}
+                                    {(material.color_name || material.color_code || material.sheen) && (
+                                      <div>
+                                        {material.color_name && <span>{material.color_name}</span>}
+                                        {material.color_code && <span className="ml-1">({material.color_code})</span>}
+                                        {material.sheen && <span className="ml-1">- {material.sheen}</span>}
+                                      </div>
+                                    )}
+                                    {material.quantity_gallons && (
+                                      <div className="text-xs">
+                                        {material.quantity_gallons} {material.quantity_gallons === 1 ? 'gallon' : 'gallons'}
+                                      </div>
+                                    )}
+                                    {material.notes && (
+                                      <div className="italic text-muted-foreground mt-1">
+                                        {material.notes}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={async () => {
+                      await loadExistingEstimate();
+                      setEditingEstimate(true);
+                    }}
+                    disabled={loadingEstimateData}
+                    className="flex-1"
+                  >
+                    <Edit2 className="mr-2 h-4 w-4" />
+                    {loadingEstimateData ? "Loading..." : "Revise Estimate"}
+                  </Button>
+                  <Button
+                    onClick={handleMarkDue}
+                    loading={saving}
+                    className="flex-1"
+                  >
+                    <DollarSign className="mr-2 h-4 w-4" />
+                    Finalize Payment
+                  </Button>
+                </div>
+              </div>
+            )}
+          </>
         )}
 
         {/* DUE STATE - Payment Requested */}
@@ -1523,15 +2217,88 @@ export function UnifiedPayment({
               </div>
             </div>
 
-            {/* Line Items (read-only) */}
-            <div className="space-y-2">
-              {initialLineItems.map((item) => (
-                <div key={item.id} className="flex justify-between text-sm">
-                  <span>{item.title}</span>
-                  <span className="font-medium">{formatCurrency(item.price)}</span>
+            {/* Estimate Details (read-only) - Show full details for records */}
+            {(savedLineItems.length > 0 || initialLineItems.length > 0) && (
+              <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-medium text-sm">Estimate Total</h4>
+                  <span className="text-lg font-bold">{formatCurrency(paymentAmount || totalAmount)}</span>
                 </div>
-              ))}
-            </div>
+                <div className="space-y-3">
+                  {(savedLineItems.length > 0 ? savedLineItems : initialLineItems).map((item) => {
+                    // Find matching full estimate line item to get square footage
+                    const fullItem = fullEstimateLineItems.find((eli: any) => eli.id === item.id);
+                    const itemMaterials = estimateMaterials.filter(
+                      (m: any) => {
+                        if (m.estimate_line_item_id && item.id && m.estimate_line_item_id === item.id) {
+                          return true;
+                        }
+                        const itemNameLower = item.title?.toLowerCase() || '';
+                        const areaDescLower = m.area_description?.toLowerCase() || '';
+                        if (areaDescLower && itemNameLower) {
+                          if (areaDescLower.includes(itemNameLower) || itemNameLower.includes(areaDescLower)) {
+                            return true;
+                          }
+                          const itemWords = itemNameLower.split(/\s+/);
+                          const areaWords = areaDescLower.split(/\s+/);
+                          if (itemWords.some(word => word.length > 3 && areaWords.includes(word))) {
+                            return true;
+                          }
+                        }
+                        return false;
+                      }
+                    );
+
+                    return (
+                      <div key={item.id} className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <div>
+                            <span className="font-medium">{item.title}</span>
+                            {fullItem && fullItem.service_type === "sqft" && fullItem.sqft && fullItem.rate_per_sqft && (
+                              <span className="text-xs text-muted-foreground ml-2">
+                                ({fullItem.sqft} sqft @ ${fullItem.rate_per_sqft}/sqft)
+                              </span>
+                            )}
+                          </div>
+                          <span className="font-medium">{formatCurrency(item.price)}</span>
+                        </div>
+                        
+                        {itemMaterials.length > 0 && (
+                          <div className="ml-4 pl-3 border-l-2 border-muted space-y-1 text-xs text-muted-foreground">
+                            {itemMaterials.map((material: any) => (
+                              <div key={material.id} className="space-y-0.5">
+                                {material.paint_product && (
+                                  <div className="font-medium text-foreground">
+                                    {material.paint_product}
+                                  </div>
+                                )}
+                                {(material.color_name || material.color_code || material.sheen) && (
+                                  <div>
+                                    {material.color_name && <span>{material.color_name}</span>}
+                                    {material.color_code && <span className="ml-1">({material.color_code})</span>}
+                                    {material.sheen && <span className="ml-1">- {material.sheen}</span>}
+                                  </div>
+                                )}
+                                {material.quantity_gallons && (
+                                  <div className="text-xs">
+                                    {material.quantity_gallons} {material.quantity_gallons === 1 ? 'gallon' : 'gallons'}
+                                  </div>
+                                )}
+                                {material.notes && (
+                                  <div className="italic text-muted-foreground mt-1">
+                                    {material.notes}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

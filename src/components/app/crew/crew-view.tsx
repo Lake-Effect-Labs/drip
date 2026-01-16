@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { formatDate, copyToClipboard, generateToken } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
-import { Users, Trash2, UserPlus } from "lucide-react";
+import { Users, Trash2, Copy } from "lucide-react";
 
 interface CrewViewProps {
   companyId: string;
@@ -32,33 +32,51 @@ export function CrewView({
   const { addToast } = useToast();
   const supabase = createClient();
 
-  const [creating, setCreating] = useState(false);
+  const [copying, setCopying] = useState(false);
 
-  async function handleCreateAndCopyInviteLink() {
-    setCreating(true);
+  async function handleCopyInviteLink() {
+    setCopying(true);
     try {
-      const token = generateToken(24);
-      const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + 7);
-
-      const { error } = await supabase
+      // First, try to find an existing active invite link
+      const { data: existingLinks } = await supabase
         .from("invite_links")
-        .insert({
-          company_id: companyId,
-          token,
-          expires_at: expiresAt.toISOString(),
-          created_by_user_id: currentUserId,
-        });
+        .select("token")
+        .eq("company_id", companyId)
+        .is("revoked_at", null)
+        .gt("expires_at", new Date().toISOString())
+        .order("created_at", { ascending: false })
+        .limit(1);
 
-      if (error) throw error;
+      let token: string;
+
+      if (existingLinks && existingLinks.length > 0) {
+        // Use existing active link
+        token = existingLinks[0].token;
+      } else {
+        // Create a new invite link
+        token = generateToken(24);
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 7);
+
+        const { error } = await supabase
+          .from("invite_links")
+          .insert({
+            company_id: companyId,
+            token,
+            expires_at: expiresAt.toISOString(),
+            created_by_user_id: currentUserId,
+          });
+
+        if (error) throw error;
+      }
 
       const inviteUrl = `${window.location.origin}/join/${token}`;
       copyToClipboard(inviteUrl);
       addToast("Invite link copied! Share it with your crew.", "success");
     } catch {
-      addToast("Failed to create invite link", "error");
+      addToast("Failed to copy invite link", "error");
     } finally {
-      setCreating(false);
+      setCopying(false);
     }
   }
 
@@ -110,9 +128,9 @@ export function CrewView({
                 {initialMembers.length} {initialMembers.length === 1 ? "member" : "members"}
               </p>
             </div>
-            <Button onClick={handleCreateAndCopyInviteLink} loading={creating}>
-              <UserPlus className="mr-2 h-4 w-4" />
-              Invite Crew Member
+            <Button onClick={handleCopyInviteLink} loading={copying}>
+              <Copy className="mr-2 h-4 w-4" />
+              Copy Link to Invite
             </Button>
           </div>
 
