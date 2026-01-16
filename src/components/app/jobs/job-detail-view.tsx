@@ -84,6 +84,8 @@ interface JobDetailViewProps {
   teamMembers: { id: string; email: string; fullName: string }[];
   companyId: string;
   estimatingConfig?: EstimatingConfig | null;
+  paymentLineItems?: Array<{ id: string; title: string; price: number }>;
+  pickupLocations?: Array<{ id: string; name: string }>;
 }
 
 export function JobDetailView({
@@ -95,6 +97,8 @@ export function JobDetailView({
   teamMembers,
   companyId,
   estimatingConfig,
+  paymentLineItems: initialPaymentLineItems = [],
+  pickupLocations: initialPickupLocations = [],
 }: JobDetailViewProps) {
   const router = useRouter();
   const { addToast } = useToast();
@@ -118,7 +122,7 @@ export function JobDetailView({
   const [progressValue, setProgressValue] = useState(initialJob.progress_percentage || 0);
   const [estimatesList, setEstimatesList] = useState(estimates);
   const [invoicesList, setInvoicesList] = useState(invoices);
-  const [pickupLocations, setPickupLocations] = useState<Array<{ id: string; name: string }>>([]);
+  const [pickupLocations, setPickupLocations] = useState<Array<{ id: string; name: string }>>(initialPickupLocations);
   const [selectedPickupLocation, setSelectedPickupLocation] = useState<string | null>(job.pickup_location_id || null);
   const [timeEntries, setTimeEntries] = useState<Array<{
     id: string;
@@ -141,7 +145,7 @@ export function JobDetailView({
     id: string;
     title: string;
     price: number;
-  }>>([]);
+  }>>(initialPaymentLineItems);
 
   // Sync state with props when they change (e.g., after navigation)
   useEffect(() => {
@@ -704,21 +708,10 @@ export function JobDetailView({
     setNotes(newNotes);
   }
 
-  // Fetch pickup locations
+  // Sync pickup locations from props (they're now fetched server-side)
   useEffect(() => {
-    async function fetchPickupLocations() {
-      const { data } = await supabase
-        .from("pickup_locations")
-        .select("id, name")
-        .eq("company_id", companyId)
-        .order("name");
-      
-      if (data) {
-        setPickupLocations(data);
-      }
-    }
-    fetchPickupLocations();
-  }, [companyId]);
+    setPickupLocations(initialPickupLocations);
+  }, [initialPickupLocations]);
 
   // Fetch time entries
   useEffect(() => {
@@ -775,20 +768,14 @@ export function JobDetailView({
     }
   }, [currentUserId]);
 
-  // Fetch payment line items and estimate token
+  // Sync payment line items from props (they're now fetched server-side)
   useEffect(() => {
-    async function fetchPaymentLineItems() {
-      const { data } = await supabase
-        .from("job_payment_line_items")
-        .select("id, title, price")
-        .eq("job_id", job.id)
-        .order("sort_order");
-      
-      if (data) {
-        setPaymentLineItems(data);
-      }
+    setPaymentLineItems(initialPaymentLineItems);
+  }, [initialPaymentLineItems]);
 
-      // Also fetch estimate record and line items for paint details
+  // Fetch estimate token if needed (only when payment state changes and estimate token is missing)
+  useEffect(() => {
+    async function fetchEstimateTokenIfNeeded() {
       if (job.payment_state === "proposed" || job.payment_state === "approved") {
         const { data: estimateData } = await supabase
           .from("estimates")
@@ -802,8 +789,8 @@ export function JobDetailView({
         }
       }
     }
-    fetchPaymentLineItems();
-  }, [job.id, job.payment_state]);
+    fetchEstimateTokenIfNeeded();
+  }, [job.id, job.payment_state, estimatesList.length, supabase]);
 
   // Sync schedule token from job
   useEffect(() => {

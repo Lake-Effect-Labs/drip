@@ -87,12 +87,28 @@ export default async function JobPage({
   // Fetch team members (use admin client)
   const members = await getTeamMembers(adminSupabase, companyUser.company_id);
 
-  // Fetch estimating config
-  const { data: estimatingConfig } = await adminSupabase
-    .from("estimating_config")
-    .select("*")
-    .eq("company_id", companyUser.company_id)
-    .single();
+  // Fetch estimating config, payment line items, and pickup locations in parallel
+  const [estimatingConfigResult, paymentLineItemsResult, pickupLocationsResult] = await Promise.all([
+    adminSupabase
+      .from("estimating_config")
+      .select("*")
+      .eq("company_id", companyUser.company_id)
+      .single(),
+    adminSupabase
+      .from("job_payment_line_items")
+      .select("id, title, price")
+      .eq("job_id", id)
+      .order("sort_order"),
+    adminSupabase
+      .from("pickup_locations")
+      .select("id, name")
+      .eq("company_id", companyUser.company_id)
+      .order("name"),
+  ]);
+
+  const estimatingConfig = estimatingConfigResult.data;
+  const paymentLineItems = paymentLineItemsResult.data || [];
+  const pickupLocations = pickupLocationsResult.data || [];
 
   return (
     <JobDetailView
@@ -103,6 +119,8 @@ export default async function JobPage({
       teamMembers={members}
       companyId={companyUser.company_id}
       estimatingConfig={estimatingConfig}
+      paymentLineItems={paymentLineItems}
+      pickupLocations={pickupLocations}
     />
   );
 }
