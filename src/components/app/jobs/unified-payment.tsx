@@ -142,6 +142,8 @@ interface UnifiedPaymentProps {
   estimateStatus?: string | null; // "draft", "sent", "accepted", "denied"
   estimateDeniedAt?: string | null;
   estimateDenialReason?: string | null;
+  estimateMaterials?: Array<any>; // Materials for the latest estimate
+  estimateLineItems?: Array<any>; // Full line items for the latest estimate
   onUpdate: () => void;
 }
 
@@ -160,6 +162,8 @@ export function UnifiedPayment({
   estimateStatus,
   estimateDeniedAt,
   estimateDenialReason,
+  estimateMaterials: initialEstimateMaterials = [],
+  estimateLineItems: initialEstimateLineItems = [],
   onUpdate,
 }: UnifiedPaymentProps) {
   const supabase = createClient();
@@ -222,7 +226,7 @@ export function UnifiedPayment({
         }]
   );
   const [savedLineItems, setSavedLineItems] = useState(initialLineItems);
-  const [fullEstimateLineItems, setFullEstimateLineItems] = useState<any[]>([]);
+  const [fullEstimateLineItems, setFullEstimateLineItems] = useState<any[]>(initialEstimateLineItems);
   const [saving, setSaving] = useState(false);
   const [markPaidDialogOpen, setMarkPaidDialogOpen] = useState(false);
   const [paidMethod, setPaidMethod] = useState("cash");
@@ -230,7 +234,7 @@ export function UnifiedPayment({
   const [loadingEstimateData, setLoadingEstimateData] = useState(false);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [sharePaymentDialogOpen, setSharePaymentDialogOpen] = useState(false);
-  const [estimateMaterials, setEstimateMaterials] = useState<any[]>([]);
+  const [estimateMaterials, setEstimateMaterials] = useState<any[]>(initialEstimateMaterials);
   const [selectedPaymentMethods, setSelectedPaymentMethods] = useState<string[]>(["cash", "check", "venmo", "stripe"]);
   const [currentPublicToken, setCurrentPublicToken] = useState<string | undefined>(publicToken);
   const [currentPaymentToken, setCurrentPaymentToken] = useState<string | undefined>();
@@ -289,46 +293,11 @@ export function UnifiedPayment({
     fetchPaymentToken();
   }, [jobId, paymentState, currentPaymentToken, supabase]);
 
-  // Fetch materials and full estimate line items when estimate is displayed
+  // Sync estimate materials and line items from props (they're now fetched server-side)
   useEffect(() => {
-    async function fetchEstimateData() {
-      // Fetch estimate data for proposed, approved, and paid states
-      if (!jobId || (currentPaymentState !== "proposed" && currentPaymentState !== "approved" && currentPaymentState !== "paid")) return;
-      
-      try {
-        // Get the latest estimate for this job (most recently created)
-        // This ensures we get the new revision if one was created
-        const { data: estimate } = await supabase
-          .from("estimates")
-          .select("id")
-          .eq("job_id", jobId)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        
-        if (estimate) {
-          // Fetch materials
-          const { data: materials } = await supabase
-            .from("estimate_materials")
-            .select("*")
-            .eq("estimate_id", estimate.id);
-          setEstimateMaterials(materials || []);
-
-          // Fetch full estimate line items with square footage
-          const { data: estimateLineItems } = await supabase
-            .from("estimate_line_items")
-            .select("*")
-            .eq("estimate_id", estimate.id)
-            .order("created_at", { ascending: true });
-          setFullEstimateLineItems(estimateLineItems || []);
-        }
-      } catch (error) {
-        console.error("Error fetching estimate data:", error);
-      }
-    }
-    
-    fetchEstimateData();
-  }, [jobId, currentPaymentState, supabase]);
+    setEstimateMaterials(initialEstimateMaterials);
+    setFullEstimateLineItems(initialEstimateLineItems);
+  }, [initialEstimateMaterials, initialEstimateLineItems]);
 
   // Load existing estimate line items when editing
   async function loadExistingEstimate() {

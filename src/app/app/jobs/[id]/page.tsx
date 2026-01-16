@@ -59,14 +59,24 @@ export default async function JobPage({
     .eq("job_id", id)
     .order("created_at", { ascending: false });
 
-  // Fetch line items for estimates (use admin client)
+  // Fetch line items and materials for estimates (use admin client)
   const estimates = await Promise.all(
     (estimatesData || []).map(async (est) => {
-      const { data: lineItems } = await adminSupabase
-        .from("estimate_line_items")
-        .select("*")
-        .eq("estimate_id", est.id);
-      return { ...est, line_items: lineItems || [] };
+      const [lineItemsResult, materialsResult] = await Promise.all([
+        adminSupabase
+          .from("estimate_line_items")
+          .select("*")
+          .eq("estimate_id", est.id),
+        adminSupabase
+          .from("estimate_materials")
+          .select("*")
+          .eq("estimate_id", est.id),
+      ]);
+      return { 
+        ...est, 
+        line_items: lineItemsResult.data || [],
+        materials: materialsResult.data || [],
+      };
     })
   );
 

@@ -64,7 +64,10 @@ import {
 } from "lucide-react";
 
 type JobWithCustomer = Job & { customer: Customer | null };
-type EstimateWithLineItems = Estimate & { line_items: EstimateLineItem[] };
+type EstimateWithLineItems = Estimate & { 
+  line_items: EstimateLineItem[];
+  materials?: any[];
+};
 
 interface JobHistory {
   id: string;
@@ -1538,6 +1541,8 @@ export function JobDetailView({
                 estimateStatus={estimatesList[0]?.status || null}
                 estimateDeniedAt={estimatesList[0]?.denied_at || null}
                 estimateDenialReason={estimatesList[0]?.denial_reason || null}
+                estimateMaterials={(estimatesList[0] as any)?.materials || []}
+                estimateLineItems={(estimatesList[0] as any)?.line_items || []}
                 onUpdate={async () => {
                   // Refresh just the estimates list without full page reload
                   const { data: estimatesData } = await supabase
