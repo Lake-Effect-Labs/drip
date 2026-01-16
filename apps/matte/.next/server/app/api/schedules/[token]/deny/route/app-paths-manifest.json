@@ -1,0 +1,3 @@
+{
+  "/api/schedules/[token]/deny/route": "app/api/schedules/[token]/deny/route.js"
+}

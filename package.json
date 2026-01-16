@@ -1,12 +1,21 @@
 {
-  "name": "matte",
+  "name": "drip-monorepo",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
+    "dev": "npm run dev --workspace=apps/matte",
+    "dev:matte": "npm run dev --workspace=apps/matte",
+    "dev:pour": "npm run dev --workspace=apps/pour",
+    "build": "npm run build --workspaces --if-present",
+    "build:matte": "npm run build --workspace=apps/matte",
+    "build:pour": "npm run build --workspace=apps/pour",
+    "start": "npm run start --workspace=apps/matte",
+    "lint": "npm run lint --workspaces --if-present",
+    "type-check": "npm run type-check --workspaces --if-present"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

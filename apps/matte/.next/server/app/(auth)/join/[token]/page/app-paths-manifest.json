@@ -1,0 +1,3 @@
+{
+  "/(auth)/join/[token]/page": "app/(auth)/join/[token]/page.js"
+}

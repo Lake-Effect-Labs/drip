@@ -1,0 +1,879 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { createClient } from "@drip/core/database/server";
+import {
+  cn,
+  formatPhone,
+  formatDate,
+  formatCurrency,
+  JOB_STATUS_LABELS,
+  JOB_STATUS_COLORS,
+  type JobStatus,
+} from "@/lib/utils";
+import type { Customer, Job, Invoice } from "@drip/core/types";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useToast } from "@/components/ui/toast";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuLabel,
+} from "@/components/ui/dropdown-menu";
+import {
+  ArrowLeft,
+  Phone,
+  Mail,
+  MapPin,
+  User,
+  Briefcase,
+  Receipt,
+  FileText,
+  Pencil,
+  Trash2,
+  Clock,
+  DollarSign,
+  CheckCircle,
+  Calendar,
+  Plus,
+} from "lucide-react";
+
+interface CustomerDetailViewProps {
+  customer: Customer;
+  jobs: Job[];
+  invoices: Invoice[];
+  jobNotes?: Array<{ id: string; note: string; created_at: string; job: { title: string } }>;
+  companyId: string;
+}
+
+const ALLOWED_TAGS = ['good_payer', 'repeat_customer', 'referral', 'vip', 'needs_followup'] as const;
+const MAX_TAGS_PER_CUSTOMER = 5;
+
+const TAG_CONFIG: Record<typeof ALLOWED_TAGS[number], { label: string; variant: "success" | "default" | "secondary" | "outline"; icon: string }> = {
+  good_payer: { label: 'Good Payer', variant: 'success', icon: '✓' },
+  repeat_customer: { label: 'Repeat Customer', variant: 'default', icon: '↻' },
+  referral: { label: 'Referral', variant: 'secondary', icon: '👥' },
+  vip: { label: 'VIP', variant: 'outline', icon: '⭐' },
+  needs_followup: { label: 'Needs Follow-up', variant: 'secondary', icon: '!' },
+};
+
+export function CustomerDetailView({
+  customer: initialCustomer,
+  jobs,
+  invoices,
+  jobNotes = [],
+  companyId,
+}: CustomerDetailViewProps) {
+  const router = useRouter();
+  const { addToast } = useToast();
+  const supabase = createClient();
+
+  const [customer, setCustomer] = useState(initialCustomer);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [tags, setTags] = useState<string[]>([]);
+  const [loadingTags, setLoadingTags] = useState(true);
+
+  // Form state
+  const [name, setName] = useState(customer.name);
+  const [phone, setPhone] = useState(customer.phone || "");
+  const [email, setEmail] = useState(customer.email || "");
+  const [address1, setAddress1] = useState(customer.address1 || "");
+  const [city, setCity] = useState(customer.city || "");
+  const [state, setState] = useState(customer.state || "");
+  const [zip, setZip] = useState(customer.zip || "");
+  const [notes, setNotes] = useState(customer.notes || "");
+
+  // Load tags
+  useEffect(() => {
+    async function loadTags() {
+      const { data } = await supabase
+        .from("customer_tags")
+        .select("tag")
+        .eq("customer_id", customer.id)
+        .eq("company_id", companyId);
+      
+      if (data) {
+        setTags(data.map(t => t.tag));
+      }
+      setLoadingTags(false);
+    }
+    loadTags();
+  }, [customer.id, companyId, supabase]);
+
+  async function handleAddTag(tag: string) {
+    if (tags.length >= MAX_TAGS_PER_CUSTOMER) {
+      addToast("Maximum tags reached", "error");
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from("customer_tags")
+        .insert({
+          customer_id: customer.id,
+          company_id: companyId,
+          tag,
+        });
+
+      if (error && error.code !== "23505") { // Ignore duplicate errors
+        throw error;
+      }
+
+      setTags([...tags, tag]);
+      addToast("Tag added", "success");
+    } catch (error) {
+      console.error("Error adding tag:", error);
+      addToast("Failed to add tag", "error");
+    }
+  }
+
+  async function handleRemoveTag(tag: string) {
+    try {
+      const { error } = await supabase
+        .from("customer_tags")
+        .delete()
+        .eq("customer_id", customer.id)
+        .eq("company_id", companyId)
+        .eq("tag", tag);
+
+      if (error) throw error;
+
+      setTags(tags.filter(t => t !== tag));
+      addToast("Tag removed", "success");
+    } catch (error) {
+      console.error("Error removing tag:", error);
+      addToast("Failed to remove tag", "error");
+    }
+  }
+
+  const address = [customer.address1, customer.city, customer.state, customer.zip]
+    .filter(Boolean)
+    .join(", ");
+
+  // Calculate totals from both invoices (legacy) and jobs (unified payment)
+  const invoiceTotalPaid = invoices
+    .filter((inv) => inv.status === "paid")
+    .reduce((sum, inv) => sum + inv.amount_total, 0);
+
+  const jobTotalPaid = jobs
+    .filter((job: any) => job.payment_state === "paid" && job.payment_amount)
+    .reduce((sum, job: any) => sum + (job.payment_amount || 0), 0);
+
+  const totalPaid = invoiceTotalPaid + jobTotalPaid;
+
+  const invoiceTotalAmount = invoices.reduce((sum, inv) => sum + inv.amount_total, 0);
+  const jobTotalAmount = jobs
+    .filter((job: any) => job.payment_amount && job.payment_amount > 0)
+    .reduce((sum, job: any) => sum + (job.payment_amount || 0), 0);
+
+  const totalInvoiced = invoiceTotalAmount + jobTotalAmount;
+
+  const pendingInvoices = invoices
+    .filter((inv) => inv.status !== "paid")
+    .reduce((sum, inv) => sum + inv.amount_total, 0);
+
+  const pendingJobs = jobs
+    .filter((job: any) => job.payment_amount && job.payment_amount > 0 && job.payment_state !== "paid")
+    .reduce((sum, job: any) => sum + (job.payment_amount || 0), 0);
+
+  const pendingAmount = pendingInvoices + pendingJobs;
+
+  // Calculate payment history from both invoices and jobs
+  const paidInvoicesHistory = invoices
+    .filter((inv) => inv.status === "paid" && inv.paid_at)
+    .map((inv) => {
+      const createdDate = new Date(inv.created_at);
+      const paidDate = new Date(inv.paid_at!);
+      const daysToPay = Math.round(
+        (paidDate.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24)
+      );
+      return {
+        id: inv.id,
+        amount: inv.amount_total,
+        paidAt: inv.paid_at!,
+        daysToPay: Math.max(0, daysToPay),
+        type: 'invoice' as const,
+      };
+    });
+
+  const paidJobsHistory = jobs
+    .filter((job: any) => job.payment_state === "paid" && job.payment_paid_at && job.payment_amount)
+    .map((job: any) => {
+      const createdDate = new Date(job.created_at);
+      const paidDate = new Date(job.payment_paid_at);
+      const daysToPay = Math.round(
+        (paidDate.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24)
+      );
+      return {
+        id: job.id,
+        amount: job.payment_amount,
+        paidAt: job.payment_paid_at,
+        daysToPay: Math.max(0, daysToPay),
+        type: 'job' as const,
+      };
+    });
+
+  const paidInvoices = [...paidInvoicesHistory, ...paidJobsHistory]
+    .filter((item) => item.daysToPay >= 0)
+    .sort((a, b) => new Date(b.paidAt).getTime() - new Date(a.paidAt).getTime());
+
+  const averageDaysToPay =
+    paidInvoices.length > 0
+      ? Math.round(
+          paidInvoices.reduce((sum, inv) => sum + inv.daysToPay, 0) / paidInvoices.length
+        )
+      : null;
+
+  function getPaymentBadgeText() {
+    if (!averageDaysToPay && averageDaysToPay !== 0) return null;
+    if (paidInvoices.length === 1) {
+      return `Paid last invoice in ${paidInvoices[0].daysToPay} days`;
+    }
+    if (averageDaysToPay < 7) return "Usually pays within a week ✅";
+    if (averageDaysToPay < 14) return "Usually pays within 2 weeks";
+    if (averageDaysToPay < 30) return `Average ${averageDaysToPay} days`;
+    return `Slow payer: ${averageDaysToPay} days ⚠️`;
+  }
+
+  function getPaymentBadgeVariant(): "success" | "secondary" | "warning" | "outline" {
+    if (!averageDaysToPay && averageDaysToPay !== 0) return "outline";
+    if (averageDaysToPay < 7) return "success";
+    if (averageDaysToPay < 14) return "secondary";
+    if (averageDaysToPay < 30) return "secondary";
+    return "warning";
+  }
+
+  // Create a combined list of payments (invoices + jobs with payment)
+  const allPayments = [
+    ...invoices.map((inv) => ({
+      id: inv.id,
+      type: "invoice" as const,
+      amount: inv.amount_total,
+      status: inv.status,
+      created_at: inv.created_at,
+      title: `Invoice #${inv.id.slice(0, 8)}`,
+    })),
+    ...jobs
+      .filter((job: any) => job.payment_amount && job.payment_amount > 0)
+      .map((job: any) => ({
+        id: job.id,
+        type: "job" as const,
+        amount: job.payment_amount,
+        status: job.payment_state === "paid" ? "paid" : job.payment_state === "sent" ? "sent" : "draft",
+        created_at: job.created_at,
+        title: job.title,
+        jobTitle: job.title,
+      })),
+  ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+  // Create a combined timeline of jobs and invoices
+  const timeline = [
+    ...jobs.map((job) => ({
+      type: "job" as const,
+      date: job.created_at,
+      title: job.title,
+      status: job.status,
+      id: job.id,
+    })),
+    ...invoices.map((inv) => ({
+      type: "invoice" as const,
+      date: inv.created_at,
+      title: `Invoice - ${formatCurrency(inv.amount_total)}`,
+      status: inv.status,
+      id: inv.id,
+    })),
+  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  async function handleSave() {
+    if (!name.trim()) {
+      addToast("Name is required", "error");
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const { error } = await supabase
+        .from("customers")
+        .update({
+          name: name.trim(),
+          phone: phone || null,
+          email: email || null,
+          address1: address1 || null,
+          city: city || null,
+          state: state || null,
+          zip: zip || null,
+          notes: notes || null,
+        })
+        .eq("id", customer.id);
+
+      if (error) throw error;
+
+      setCustomer((prev) => ({
+        ...prev,
+        name: name.trim(),
+        phone: phone || null,
+        email: email || null,
+        address1: address1 || null,
+        city: city || null,
+        state: state || null,
+        zip: zip || null,
+        notes: notes || null,
+      }));
+      setEditing(false);
+      addToast("Customer updated!", "success");
+    } catch {
+      addToast("Failed to update customer", "error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!confirm("Delete this customer? This cannot be undone.")) return;
+
+    const { error } = await supabase
+      .from("customers")
+      .delete()
+      .eq("id", customer.id);
+
+    if (error) {
+      addToast("Failed to delete customer", "error");
+      return;
+    }
+
+    addToast("Customer deleted", "success");
+    router.push("/app/customers");
+  }
+
+  return (
+    <div className="min-h-screen pb-20 lg:pb-0">
+      {/* Header */}
+      <div className="border-b bg-card">
+        <div className="max-w-4xl mx-auto p-4">
+          <button
+            onClick={() => router.back()}
+            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-4"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back
+          </button>
+
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex items-center gap-4 min-w-0">
+              <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                <User className="h-7 w-7 text-primary" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h1 className="text-2xl font-bold truncate">{customer.name}</h1>
+                <p className="text-muted-foreground text-sm">
+                  Customer since {formatDate(customer.created_at)}
+                </p>
+                {/* Tags */}
+                {!loadingTags && (
+                  <div className="flex flex-wrap gap-2 items-center mt-2">
+                    {tags.map(tag => {
+                      const config = TAG_CONFIG[tag as keyof typeof TAG_CONFIG];
+                      return config ? (
+                        <Badge
+                          key={tag}
+                          variant={config.variant}
+                          className="cursor-pointer"
+                          onClick={() => {
+                            if (confirm(`Remove "${config.label}" tag?`)) {
+                              handleRemoveTag(tag);
+                            }
+                          }}
+                        >
+                          {config.icon} {config.label}
+                        </Badge>
+                      ) : null;
+                    })}
+                    {tags.length < MAX_TAGS_PER_CUSTOMER && (
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" size="sm" className="h-6">
+                            <Plus className="mr-1 h-3 w-3" />
+                            Add Tag
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                          <DropdownMenuLabel>Select Tag</DropdownMenuLabel>
+                          {ALLOWED_TAGS.filter(tag => !tags.includes(tag)).map(tag => {
+                            const config = TAG_CONFIG[tag];
+                            return (
+                              <DropdownMenuItem
+                                key={tag}
+                                onClick={() => handleAddTag(tag)}
+                              >
+                                {config.icon} {config.label}
+                              </DropdownMenuItem>
+                            );
+                          })}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Link href={`/app/jobs/new?customerId=${customer.id}`}>
+                <Button size="sm">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add Job
+                </Button>
+              </Link>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setEditing(!editing)}
+              >
+                <Pencil className="mr-2 h-4 w-4" />
+                {editing ? "Cancel" : "Edit"}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleDelete}
+                className="text-destructive hover:text-destructive"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-4xl mx-auto p-4">
+        <div className="grid gap-6 lg:grid-cols-3">
+          {/* Main content */}
+          <div className="lg:col-span-2 space-y-6 min-w-0">
+            {editing ? (
+              /* Edit Form */
+              <div className="rounded-lg border bg-card p-4 space-y-4 overflow-hidden">
+                <h3 className="font-semibold">Edit Customer</h3>
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Name *</Label>
+                    <Input
+                      id="name"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      required
+                      className="w-full"
+                    />
+                  </div>
+
+                  <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
+                    <div className="space-y-2 min-w-0">
+                      <Label htmlFor="phone">Phone</Label>
+                      <Input
+                        id="phone"
+                        type="tel"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        className="w-full"
+                      />
+                    </div>
+                    <div className="space-y-2 min-w-0">
+                      <Label htmlFor="email">Email</Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="address1">Street Address</Label>
+                    <Input
+                      id="address1"
+                      value={address1}
+                      onChange={(e) => setAddress1(e.target.value)}
+                      className="w-full"
+                    />
+                  </div>
+
+                  <div className="grid gap-4 grid-cols-1 sm:grid-cols-3">
+                    <div className="space-y-2 min-w-0">
+                      <Label htmlFor="city">City</Label>
+                      <Input
+                        id="city"
+                        value={city}
+                        onChange={(e) => setCity(e.target.value)}
+                        className="w-full"
+                      />
+                    </div>
+                    <div className="space-y-2 min-w-0">
+                      <Label htmlFor="state">State</Label>
+                      <Input
+                        id="state"
+                        maxLength={2}
+                        value={state}
+                        onChange={(e) => setState(e.target.value.toUpperCase())}
+                        className="w-full"
+                      />
+                    </div>
+                    <div className="space-y-2 min-w-0">
+                      <Label htmlFor="zip">ZIP</Label>
+                      <Input
+                        id="zip"
+                        value={zip}
+                        onChange={(e) => setZip(e.target.value)}
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="notes">Notes</Label>
+                    <Textarea
+                      id="notes"
+                      rows={3}
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      placeholder="Internal notes about this customer..."
+                      className="w-full"
+                    />
+                  </div>
+
+                  <Button onClick={handleSave} loading={saving} className="w-full sm:w-auto">
+                    Save Changes
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              /* Tabs View */
+              <Tabs defaultValue="timeline" className="w-full">
+                <TabsList className="w-full justify-start overflow-x-auto scrollbar-hide -mx-4 px-4">
+                  <TabsTrigger value="timeline" className="shrink-0">
+                    <Clock className="mr-1.5 h-4 w-4 shrink-0" />
+                    <span className="whitespace-nowrap">Timeline</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="jobs" className="shrink-0">
+                    <Briefcase className="mr-1.5 h-4 w-4 shrink-0" />
+                    <span className="whitespace-nowrap">Jobs ({jobs.length})</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="invoices" className="shrink-0">
+                    <Receipt className="mr-1.5 h-4 w-4 shrink-0" />
+                    <span className="whitespace-nowrap">Payments ({allPayments.length})</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="notes" className="shrink-0">
+                    <FileText className="mr-1.5 h-4 w-4 shrink-0" />
+                    <span className="whitespace-nowrap">Notes</span>
+                  </TabsTrigger>
+                </TabsList>
+
+                {/* Timeline Tab */}
+                <TabsContent value="timeline" className="space-y-4">
+                  {timeline.length === 0 ? (
+                    <div className="rounded-lg border bg-card p-8 text-center text-muted-foreground">
+                      <Clock className="mx-auto h-8 w-8 mb-2" />
+                      <p>No activity yet</p>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border bg-card">
+                      {timeline.map((item, idx) => (
+                        <Link
+                          key={`${item.type}-${item.id}`}
+                          href={`/app/${item.type === "job" ? "jobs" : "invoices"}/${item.id}`}
+                          className="block p-4 hover:bg-muted/50 transition-colors border-b last:border-b-0"
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center shrink-0">
+                              {item.type === "job" ? (
+                                <Briefcase className="h-5 w-5 text-primary" />
+                              ) : (
+                                <Receipt className="h-5 w-5 text-success" />
+                              )}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="font-medium truncate">{item.title}</p>
+                                <Badge
+                                  variant={
+                                    item.status === "paid" || item.status === "done"
+                                      ? "success"
+                                      : item.status === "in_progress" || item.status === "scheduled"
+                                      ? "secondary"
+                                      : "outline"
+                                  }
+                                >
+                                  {item.status}
+                                </Badge>
+                              </div>
+                              <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
+                                <Calendar className="h-3 w-3" />
+                                {formatDate(item.date)}
+                              </div>
+                            </div>
+                          </div>
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </TabsContent>
+
+                {/* Jobs Tab */}
+                <TabsContent value="jobs" className="space-y-4">
+                  {jobs.length === 0 ? (
+                    <div className="rounded-lg border bg-card p-8 text-center text-muted-foreground">
+                      <Briefcase className="mx-auto h-8 w-8 mb-2" />
+                      <p>No jobs yet</p>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border bg-card divide-y">
+                      {jobs.map((job) => (
+                        <Link
+                          key={job.id}
+                          href={`/app/jobs/${job.id}`}
+                          className="block p-4 hover:bg-muted/50 transition-colors"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="font-medium">{job.title}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {formatDate(job.created_at)}
+                              </p>
+                            </div>
+                            <Badge className={JOB_STATUS_COLORS[job.status as JobStatus]}>
+                              {JOB_STATUS_LABELS[job.status as JobStatus]}
+                            </Badge>
+                          </div>
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </TabsContent>
+
+                {/* Invoices/Payments Tab */}
+                <TabsContent value="invoices" className="space-y-4">
+                  {allPayments.length === 0 ? (
+                    <div className="rounded-lg border bg-card p-8 text-center text-muted-foreground">
+                      <Receipt className="mx-auto h-8 w-8 mb-2" />
+                      <p>No invoices or payments yet</p>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border bg-card divide-y">
+                      {allPayments.map((payment) => (
+                        <Link
+                          key={`${payment.type}-${payment.id}`}
+                          href={payment.type === "invoice" ? `/app/invoices/${payment.id}` : `/app/jobs/${payment.id}`}
+                          className="block p-4 hover:bg-muted/50 transition-colors"
+                        >
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="font-medium">
+                                {formatCurrency(payment.amount)}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                {payment.type === "job" && payment.jobTitle ? payment.jobTitle : payment.title} • {formatDate(payment.created_at)}
+                              </p>
+                            </div>
+                            <Badge
+                              variant={
+                                payment.status === "paid"
+                                  ? "success"
+                                  : payment.status === "sent"
+                                  ? "secondary"
+                                  : "outline"
+                              }
+                            >
+                              {payment.status}
+                            </Badge>
+                          </div>
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </TabsContent>
+
+                {/* Notes Tab */}
+                <TabsContent value="notes" className="space-y-4">
+                  {/* Customer Notes */}
+                  <div className="rounded-lg border bg-card p-4">
+                    <h4 className="font-semibold text-sm mb-2">Customer Notes</h4>
+                    {customer.notes ? (
+                      <p className="whitespace-pre-wrap text-sm">{customer.notes}</p>
+                    ) : (
+                      <p className="text-muted-foreground text-sm">
+                        No customer notes yet. Click Edit to add notes.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Job Notes */}
+                  {jobNotes.length > 0 && (
+                    <div className="rounded-lg border bg-card">
+                      <div className="p-4 border-b">
+                        <h4 className="font-semibold text-sm">Job Notes ({jobNotes.length})</h4>
+                      </div>
+                      <div className="divide-y">
+                        {jobNotes.map((note) => (
+                          <div key={note.id} className="p-4">
+                            <div className="flex items-start justify-between gap-2 mb-2">
+                              <p className="text-xs font-medium text-muted-foreground">
+                                {note.job.title}
+                              </p>
+                              <p className="text-xs text-muted-foreground shrink-0">
+                                {formatDate(note.created_at)}
+                              </p>
+                            </div>
+                            <p className="text-sm whitespace-pre-wrap">{note.note}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </TabsContent>
+              </Tabs>
+            )}
+          </div>
+
+          {/* Sidebar */}
+          <div className="space-y-4 min-w-0">
+            {/* Contact Info */}
+            <div className="rounded-lg border bg-card p-4 space-y-3 overflow-hidden">
+              <h3 className="font-semibold">Contact Info</h3>
+              {customer.phone && (
+                <div className="flex items-center gap-3 min-w-0">
+                  <Phone className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <a
+                    href={`tel:${customer.phone}`}
+                    className="text-sm hover:underline truncate"
+                  >
+                    {formatPhone(customer.phone)}
+                  </a>
+                </div>
+              )}
+              {customer.email && (
+                <div className="flex items-center gap-3 min-w-0">
+                  <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
+                  <a
+                    href={`mailto:${customer.email}`}
+                    className="text-sm hover:underline truncate"
+                  >
+                    {customer.email}
+                  </a>
+                </div>
+              )}
+              {address && (
+                <div className="flex items-start gap-3 min-w-0">
+                  <MapPin className="h-4 w-4 text-muted-foreground shrink-0 mt-0.5" />
+                  <span className="text-sm break-words min-w-0">{address}</span>
+                </div>
+              )}
+              {!customer.phone && !customer.email && !address && (
+                <p className="text-sm text-muted-foreground">
+                  No contact info added
+                </p>
+              )}
+            </div>
+
+            {/* Stats */}
+            <div className="rounded-lg border bg-card p-4 space-y-3">
+              <h3 className="font-semibold">Summary</h3>
+              <div className="space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                    <Briefcase className="h-4 w-4 text-primary" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm text-muted-foreground">Total Jobs</p>
+                    <p className="font-semibold">{jobs.length}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0">
+                    <Receipt className="h-4 w-4 text-blue-600" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm text-muted-foreground">Total Invoiced</p>
+                    <p className="font-semibold">{formatCurrency(totalInvoiced)}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-success/10 flex items-center justify-center shrink-0">
+                    <CheckCircle className="h-4 w-4 text-success" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm text-muted-foreground">Total Paid</p>
+                    <p className="font-semibold text-success">{formatCurrency(totalPaid)}</p>
+                  </div>
+                </div>
+                {pendingAmount > 0 && (
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-warning/10 flex items-center justify-center shrink-0">
+                      <DollarSign className="h-4 w-4 text-warning" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm text-muted-foreground">Pending</p>
+                      <p className="font-semibold text-warning">{formatCurrency(pendingAmount)}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Payment History */}
+            {paidInvoices.length > 0 && (
+              <div className="rounded-lg border bg-card p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold">Payment History</h3>
+                  {averageDaysToPay !== null && (
+                    <Badge variant={getPaymentBadgeVariant()} className="text-xs">
+                      {getPaymentBadgeText()}
+                    </Badge>
+                  )}
+                </div>
+                {paidInvoices.length < 5 && (
+                  <p className="text-xs text-muted-foreground">
+                    Based on {paidInvoices.length} invoice{paidInvoices.length !== 1 ? 's' : ''} • Limited data
+                  </p>
+                )}
+                <div className="space-y-2">
+                  <div className="text-xs font-medium text-muted-foreground grid grid-cols-3 gap-2 pb-1 border-b">
+                    <span>Invoice</span>
+                    <span>Paid</span>
+                    <span className="text-right">Days</span>
+                  </div>
+                  {paidInvoices.slice(0, 5).map((payment) => (
+                    <div key={`${payment.type}-${payment.id}`} className="grid grid-cols-3 gap-2 text-sm">
+                      <span className="font-medium truncate">
+                        {formatCurrency(payment.amount)}
+                      </span>
+                      <span className="text-muted-foreground truncate">
+                        {formatDate(payment.paidAt)}
+                      </span>
+                      <span className={cn(
+                        "text-right font-medium",
+                        payment.daysToPay < 7 ? "text-success" :
+                        payment.daysToPay < 30 ? "text-foreground" : "text-warning"
+                      )}>
+                        {payment.daysToPay}d
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
