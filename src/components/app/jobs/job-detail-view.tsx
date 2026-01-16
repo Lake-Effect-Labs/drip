@@ -1681,7 +1681,7 @@ export function JobDetailView({
                         onClick={handleSaveSchedule} 
                         className="w-full sm:flex-1"
                         loading={savingSchedule}
-                        disabled={!scheduledDate || !scheduledTime || (scheduledEndDate && scheduledEndDate < scheduledDate)}
+                        disabled={!scheduledDate || !scheduledTime || (scheduledEndDate ? scheduledEndDate < scheduledDate : false)}
                       >
                         <Calendar className="mr-2 h-4 w-4" />
                         {scheduledDate && scheduledTime && job.scheduled_date ? "Update Schedule" : "Save Schedule"}

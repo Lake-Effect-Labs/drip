@@ -176,6 +176,8 @@ export interface Database {
           payment_method: string | null;
           payment_methods: string[] | null;
           payment_token: string | null;
+          unified_job_token: string | null;
+          progress_percentage: number | null;
           created_at: string;
           updated_at: string;
         };
@@ -207,6 +209,8 @@ export interface Database {
           payment_method?: string | null;
           payment_methods?: string[] | null;
           payment_token?: string | null;
+          unified_job_token?: string | null;
+          progress_percentage?: number | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -238,6 +242,8 @@ export interface Database {
           payment_method?: string | null;
           payment_methods?: string[] | null;
           payment_token?: string | null;
+          unified_job_token?: string | null;
+          progress_percentage?: number | null;
           created_at?: string;
           updated_at?: string;
         };

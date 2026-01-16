@@ -617,7 +617,7 @@ export function UnifiedPayment({
     }
   };
 
-  const updateLineItem = (index: number, field: keyof PaymentLineItem, value: string | LineItemType) => {
+  const updateLineItem = (index: number, field: keyof PaymentLineItem, value: string | LineItemType | boolean) => {
     const updated = [...lineItems];
     (updated[index] as any)[field] = value;
     // Reset type-specific fields when type changes and apply defaults
@@ -791,7 +791,7 @@ export function UnifiedPayment({
         .eq("job_id", jobId)
         .maybeSingle();
 
-      let estimateId: string;
+      let estimateId: string = "";
       let estimateData;
       let estimateError;
 

@@ -411,8 +411,15 @@ export function UnifiedPublicJobView({ job: initialJob, token, isPaymentToken = 
             <TabsContent value="estimate" className="space-y-6">
               {showSignoff ? (
                 <EstimateSignoff 
-                  estimate={job.estimate} 
-                  onComplete={handleSignoffComplete}
+                  estimate={{
+                    ...job.estimate,
+                    customer: job.customer,
+                    job: job,
+                  }} 
+                  token={token}
+                  onSignoffComplete={handleSignoffComplete}
+                  companyLogo={job.company?.logo_url}
+                  companyName={job.company?.name}
                 />
               ) : (
                 <>
