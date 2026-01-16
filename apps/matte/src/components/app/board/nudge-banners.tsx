@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@drip/core/database/server";
+import { createClient } from "@drip/core/database/client";
 import { Button } from "@/components/ui/button";
 import { X, AlertTriangle, Lightbulb, ClipboardList } from "lucide-react";
 import { cn } from "@/lib/utils";

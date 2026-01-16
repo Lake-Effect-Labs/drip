@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { createClient } from "@drip/core/database/server";
+import { createClient } from "@drip/core/database/client";
 import {
   Dialog,
   DialogContent,

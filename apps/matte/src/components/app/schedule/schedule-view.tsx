@@ -21,7 +21,7 @@ import {
   parseISO,
   getDay,
 } from "date-fns";
-import { createClient } from "@drip/core/database/server";
+import { createClient } from "@drip/core/database/client";
 import { cn, formatTime, formatDate, JOB_STATUS_COLORS, JOB_STATUS_LABELS, type JobStatus } from "@/lib/utils";
 import type { Job, Customer } from "@drip/core/types";
 import { Button } from "@/components/ui/button";

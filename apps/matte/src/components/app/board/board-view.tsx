@@ -28,7 +28,7 @@ import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Plus, Search, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
-import { createClient } from "@drip/core/database/server";
+import { createClient } from "@drip/core/database/client";
 
 type JobWithCustomer = Job & { customer: Customer | null };
 

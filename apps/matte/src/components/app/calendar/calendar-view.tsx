@@ -19,7 +19,7 @@ import {
   isBefore,
   isWithinInterval,
 } from "date-fns";
-import { createClient } from "@drip/core/database/server";
+import { createClient } from "@drip/core/database/client";
 import { cn, formatTime, JOB_STATUS_COLORS, type JobStatus } from "@/lib/utils";
 import type { Job, Customer } from "@drip/core/types";
 import { Button } from "@/components/ui/button";

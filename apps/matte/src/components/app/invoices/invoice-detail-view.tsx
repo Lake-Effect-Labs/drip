@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@drip/core/database/server";
+import { createClient } from "@drip/core/database/client";
 import { formatCurrency, formatDate, copyToClipboard } from "@/lib/utils";
 import type { Invoice, Customer, Job } from "@drip/core/types";
 import { Button } from "@/components/ui/button";

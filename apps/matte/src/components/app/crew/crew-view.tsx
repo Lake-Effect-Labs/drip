@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@drip/core/database/server";
+import { createClient } from "@drip/core/database/client";
 import { formatDate, copyToClipboard, generateToken } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";

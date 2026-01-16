@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@drip/core/database/server";
+import { createClient } from "@drip/core/database/client";
 import {
   formatDate,
   copyToClipboard,

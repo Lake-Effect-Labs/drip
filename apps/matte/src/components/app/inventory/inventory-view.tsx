@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import { createClient } from "@drip/core/database/server";
+import { createClient } from "@drip/core/database/client";
 import { cn } from "@/lib/utils";
 import type { InventoryItem, PickupLocation, JobMaterial, Job } from "@drip/core/types";
 import { Button } from "@/components/ui/button";

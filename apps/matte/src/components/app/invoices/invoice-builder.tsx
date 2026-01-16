@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@drip/core/database/server";
+import { createClient } from "@drip/core/database/client";
 import { formatCurrency, generateToken } from "@/lib/utils";
 import type { Job, Customer, Estimate, EstimateLineItem } from "@drip/core/types";
 import { Button } from "@/components/ui/button";

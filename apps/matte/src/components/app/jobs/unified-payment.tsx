@@ -10,7 +10,7 @@ import { Select } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Plus, Trash2, ExternalLink, Copy, Edit2, Check, DollarSign, Clock, Ruler, Users, Share2, MessageSquare, Pencil } from "lucide-react";
 import { formatCurrency, formatDate, copyToClipboard, generateToken } from "@/lib/utils";
-import { createClient } from "@drip/core/database/server";
+import { createClient } from "@drip/core/database/client";
 import { useToast } from "@/components/ui/toast";
 import { useRouter } from "next/navigation";
 import type { EstimatingConfig } from "@drip/core/types";

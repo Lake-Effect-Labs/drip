@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { createClient } from "@drip/core/database/server";
+import { createClient } from "@drip/core/database/client";
 import { formatPhone, formatDate } from "@/lib/utils";
 import type { Customer } from "@drip/core/types";
 import { Button } from "@/components/ui/button";
