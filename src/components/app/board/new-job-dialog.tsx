@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
+import { validatePhoneNumber } from "@/lib/utils";
 import type { Job, Customer, JobTemplateWithRelations } from "@/types/database";
 
 type JobWithCustomer = Job & { customer: Customer | null };
@@ -176,6 +177,16 @@ export function NewJobDialog({
     setLoading(true);
 
     try {
+      // Validate phone number if provided
+      if (customerPhone.trim()) {
+        const phoneValidation = validatePhoneNumber(customerPhone);
+        if (!phoneValidation.isValid) {
+          addToast(phoneValidation.error || "Invalid phone number", "error");
+          setLoading(false);
+          return;
+        }
+      }
+
       // Create customer if name provided and not using existing customer (via API to bypass RLS)
       let customerId: string | null = selectedCustomerId;
       if (customerName.trim() && !selectedCustomerId) {
@@ -185,13 +196,13 @@ export function NewJobDialog({
           body: JSON.stringify({
             company_id: companyId,
             name: customerName.trim(),
-            phone: customerPhone || null,
-            email: customerEmail || null,
-            address1: address1 || null,
-            address2: address2 || null,
-            city: city || null,
+            phone: customerPhone.trim() || null,
+            email: customerEmail.trim() || null,
+            address1: address1.trim() || null,
+            address2: address2.trim() || null,
+            city: city.trim() || null,
             state: state || null,
-            zip: zip || null,
+            zip: zip.trim() || null,
           }),
         });
 

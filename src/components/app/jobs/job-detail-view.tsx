@@ -398,11 +398,11 @@ export function JobDetailView({
   // Ensure schedule token exists
   async function ensureScheduleToken() {
     if (scheduleToken) return scheduleToken;
-    
+
     setLoadingScheduleToken(true);
     try {
       const token = generateToken(24);
-      
+
       const { error } = await supabase
         .from("jobs")
         .update({
@@ -421,6 +421,32 @@ export function JobDetailView({
       return null;
     } finally {
       setLoadingScheduleToken(false);
+    }
+  }
+
+  // Ensure unified job token exists (for customer portal)
+  async function ensureUnifiedToken() {
+    if ((job as any).unified_job_token) return (job as any).unified_job_token;
+
+    try {
+      const token = generateToken(32);
+
+      const { error } = await supabase
+        .from("jobs")
+        .update({
+          unified_job_token: token,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", job.id);
+
+      if (error) throw error;
+
+      setJob((prev) => ({ ...prev, unified_job_token: token } as any));
+      return token;
+    } catch (err) {
+      console.error("Failed to create unified token:", err);
+      addToast("Failed to create customer link", "error");
+      return null;
     }
   }
 
@@ -1328,12 +1354,14 @@ export function JobDetailView({
     addToast("Materials list copied!", "success");
   }
 
-  function copyEstimateMessage() {
+  async function copyEstimateMessage() {
+    // Ensure unified token exists
+    const token = await ensureUnifiedToken();
+    if (!token) return;
+
     const customerName = job.customer?.name || "there";
     const latestEstimate = estimatesList[0];
-    const estimateUrl = latestEstimate
-      ? `${typeof window !== "undefined" ? window.location.origin : ""}/e/${latestEstimate.public_token}`
-      : "[estimate link]";
+    const estimateUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/e/${token}?tab=estimate`;
     const total = latestEstimate
       ? formatCurrency(latestEstimate.line_items.reduce((sum, li) => sum + li.price, 0))
       : "[amount]";
@@ -1342,12 +1370,14 @@ export function JobDetailView({
     addToast("Estimate message copied!", "success");
   }
 
-  function copyPaymentRequestMessage() {
+  async function copyPaymentRequestMessage() {
+    // Ensure unified token exists
+    const token = await ensureUnifiedToken();
+    if (!token) return;
+
     const customerName = job.customer?.name || "there";
     const latestInvoice = invoicesList[0];
-    const invoiceUrl = latestInvoice
-      ? `${typeof window !== "undefined" ? window.location.origin : ""}/i/${latestInvoice.public_token}`
-      : "[invoice link]";
+    const invoiceUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/e/${token}?tab=payment`;
     const amount = latestInvoice
       ? formatCurrency(latestInvoice.amount_total)
       : "[amount]";
@@ -1717,22 +1747,22 @@ export function JobDetailView({
                       <div className="flex flex-col gap-2">
                         <Button
                           variant="outline"
-                          onClick={() => {
+                          onClick={async () => {
                             if (!job.customer?.phone) {
                               addToast("No customer phone number on file", "error");
                               return;
                             }
+                            // Ensure unified token exists
+                            const token = await ensureUnifiedToken();
+                            if (!token) return;
+
                             const customerName = job.customer?.name || "there";
                             const dateStr = scheduledEndDate && scheduledEndDate !== scheduledDate
                               ? `${formatDate(scheduledDate)} through ${formatDate(scheduledEndDate)}`
                               : formatDate(scheduledDate);
                             const timeStr = formatTime(scheduledTime);
 
-                            // Get the unified job link (same link for estimate/schedule/payment)
-                            const link = job.unified_job_token
-                              ? `${typeof window !== "undefined" ? window.location.origin : ""}/e/${job.unified_job_token}?tab=schedule`
-                              : "#";
-
+                            const link = `${typeof window !== "undefined" ? window.location.origin : ""}/e/${token}?tab=schedule`;
                             const message = `Hi ${customerName}! We'd like to schedule your ${job.title || "painting project"} for ${dateStr}, arriving around ${timeStr}. Please confirm your schedule here: ${link}`;
 
                             const smsLink = generateSMSLink(job.customer.phone, message);
@@ -3074,18 +3104,21 @@ export function JobDetailView({
             {copyDialogType === "estimate" && estimatesList[0] && (
               <div className="space-y-3">
                 <div>
-                  <Label className="text-sm text-muted-foreground">Estimate Link</Label>
+                  <Label className="text-sm text-muted-foreground">Customer Portal Link</Label>
                   <div className="flex gap-2 mt-2">
-                    <Input 
-                      value={`${typeof window !== "undefined" ? window.location.origin : ""}/e/${estimatesList[0].public_token}`}
-                      readOnly 
+                    <Input
+                      value={(job as any).unified_job_token ? `${typeof window !== "undefined" ? window.location.origin : ""}/e/${(job as any).unified_job_token}?tab=estimate` : "Loading..."}
+                      readOnly
                       className="font-mono text-sm"
                     />
-                    <Button 
+                    <Button
                       variant="outline"
-                      onClick={() => {
-                        copyToClipboard(`${typeof window !== "undefined" ? window.location.origin : ""}/e/${estimatesList[0].public_token}`);
-                        addToast("Link copied!", "success");
+                      onClick={async () => {
+                        const token = await ensureUnifiedToken();
+                        if (token) {
+                          copyToClipboard(`${typeof window !== "undefined" ? window.location.origin : ""}/e/${token}?tab=estimate`);
+                          addToast("Link copied!", "success");
+                        }
                       }}
                       className="shrink-0"
                     >
@@ -3095,23 +3128,47 @@ export function JobDetailView({
                 </div>
 
                 <div>
-                  <Label className="text-sm text-muted-foreground">Pre-written Message</Label>
-                  <Textarea 
+                  <Label className="text-sm text-muted-foreground">Message to Customer</Label>
+                  <Textarea
                     value={`Hey ${job.customer?.name || "there"} — here's your estimate for ${formatCurrency(estimatesList[0].line_items.reduce((sum, li) => sum + li.price, 0))}: ${typeof window !== "undefined" ? window.location.origin : ""}/e/${estimatesList[0].public_token}. Let me know if you have any questions!`}
-                    readOnly 
+                    readOnly
                     rows={4}
                     className="mt-2 font-sans"
                   />
-                  <Button 
-                    onClick={() => {
-                      copyEstimateMessage();
-                      setShowCopyDialog(false);
-                    }}
-                    className="w-full mt-2"
-                  >
-                    <Copy className="mr-2 h-4 w-4" />
-                    Copy Message
-                  </Button>
+                  <div className="flex gap-2 mt-2">
+                    <Button
+                      onClick={async () => {
+                        if (!job.customer?.phone) {
+                          addToast("No customer phone number on file", "error");
+                          return;
+                        }
+                        // Ensure unified token exists
+                        const token = await ensureUnifiedToken();
+                        if (!token) return;
+
+                        const link = `${typeof window !== "undefined" ? window.location.origin : ""}/e/${token}?tab=estimate`;
+                        const message = `Hey ${job.customer?.name || "there"} — here's your estimate for ${formatCurrency(estimatesList[0].line_items.reduce((sum, li) => sum + li.price, 0))}: ${link}. Let me know if you have any questions!`;
+                        const smsLink = generateSMSLink(job.customer.phone, message);
+                        window.location.href = smsLink;
+                        setShowCopyDialog(false);
+                      }}
+                      className="flex-1"
+                    >
+                      <Smartphone className="mr-2 h-4 w-4" />
+                      Send SMS
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={async () => {
+                        await copyEstimateMessage();
+                        setShowCopyDialog(false);
+                      }}
+                      className="flex-1"
+                    >
+                      <Copy className="mr-2 h-4 w-4" />
+                      Copy
+                    </Button>
+                  </div>
                 </div>
               </div>
             )}
@@ -3119,18 +3176,21 @@ export function JobDetailView({
             {copyDialogType === "invoice" && invoicesList[0] && (
               <div className="space-y-3">
                 <div>
-                  <Label className="text-sm text-muted-foreground">Invoice Link</Label>
+                  <Label className="text-sm text-muted-foreground">Customer Portal Link</Label>
                   <div className="flex gap-2 mt-2">
-                    <Input 
-                      value={`${typeof window !== "undefined" ? window.location.origin : ""}/i/${invoicesList[0].public_token}`}
-                      readOnly 
+                    <Input
+                      value={(job as any).unified_job_token ? `${typeof window !== "undefined" ? window.location.origin : ""}/e/${(job as any).unified_job_token}?tab=payment` : "Loading..."}
+                      readOnly
                       className="font-mono text-sm"
                     />
-                    <Button 
+                    <Button
                       variant="outline"
-                      onClick={() => {
-                        copyToClipboard(`${typeof window !== "undefined" ? window.location.origin : ""}/i/${invoicesList[0].public_token}`);
-                        addToast("Link copied!", "success");
+                      onClick={async () => {
+                        const token = await ensureUnifiedToken();
+                        if (token) {
+                          copyToClipboard(`${typeof window !== "undefined" ? window.location.origin : ""}/e/${token}?tab=payment`);
+                          addToast("Link copied!", "success");
+                        }
                       }}
                       className="shrink-0"
                     >
@@ -3140,23 +3200,47 @@ export function JobDetailView({
                 </div>
 
                 <div>
-                  <Label className="text-sm text-muted-foreground">Pre-written Message</Label>
-                  <Textarea 
+                  <Label className="text-sm text-muted-foreground">Message to Customer</Label>
+                  <Textarea
                     value={`Hey ${job.customer?.name || "there"} — thanks again for letting us work on your project! Here's your invoice for ${formatCurrency(invoicesList[0].amount_total)}: ${typeof window !== "undefined" ? window.location.origin : ""}/i/${invoicesList[0].public_token}. Let us know if you have any questions!`}
-                    readOnly 
+                    readOnly
                     rows={4}
                     className="mt-2 font-sans"
                   />
-                  <Button 
-                    onClick={() => {
-                      copyPaymentRequestMessage();
-                      setShowCopyDialog(false);
-                    }}
-                    className="w-full mt-2"
-                  >
-                    <Copy className="mr-2 h-4 w-4" />
-                    Copy Message
-                  </Button>
+                  <div className="flex gap-2 mt-2">
+                    <Button
+                      onClick={async () => {
+                        if (!job.customer?.phone) {
+                          addToast("No customer phone number on file", "error");
+                          return;
+                        }
+                        // Ensure unified token exists
+                        const token = await ensureUnifiedToken();
+                        if (!token) return;
+
+                        const link = `${typeof window !== "undefined" ? window.location.origin : ""}/e/${token}?tab=payment`;
+                        const message = `Hey ${job.customer?.name || "there"} — thanks again for letting us work on your project! Here's your invoice for ${formatCurrency(invoicesList[0].amount_total)}: ${link}. Let us know if you have any questions!`;
+                        const smsLink = generateSMSLink(job.customer.phone, message);
+                        window.location.href = smsLink;
+                        setShowCopyDialog(false);
+                      }}
+                      className="flex-1"
+                    >
+                      <Smartphone className="mr-2 h-4 w-4" />
+                      Send SMS
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={async () => {
+                        await copyPaymentRequestMessage();
+                        setShowCopyDialog(false);
+                      }}
+                      className="flex-1"
+                    >
+                      <Copy className="mr-2 h-4 w-4" />
+                      Copy
+                    </Button>
+                  </div>
                 </div>
               </div>
             )}

@@ -239,3 +239,32 @@ export function generateSMSLink(phoneNumber: string, message: string): string {
   return `sms:+${cleanedPhone}?body=${encodedMessage}`;
 }
 
+/**
+ * Validate and format a US phone number
+ * @param phone - Phone number string
+ * @returns Object with isValid boolean and formatted number (if valid)
+ */
+export function validatePhoneNumber(phone: string): { isValid: boolean; formatted?: string; error?: string } {
+  // Remove all non-digit characters
+  const cleaned = phone.replace(/\D/g, "");
+
+  // Check if it's a valid length (10 digits for US, or 11 if starting with 1)
+  if (cleaned.length === 10) {
+    // Format as (XXX) XXX-XXXX
+    const formatted = `(${cleaned.slice(0, 3)}) ${cleaned.slice(3, 6)}-${cleaned.slice(6)}`;
+    return { isValid: true, formatted };
+  } else if (cleaned.length === 11 && cleaned[0] === '1') {
+    // Format as +1 (XXX) XXX-XXXX
+    const formatted = `+1 (${cleaned.slice(1, 4)}) ${cleaned.slice(4, 7)}-${cleaned.slice(7)}`;
+    return { isValid: true, formatted };
+  }
+
+  // Invalid phone number
+  return {
+    isValid: false,
+    error: cleaned.length === 0
+      ? "Phone number is required"
+      : "Please enter a valid 10-digit US phone number"
+  };
+}
+
