@@ -58,14 +58,14 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
     }));
   }
 
-  // Calculate totals - use initialEstimate for consistent server/client rendering
-  const laborTotal = initialEstimate.labor_total || (initialEstimate.line_items?.length > 0 
-    ? initialEstimate.line_items.reduce((sum, li) => sum + li.price, 0)
+  // Calculate totals - use estimate state for reactive rendering
+  const laborTotal = estimate.labor_total || (estimate.line_items?.length > 0
+    ? estimate.line_items.reduce((sum, li) => sum + li.price, 0)
     : 0);
   const total = laborTotal;
 
-  const address = initialEstimate.job
-    ? [initialEstimate.job.address1, initialEstimate.job.city, initialEstimate.job.state, initialEstimate.job.zip]
+  const address = estimate.job
+    ? [estimate.job.address1, estimate.job.city, estimate.job.state, estimate.job.zip]
         .filter(Boolean)
         .join(", ")
     : "";
@@ -166,19 +166,19 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
             </div>
             <h1 className="text-2xl font-bold mb-2">Estimate Declined</h1>
             <p className="text-muted-foreground mb-4">
-              Thank you for your response. {initialEstimate.company?.name} has been notified of your decision.
+              Thank you for your response. {estimate.company?.name} has been notified of your decision.
             </p>
-            {(estimate.denial_reason || initialEstimate.denial_reason) && (
+            {estimate.denial_reason && (
               <div className="text-sm text-left bg-muted p-3 rounded-lg mb-4">
                 <p className="font-medium mb-1">Your feedback:</p>
-                <p className="text-muted-foreground">{estimate.denial_reason || initialEstimate.denial_reason}</p>
+                <p className="text-muted-foreground">{estimate.denial_reason}</p>
               </div>
             )}
             <div className="text-sm text-muted-foreground">
-              Declined on {formatDate(estimate.denied_at || initialEstimate.denied_at || new Date().toISOString())}
+              Declined on {formatDate(estimate.denied_at || new Date().toISOString())}
             </div>
             <p className="text-xs text-muted-foreground mt-4">
-              {initialEstimate.company?.name} may follow up with a revised estimate.
+              {estimate.company?.name} may follow up with a revised estimate.
             </p>
           </CardContent>
         </Card>
@@ -191,10 +191,10 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
       {/* Header */}
       <header className="border-b bg-card/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center gap-3">
-          {(initialEstimate.company as any)?.logo_url ? (
-            <img 
-              src={(initialEstimate.company as any).logo_url} 
-              alt={initialEstimate.company?.name || "Company Logo"}
+          {(estimate.company as any)?.logo_url ? (
+            <img
+              src={(estimate.company as any).logo_url}
+              alt={estimate.company?.name || "Company Logo"}
               className="w-10 h-10 rounded-lg object-cover"
             />
           ) : (
@@ -203,7 +203,7 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
             </div>
           )}
           <div>
-            <span className="font-bold">{initialEstimate.company?.name}</span>
+            <span className="font-bold">{estimate.company?.name}</span>
             <p className="text-xs text-muted-foreground">Estimate</p>
           </div>
         </div>
@@ -216,20 +216,20 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
             <div className="flex items-start justify-between">
               <div>
                 <CardTitle className="text-xl">
-                  Estimate for {initialEstimate.customer?.name || "Your Project"}
+                  Estimate for {estimate.customer?.name || "Your Project"}
                 </CardTitle>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Created {formatDate(initialEstimate.created_at)}
+                  Created {formatDate(estimate.created_at)}
                 </p>
               </div>
-              <Badge variant="secondary">{initialEstimate.status}</Badge>
+              <Badge variant="secondary">{estimate.status}</Badge>
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            {initialEstimate.customer && (
+            {estimate.customer && (
               <div className="flex items-center gap-2 text-sm">
                 <User className="h-4 w-4 text-muted-foreground" />
-                <span>{initialEstimate.customer.name}</span>
+                <span>{estimate.customer.name}</span>
               </div>
             )}
             {address && (
@@ -250,9 +250,9 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
           </CardHeader>
           <CardContent className="p-0">
             <div className="divide-y">
-              {((initialEstimate.line_items || [])).map((item) => {
+              {((estimate.line_items || [])).map((item) => {
                 const hasPaintDetails = item.product_line || item.paint_color_name_or_code || item.sheen || item.gallons_estimate;
-                
+
                 // Parse notes from description field (format: "BRAND:brand|PRODUCT_LINE:line|NOTES:notes")
                 let lineItemNotes: string | null = null;
                 if (item.description) {
@@ -261,15 +261,15 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
                     lineItemNotes = notesMatch[1];
                   }
                 }
-                
+
                 // Find materials for this line item (match by ID or by area name)
                 // Use more flexible matching to catch variations like "Ceilings" vs "Ceiling"
                 const itemNameLower = item.name?.toLowerCase() || '';
-                const itemMaterials = (initialEstimate.materials || [])?.filter(
+                const itemMaterials = (estimate.materials || [])?.filter(
                   (m: EstimateMaterial) => {
                     // Direct ID match (most reliable)
                     if (m.estimate_line_item_id === item.id) return true;
-                    
+
                     // Area description match (normalize both sides)
                     const areaDescLower = m.area_description?.toLowerCase() || '';
                     if (areaDescLower && itemNameLower) {
@@ -395,11 +395,11 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
         {/* Signoff or Accept/Deny Buttons */}
         {showSignoff ? (
           <EstimateSignoff
-            estimate={initialEstimate}
+            estimate={estimate}
             token={token}
             onSignoffComplete={handleSignoffComplete}
-            companyLogo={initialEstimate.company?.logo_url}
-            companyName={initialEstimate.company?.name}
+            companyLogo={estimate.company?.logo_url}
+            companyName={estimate.company?.name}
           />
         ) : (
           <div className="space-y-3">
@@ -430,14 +430,14 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
         )}
 
         {/* Footer with contact info */}
-        {((initialEstimate.company as any)?.contact_phone || (initialEstimate.company as any)?.contact_email) && (
+        {((estimate.company as any)?.contact_phone || (estimate.company as any)?.contact_email) && (
           <div className="mt-8 pt-6 border-t text-center text-sm text-muted-foreground space-y-1">
-            <p className="font-medium text-foreground">{initialEstimate.company?.name}</p>
-            {(initialEstimate.company as any)?.contact_phone && (
-              <p>{(initialEstimate.company as any).contact_phone}</p>
+            <p className="font-medium text-foreground">{estimate.company?.name}</p>
+            {(estimate.company as any)?.contact_phone && (
+              <p>{(estimate.company as any).contact_phone}</p>
             )}
-            {(initialEstimate.company as any)?.contact_email && (
-              <p>{(initialEstimate.company as any).contact_email}</p>
+            {(estimate.company as any)?.contact_email && (
+              <p>{(estimate.company as any).contact_email}</p>
             )}
           </div>
         )}
@@ -450,7 +450,7 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
             <DialogTitle>Accept This Estimate?</DialogTitle>
             <DialogDescription>
               By accepting this {formatCurrency(total)} estimate, you agree to proceed with the project.
-              {initialEstimate.company?.name} will contact you to schedule the work.
+              {estimate.company?.name} will contact you to schedule the work.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -476,7 +476,7 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
           <DialogHeader>
             <DialogTitle>Decline This Estimate?</DialogTitle>
             <DialogDescription>
-              Let {initialEstimate.company?.name} know why you're declining. They may be able to adjust the estimate to better meet your needs.
+              Let {estimate.company?.name} know why you're declining. They may be able to adjust the estimate to better meet your needs.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -490,7 +490,7 @@ export function PublicEstimateView({ estimate: initialEstimate, token }: PublicE
                 rows={4}
               />
               <p className="text-xs text-muted-foreground">
-                Your feedback helps {initialEstimate.company?.name} provide better service.
+                Your feedback helps {estimate.company?.name} provide better service.
               </p>
             </div>
           </div>

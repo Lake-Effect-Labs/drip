@@ -9,14 +9,51 @@ export async function POST(
   const supabase = createAdminClient();
 
   try {
-    // Get job by schedule_token
-    const { data: job, error: jobError } = await supabase
+    // Try to find job by multiple token types
+    // 1. First try unified_job_token (new system)
+    let job = null;
+    let jobError = null;
+
+    const { data: jobByUnified, error: unifiedError } = await supabase
       .from("jobs")
       .select("*")
-      .eq("schedule_token", token)
-      .single();
+      .eq("unified_job_token", token)
+      .maybeSingle();
 
-    if (jobError || !job) {
+    if (jobByUnified) {
+      job = jobByUnified;
+    } else {
+      // 2. Try schedule_token
+      const { data: jobBySchedule, error: scheduleError } = await supabase
+        .from("jobs")
+        .select("*")
+        .eq("schedule_token", token)
+        .maybeSingle();
+
+      if (jobBySchedule) {
+        job = jobBySchedule;
+      } else {
+        // 3. Try to find by estimate public_token
+        const { data: estimate } = await supabase
+          .from("estimates")
+          .select("job_id")
+          .eq("public_token", token)
+          .maybeSingle();
+
+        if (estimate?.job_id) {
+          const { data: jobByEstimate, error: estimateJobError } = await supabase
+            .from("jobs")
+            .select("*")
+            .eq("id", estimate.job_id)
+            .single();
+
+          job = jobByEstimate;
+          jobError = estimateJobError;
+        }
+      }
+    }
+
+    if (!job) {
       return NextResponse.json(
         { error: "Schedule not found" },
         { status: 404 }

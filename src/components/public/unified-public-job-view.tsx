@@ -608,29 +608,80 @@ export function UnifiedPublicJobView({ job: initialJob, token, isPaymentToken = 
           <TabsContent value="schedule" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Scheduled Time</CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle>Your Job Schedule</CardTitle>
+                  {scheduleAccepted && (
+                    <Badge variant="success">
+                      <CheckCircle className="h-3 w-3 mr-1" />
+                      Confirmed
+                    </Badge>
+                  )}
+                </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 {job.scheduled_date ? (
                   <>
-                    <div className="flex items-start gap-3">
-                      <Calendar className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
-                      <div>
-                        <p className="text-sm text-muted-foreground">Date</p>
-                        <p className="font-medium">
-                          {job.scheduled_end_date && job.scheduled_end_date !== job.scheduled_date
-                            ? `${formatDate(job.scheduled_date)} - ${formatDate(job.scheduled_end_date)}`
-                            : formatDate(job.scheduled_date)}
-                        </p>
-                      </div>
-                    </div>
-                    {job.scheduled_time && (
+                    <div className="p-4 rounded-lg bg-muted/30 space-y-3">
                       <div className="flex items-start gap-3">
-                        <Clock className="h-5 w-5 text-muted-foreground shrink-0 mt-0.5" />
+                        <Calendar className="h-5 w-5 text-primary shrink-0 mt-0.5" />
                         <div>
-                          <p className="text-sm text-muted-foreground">Time</p>
-                          <p className="font-medium">{formatTime(job.scheduled_time)}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {job.scheduled_end_date && job.scheduled_end_date !== job.scheduled_date ? "Date Range" : "Date"}
+                          </p>
+                          <p className="font-medium text-lg">
+                            {job.scheduled_end_date && job.scheduled_end_date !== job.scheduled_date
+                              ? `${formatDate(job.scheduled_date)} - ${formatDate(job.scheduled_end_date)}`
+                              : formatDate(job.scheduled_date)}
+                          </p>
                         </div>
+                      </div>
+                      {job.scheduled_time && (
+                        <div className="flex items-start gap-3">
+                          <Clock className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+                          <div>
+                            <p className="text-sm text-muted-foreground">
+                              {job.scheduled_end_date && job.scheduled_end_date !== job.scheduled_date ? "Daily Arrival Time" : "Arrival Time"}
+                            </p>
+                            <p className="font-medium text-lg">Around {formatTime(job.scheduled_time)}</p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              We'll arrive within 1 hour of this time
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {!scheduleAccepted ? (
+                      /* Schedule Confirmation Actions */
+                      <div className="space-y-3">
+                        <p className="text-sm font-medium">Does this schedule work for you?</p>
+                        <div className="flex flex-col gap-2">
+                          <Button
+                            onClick={handleConfirmSchedule}
+                            loading={confirmingSchedule}
+                            className="w-full"
+                          >
+                            <CheckCircle className="mr-2 h-4 w-4" />
+                            Confirm Schedule
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => setShowDenyScheduleDialog(true)}
+                            className="w-full"
+                          >
+                            <XCircle className="mr-2 h-4 w-4" />
+                            Request Different Time
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      /* Schedule Confirmed Message */
+                      <div className="p-4 rounded-lg bg-success/10 border border-success/20">
+                        <p className="text-sm font-medium text-success mb-2">Schedule Confirmed!</p>
+                        <p className="text-sm text-muted-foreground">
+                          We'll see you {job.scheduled_end_date && job.scheduled_end_date !== job.scheduled_date ? "starting" : "on"} {formatDate(job.scheduled_date)}.
+                          {job.company?.contact_phone && ` If anything changes, please call us at ${job.company.contact_phone}.`}
+                        </p>
                       </div>
                     )}
                   </>

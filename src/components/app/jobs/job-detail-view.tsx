@@ -11,6 +11,7 @@ import {
   formatCurrency,
   copyToClipboard,
   generateToken,
+  generateSMSLink,
   COMMON_MATERIALS,
   JOB_STATUSES,
   JOB_STATUS_LABELS,
@@ -61,6 +62,7 @@ import {
   Save,
   CheckCircle,
   ChevronRight,
+  Smartphone,
 } from "lucide-react";
 
 type JobWithCustomer = Job & { customer: Customer | null };
@@ -448,8 +450,9 @@ export function JobDetailView({
           scheduled_date: scheduledDate || null,
           scheduled_end_date: scheduledEndDate || null,
           scheduled_time: scheduledTime || null,
-          schedule_state: "accepted", // Directly set as accepted since no confirmation needed
+          schedule_state: "proposed", // Set as proposed - customer needs to confirm
           schedule_token: token,
+          schedule_accepted_at: null, // Reset confirmation
           status: job.status === "new" || job.status === "quoted" ? "scheduled" : job.status, // Update status if needed
           updated_at: new Date().toISOString(),
         })
@@ -465,13 +468,14 @@ export function JobDetailView({
         scheduled_date: scheduledDate || null,
         scheduled_end_date: scheduledEndDate || null,
         scheduled_time: scheduledTime || null,
-        schedule_state: "accepted",
+        schedule_state: "proposed",
         schedule_token: token,
+        schedule_accepted_at: null,
         status: prev.status === "new" || prev.status === "quoted" ? "scheduled" : prev.status,
       } as any));
       setScheduleToken(token);
       setEditingSchedule(false);
-      addToast("Schedule saved", "success");
+      addToast("Schedule saved - send to customer for confirmation", "success");
     } catch (err) {
       console.error("Save error:", err);
       addToast("Failed to save schedule", "error");
@@ -1543,26 +1547,13 @@ export function JobDetailView({
                 estimateDenialReason={estimatesList[0]?.denial_reason || null}
                 estimateMaterials={(estimatesList[0] as any)?.materials || []}
                 estimateLineItems={(estimatesList[0] as any)?.line_items || []}
-                onUpdate={async () => {
-                  // Refresh just the estimates list without full page reload
-                  const { data: estimatesData } = await supabase
-                    .from("estimates")
-                    .select("*")
-                    .eq("job_id", job.id)
-                    .order("created_at", { ascending: false });
-
-                  if (estimatesData) {
-                    const estimatesWithLineItems = await Promise.all(
-                      estimatesData.map(async (est) => {
-                        const { data: lineItems } = await supabase
-                          .from("estimate_line_items")
-                          .select("*")
-                          .eq("estimate_id", est.id);
-                        return { ...est, line_items: lineItems || [] };
-                      })
-                    );
-                    setEstimatesList(estimatesWithLineItems);
-                  }
+                onUpdate={() => {
+                  // Force a complete refresh to reload all estimate, job, and payment data
+                  // This ensures the UI reflects all changes including:
+                  // - Updated line items and materials
+                  // - Payment state changes
+                  // - Estimate status updates
+                  router.refresh();
                 }}
               />
 
@@ -1574,7 +1565,13 @@ export function JobDetailView({
                     {(job as any).schedule_state === "accepted" && (
                       <Badge variant="success">
                         <CheckCircle className="h-3 w-3 mr-1" />
-                        Confirmed
+                        Confirmed by Customer
+                      </Badge>
+                    )}
+                    {(job as any).schedule_state === "proposed" && (
+                      <Badge variant="secondary">
+                        <Clock className="h-3 w-3 mr-1" />
+                        Waiting for Confirmation
                       </Badge>
                     )}
                   </div>
@@ -1708,35 +1705,56 @@ export function JobDetailView({
                       </div>
                     </div>
 
+                    {/* Status Info */}
+                    {(job as any).schedule_state === "accepted" && (job as any).schedule_accepted_at && (
+                      <div className="text-sm text-muted-foreground">
+                        Confirmed by customer on {formatDate((job as any).schedule_accepted_at)}
+                      </div>
+                    )}
+
                     {/* Actions */}
                     {job.scheduled_date && (
-                      <div className="flex flex-col sm:flex-row gap-2">
+                      <div className="flex flex-col gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            if (!job.customer?.phone) {
+                              addToast("No customer phone number on file", "error");
+                              return;
+                            }
+                            const customerName = job.customer?.name || "there";
+                            const dateStr = scheduledEndDate && scheduledEndDate !== scheduledDate
+                              ? `${formatDate(scheduledDate)} through ${formatDate(scheduledEndDate)}`
+                              : formatDate(scheduledDate);
+                            const timeStr = formatTime(scheduledTime);
+
+                            // Get the unified job link (same link for estimate/schedule/payment)
+                            const link = job.unified_job_token
+                              ? `${typeof window !== "undefined" ? window.location.origin : ""}/e/${job.unified_job_token}?tab=schedule`
+                              : "#";
+
+                            const message = `Hi ${customerName}! We'd like to schedule your ${job.title || "painting project"} for ${dateStr}, arriving around ${timeStr}. Please confirm your schedule here: ${link}`;
+
+                            const smsLink = generateSMSLink(job.customer.phone, message);
+                            window.location.href = smsLink;
+                          }}
+                          className="w-full"
+                        >
+                          <Smartphone className="mr-2 h-4 w-4" />
+                          Send SMS to Customer
+                        </Button>
                         <Button
                           variant="outline"
                           onClick={async () => {
                             await ensureScheduleToken();
                             setShowShareScheduleDialog(true);
                           }}
-                          className="w-full sm:flex-1"
+                          className="w-full"
                         >
-                          <Share2 className="mr-2 h-4 w-4" />
-                          Share with Customer
+                          <Copy className="mr-2 h-4 w-4" />
+                          Copy Link or Message
                         </Button>
                       </div>
-                    )}
-
-                    {!((job as any).schedule_state) && (
-                      <Button
-                        variant="outline"
-                        onClick={async () => {
-                          await ensureScheduleToken();
-                          setShowShareScheduleDialog(true);
-                        }}
-                        className="w-full"
-                      >
-                        <Share2 className="mr-2 h-4 w-4" />
-                        Share with Customer
-                      </Button>
                     )}
                   </>
                 )}
