@@ -13,7 +13,7 @@ interface Message {
 
 const INITIAL_MESSAGE: Message = {
   role: "assistant",
-  content: "Ask me about your business. Try:\n• \"What's my total revenue?\"\n• \"How many jobs do I have?\"\n• \"What jobs do I have today?\"\n• \"Who hasn't paid me yet?\"\n• \"What materials do I need tomorrow?\"",
+  content: "Ask about jobs, customers, invoices, estimates, or materials.",
 };
 
 export function MatteView() {

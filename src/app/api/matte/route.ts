@@ -21,98 +21,11 @@ import {
 } from "@/lib/matte/queries";
 
 // System prompt for Matte
-const SYSTEM_PROMPT = `ROLE
+const SYSTEM_PROMPT = `You are Matte AI, an assistant for a painting company. You have access to all business data: jobs, customers, invoices, estimates, materials, and payments.
 
-You are Matte AI, a read-only analytical assistant for a painting company.
+Answer questions directly and concisely using only the provided data. Use minimal tokens. No formatting, emojis, or conversational fluff. Just facts.
 
-Your ONLY source of truth is the structured data explicitly provided to you in the context of the request.
-
-You are not allowed to:
-- Guess
-- Infer missing values
-- Assume typical industry behavior
-- Fill gaps with "common sense"
-- Use external knowledge
-- Answer from memory
-
-If the data is not present, you must say so.
-
-ALLOWED DATA
-
-You may ONLY answer questions using data from:
-- Jobs
-- Estimates
-- Invoices
-- Inventory items
-- Job materials checklists
-- Stores
-- Customers
-- Payments (if provided)
-- Company settings
-
-If a field, record, or relationship is missing, you must treat it as unknown, not false.
-
-ANSWER RULES (CRITICAL)
-
-Rule 1 — No Data = No Answer
-If the question cannot be answered exactly with the provided data:
-Respond with: "I don't have enough data to answer that."
-Optionally add: "Here's what I would need to answer it accurately: …"
-
-Rule 2 — Cite the Source Internally
-Every answer must state where the data came from.
-Example: "Based on 12 completed jobs from January–March 2026…"
-If you can't cite the source → You cannot answer.
-
-Rule 3 — Never Extrapolate
-Do NOT:
-- Project future totals
-- Average across incomplete datasets
-- Estimate missing consumption
-- Assume defaults unless explicitly provided
-
-Bad ❌: "You probably used about 20 gallons…"
-Good ✅: "Recorded job materials show 14 gallons across 5 jobs."
-
-Rule 4 — Ask to Clarify, Don't Guess
-If the question is ambiguous, ask one clarifying question and stop.
-Example: "Do you want only completed jobs, or all jobs including scheduled?"
-
-RESPONSE FORMAT (MANDATORY)
-
-All responses must follow this structure:
-
-📊 Answer
-(Short, direct answer or "I don't have enough data.")
-
-📁 Data Used
-- Data source(s)
-- Date range
-- Filters applied
-
-⚠️ Limitations
-- What is missing or incomplete
-- Any assumptions explicitly NOT made
-
-HARD CONSTRAINTS (DO NOT VIOLATE)
-- NEVER answer with "typically", "usually", or "most painters"
-- NEVER invent quantities
-- NEVER use external knowledge
-- NEVER be confident without citations
-- NEVER hide uncertainty
-
-PRIMARY GOAL
-Your goal is trust, not completeness.
-A correct "I don't know" is always better than a wrong answer.
-
-FINAL CHECK (SELF-EVALUATION)
-Before responding, silently verify:
-- Did I use only provided data?
-- Can I cite the source?
-- Did I avoid assumptions?
-- Did I clearly state limitations?
-
-If any answer is "no" → do not answer.`;
+If data is missing, say "No data available" or "Not found".`;
 
 export async function POST(request: NextRequest) {
   try {
@@ -163,12 +76,7 @@ export async function POST(request: NextRequest) {
         const result = await getUnpaidInvoices(adminSupabase, companyId);
         data = result;
         const totalDollars = (result.total / 100).toFixed(2);
-        userPrompt = `The user asked about unpaid invoices. Here's the data:
-- Count: ${result.count}
-- Total: $${totalDollars}
-- Invoices: ${JSON.stringify(result.invoices.map((inv) => ({ customer: inv.customerName, amount: `$${(inv.amount / 100).toFixed(2)}` })))}
-
-Respond concisely about who hasn't paid.`;
+        userPrompt = `Unpaid invoices: ${result.count}, Total: $${totalDollars}. Data: ${JSON.stringify(result.invoices.map((inv) => ({ customer: inv.customerName, amount: inv.amount })))}. Answer concisely.`;
         break;
       }
 
@@ -176,12 +84,7 @@ Respond concisely about who hasn't paid.`;
         const result = await getOverdueInvoices(adminSupabase, companyId);
         data = result;
         const totalDollars = (result.total / 100).toFixed(2);
-        userPrompt = `The user asked about overdue invoices. Here's the data:
-- Count: ${result.count}
-- Total: $${totalDollars}
-- Invoices: ${JSON.stringify(result.invoices.map((inv) => ({ customer: inv.customerName, amount: `$${(inv.amount / 100).toFixed(2)}` })))}
-
-Respond concisely about overdue invoices.`;
+        userPrompt = `Overdue invoices: ${result.count}, Total: $${totalDollars}. Data: ${JSON.stringify(result.invoices.map((inv) => ({ customer: inv.customerName, amount: inv.amount })))}. Answer concisely.`;
         break;
       }
 
@@ -189,12 +92,7 @@ Respond concisely about overdue invoices.`;
         const result = await getPaymentsThisWeek(adminSupabase, companyId);
         data = result;
         const totalDollars = (result.total / 100).toFixed(2);
-        userPrompt = `The user asked about payments this week. Here's the data:
-- Count: ${result.count}
-- Total: $${totalDollars}
-- Payments: ${JSON.stringify(result.payments.map((p) => ({ customer: p.customerName, amount: `$${(p.amount / 100).toFixed(2)}` })))}
-
-Respond concisely about payments received this week.`;
+        userPrompt = `Payments this week: ${result.count}, Total: $${totalDollars}. Data: ${JSON.stringify(result.payments.map((p) => ({ customer: p.customerName, amount: p.amount })))}. Answer concisely.`;
         break;
       }
 
@@ -214,19 +112,7 @@ Respond concisely about payments received this week.`;
         console.log("JOBS_TODAY - Result count:", result.count);
         console.log("JOBS_TODAY - Jobs found:", result.jobs);
         
-        userPrompt = `The user asked: "${message}"
-
-Here is the EXACT data available:
-- Date searched: ${todayStr}
-- Count: ${result.count}
-- Jobs: ${JSON.stringify(result.jobs.map((j) => ({ title: j.title, customer: j.customerName, status: j.status, scheduledDate: j.scheduledDate })))}
-
-CRITICAL: You must respond using ONLY this data. Use the mandatory format:
-📊 Answer
-📁 Data Used
-⚠️ Limitations
-
-If count is 0, your answer must be: "I don't have enough data to answer that. No jobs are scheduled for today in the database."`;
+        userPrompt = `Today: ${todayStr}. Jobs: ${result.count}. Data: ${JSON.stringify(result.jobs.map((j) => ({ title: j.title, customer: j.customerName, status: j.status })))}. Answer concisely.`;
         break;
       }
 
@@ -235,33 +121,21 @@ If count is 0, your answer must be: "I don't have enough data to answer that. No
         tomorrow.setDate(tomorrow.getDate() + 1);
         const result = await getJobsForDate(adminSupabase, companyId, tomorrow);
         data = result;
-        userPrompt = `The user asked about jobs tomorrow. Here's the data:
-- Count: ${result.count}
-- Jobs: ${JSON.stringify(result.jobs.map((j) => ({ title: j.title, customer: j.customerName, status: j.status })))}
-
-Respond concisely about tomorrow's jobs.`;
+        userPrompt = `Jobs tomorrow: ${result.count}. Data: ${JSON.stringify(result.jobs.map((j) => ({ title: j.title, customer: j.customerName, status: j.status })))}. Answer concisely.`;
         break;
       }
 
       case "JOBS_IN_PROGRESS": {
         const result = await getJobsInProgress(adminSupabase, companyId);
         data = result;
-        userPrompt = `The user asked about jobs in progress. Here's the data:
-- Count: ${result.count}
-- Jobs: ${JSON.stringify(result.jobs.map((j) => ({ title: j.title, customer: j.customerName, status: j.status })))}
-
-Respond concisely about active jobs.`;
+        userPrompt = `Jobs in progress: ${result.count}. Data: ${JSON.stringify(result.jobs.map((j) => ({ title: j.title, customer: j.customerName, status: j.status })))}. Answer concisely.`;
         break;
       }
 
       case "STUCK_JOBS": {
         const result = await getStuckJobs(adminSupabase, companyId);
         data = result;
-        userPrompt = `The user asked about stuck jobs. Here's the data:
-- Count: ${result.count}
-- Jobs: ${JSON.stringify(result.jobs.map((j) => ({ title: j.title, customer: j.customerName, status: j.status })))}
-
-Respond concisely about jobs that haven't moved.`;
+        userPrompt = `Stuck jobs: ${result.count}. Data: ${JSON.stringify(result.jobs.map((j) => ({ title: j.title, customer: j.customerName, status: j.status })))}. Answer concisely.`;
         break;
       }
 
@@ -270,14 +144,9 @@ Respond concisely about jobs that haven't moved.`;
         data = result;
         
         if (result.materials.length === 0) {
-          userPrompt = `The user asked about materials needed for today. There are no materials needed for jobs scheduled today.
-
-Respond concisely: "You don't need any materials for today."`;
+          userPrompt = `Materials today: 0. Answer concisely.`;
         } else {
-          userPrompt = `The user asked about materials needed for today. Here's the data:
-- Materials: ${JSON.stringify(result.materials.map((m) => ({ name: m.name, job: m.jobTitle, customer: m.customerName })))}
-
-Respond concisely about the materials needed. List the materials and which jobs they're for.`;
+          userPrompt = `Materials today: ${JSON.stringify(result.materials.map((m) => ({ name: m.name, job: m.jobTitle, customer: m.customerName })))}. Answer concisely.`;
         }
         break;
       }
@@ -289,14 +158,9 @@ Respond concisely about the materials needed. List the materials and which jobs 
         data = result;
         
         if (result.materials.length === 0) {
-          userPrompt = `The user asked about materials needed for tomorrow. There are no materials needed for jobs scheduled tomorrow.
-
-Respond concisely: "You don't need any materials for tomorrow."`;
+          userPrompt = `Materials tomorrow: 0. Answer concisely.`;
         } else {
-          userPrompt = `The user asked about materials needed for tomorrow. Here's the data:
-- Materials: ${JSON.stringify(result.materials.map((m) => ({ name: m.name, job: m.jobTitle, customer: m.customerName })))}
-
-Respond concisely about the materials needed tomorrow. List the materials and which jobs they're for.`;
+          userPrompt = `Materials tomorrow: ${JSON.stringify(result.materials.map((m) => ({ name: m.name, job: m.jobTitle, customer: m.customerName })))}. Answer concisely.`;
         }
         break;
       }
@@ -304,11 +168,7 @@ Respond concisely about the materials needed tomorrow. List the materials and wh
       case "JOBS_MISSING_MATERIALS": {
         const result = await getJobsMissingMaterials(adminSupabase, companyId);
         data = result;
-        userPrompt = `The user asked about jobs missing materials. Here's the data:
-- Count: ${result.count}
-- Jobs: ${JSON.stringify(result.jobs.map((j) => ({ title: j.title, customer: j.customerName })))}
-
-Respond concisely about jobs that need materials added.`;
+        userPrompt = `Jobs missing materials: ${result.count}. Data: ${JSON.stringify(result.jobs.map((j) => ({ title: j.title, customer: j.customerName })))}. Answer concisely.`;
         break;
       }
 
@@ -316,12 +176,7 @@ Respond concisely about jobs that need materials added.`;
         const result = await getFocusToday(adminSupabase, companyId);
         data = result;
         const unpaidTotalDollars = (result.unpaidTotal / 100).toFixed(2);
-        userPrompt = `The user asked what to focus on today. Here's the data:
-- Jobs today: ${result.jobsToday}
-- Unpaid invoices: ${result.unpaidInvoices}
-- Unpaid total: $${unpaidTotalDollars}
-
-Respond concisely about what to work on today.`;
+        userPrompt = `Focus today: Jobs: ${result.jobsToday}, Unpaid invoices: ${result.unpaidInvoices}, Unpaid total: $${unpaidTotalDollars}. Answer concisely.`;
         break;
       }
 
@@ -370,35 +225,14 @@ Respond concisely about what to work on today.`;
         }));
 
         data = { generalData, recentJobs: recentJobsList, recentInvoices: recentInvoicesList, customers };
-        userPrompt = `The user asked: "${message}"
-
-Here's what I know about the business:
-- Total jobs: ${generalData.totalJobs}
-- Active jobs: ${generalData.activeJobs}
-- Total invoiced: $${invoicedDollars}
-- Total paid: $${paidDollars}
-- Unpaid invoices: ${generalData.unpaidCount}
-
-Recent jobs (last 20):
-${JSON.stringify(recentJobsList)}
-
-Recent invoices (last 10):
-${JSON.stringify(recentInvoicesList)}
-
-Customers:
-${JSON.stringify(customers?.map((c: any) => ({ name: c.name })) || [])}
-
-Use this data to answer the user's question. Be specific and helpful. If the question is about a specific job, customer, invoice, or material, provide details from the data above.`;
+        userPrompt = `Question: "${message}". Business data: Jobs: ${generalData.totalJobs} total, ${generalData.activeJobs} active. Invoiced: $${invoicedDollars}, Paid: $${paidDollars}, Unpaid: ${generalData.unpaidCount}. Recent jobs: ${JSON.stringify(recentJobsList)}. Recent invoices: ${JSON.stringify(recentInvoicesList)}. Customers: ${JSON.stringify(customers?.map((c: any) => ({ name: c.name })) || [])}. Answer concisely.`;
         break;
       }
 
       case "TOTAL_JOBS": {
         const result = await getGeneralSummary(adminSupabase, companyId);
         data = result;
-        userPrompt = `The user asked about total jobs. Here's the data:
-- Total jobs: ${result.totalJobs}
-
-Respond concisely with the total number of jobs.`;
+        userPrompt = `Total jobs: ${result.totalJobs}. Answer concisely.`;
         break;
       }
 
@@ -406,10 +240,7 @@ Respond concisely with the total number of jobs.`;
         const result = await getGeneralSummary(adminSupabase, companyId);
         data = result;
         const invoicedDollars = (result.totalInvoiced / 100).toFixed(2);
-        userPrompt = `The user asked about total revenue. Here's the data:
-- Total invoiced: $${invoicedDollars}
-
-Respond concisely with the total revenue/invoiced amount.`;
+        userPrompt = `Total invoiced: $${invoicedDollars}. Answer concisely.`;
         break;
       }
 
@@ -424,20 +255,14 @@ Respond concisely with the total revenue/invoiced amount.`;
           .gte("created_at", weekAgo.toISOString());
         const jobsThisWeek = jobs?.length || 0;
         data = { count: jobsThisWeek };
-        userPrompt = `The user asked about jobs this week. Here's the data:
-- Jobs this week: ${jobsThisWeek}
-
-Respond concisely with how many jobs were created this week.`;
+        userPrompt = `Jobs this week: ${jobsThisWeek}. Answer concisely.`;
         break;
       }
 
       case "ACTIVE_JOBS": {
         const result = await getGeneralSummary(adminSupabase, companyId);
         data = result;
-        userPrompt = `The user asked about active jobs. Here's the data:
-- Active jobs: ${result.activeJobs}
-
-Respond concisely with how many active jobs (scheduled or in progress) they have.`;
+        userPrompt = `Active jobs: ${result.activeJobs}. Answer concisely.`;
         break;
       }
 
@@ -451,10 +276,7 @@ Respond concisely with how many active jobs (scheduled or in progress) they have
           return acc;
         }, {} as Record<string, number>);
         data = { jobsByStatus };
-        userPrompt = `The user asked about jobs by status. Here's the data:
-${JSON.stringify(jobsByStatus)}
-
-Respond concisely with a breakdown of jobs by status.`;
+        userPrompt = `Jobs by status: ${JSON.stringify(jobsByStatus)}. Answer concisely.`;
         break;
       }
 
@@ -486,10 +308,7 @@ Respond concisely with a breakdown of jobs by status.`;
             status: j.status,
           }));
           
-          userPrompt = `The user asked about their jobs. Here are their recent jobs:
-${JSON.stringify(jobsList)}
-
-Respond concisely about their jobs.`;
+          userPrompt = `Recent jobs: ${JSON.stringify(jobsList)}. Answer concisely.`;
           break;
         }
 
@@ -511,16 +330,7 @@ Respond concisely about their jobs.`;
           }
           data = estimateResult;
           const totalDollars = (estimateResult.total / 100).toFixed(2);
-          userPrompt = `The user asked about estimates for the "${job.title}" job (customer: ${job.customerName}). Here's the data:
-- Count: ${estimateResult.count}
-- Total: $${totalDollars}
-- Estimates: ${JSON.stringify(estimateResult.estimates.map((e) => ({
-  status: e.status,
-  total: `$${(e.total / 100).toFixed(2)}`,
-  lineItems: e.lineItems.slice(0, 3)
-})))}
-
-Respond concisely about the estimate amount and status.`;
+          userPrompt = `Estimates for "${job.title}" (${job.customerName}): ${estimateResult.count} estimates, Total: $${totalDollars}. Data: ${JSON.stringify(estimateResult.estimates.map((e) => ({ status: e.status, total: e.total, lineItems: e.lineItems.slice(0, 3) })))}. Answer concisely.`;
         } else if (intent === "MATERIAL_LOOKUP") {
           const materialsResult = await getMaterialsForJob(adminSupabase, companyId, job.id);
           if (materialsResult.materials.length === 0) {
@@ -528,28 +338,11 @@ Respond concisely about the estimate amount and status.`;
             break;
           }
           data = materialsResult;
-          userPrompt = `The user asked about materials/paint for the "${job.title}" job (customer: ${job.customerName}). Here's the data:
-- Materials: ${JSON.stringify(materialsResult.materials.map((m) => ({
-  name: m.name,
-  paintColor: m.paintColor,
-  sheen: m.sheen,
-  checked: m.checked
-})))}
-
-Respond concisely about what materials/paint are needed.`;
+          userPrompt = `Materials for "${job.title}" (${job.customerName}): ${JSON.stringify(materialsResult.materials.map((m) => ({ name: m.name, paintColor: m.paintColor, sheen: m.sheen, checked: m.checked })))}. Answer concisely.`;
         } else {
           // JOB_LOOKUP
           data = jobsResult;
-          userPrompt = `The user asked about jobs matching "${entities.jobIdentifier}". Here's the data:
-- Count: ${jobsResult.count}
-- Jobs: ${JSON.stringify(jobsResult.jobs.map((j) => ({
-  title: j.title,
-  customer: j.customerName,
-  status: j.status,
-  scheduledDate: j.scheduledDate
-})))}
-
-Respond concisely about the job(s) found.`;
+          userPrompt = `Jobs matching "${entities.jobIdentifier}": ${jobsResult.count}. Data: ${JSON.stringify(jobsResult.jobs.map((j) => ({ title: j.title, customer: j.customerName, status: j.status, scheduledDate: j.scheduledDate })))}. Answer concisely.`;
         }
         break;
       }
@@ -584,17 +377,7 @@ Respond concisely about the job(s) found.`;
         data = invoiceResult;
         const totalDollars = (invoiceResult.total / 100).toFixed(2);
         const dateRangeStr = entities.dateRange === "last_month" ? "last month" : "this week";
-        userPrompt = `The user asked about invoices for ${dateRangeStr}. Here's the data:
-- Count: ${invoiceResult.count}
-- Total: $${totalDollars}
-- Invoices: ${JSON.stringify(invoiceResult.invoices.map((inv) => ({
-  customer: inv.customerName,
-  job: inv.jobTitle,
-  amount: `$${(inv.amount / 100).toFixed(2)}`,
-  status: inv.status
-})))}
-
-Respond concisely about the invoices in that period.`;
+        userPrompt = `Invoices ${dateRangeStr}: ${invoiceResult.count}, Total: $${totalDollars}. Data: ${JSON.stringify(invoiceResult.invoices.map((inv) => ({ customer: inv.customerName, job: inv.jobTitle, amount: inv.amount, status: inv.status })))}. Answer concisely.`;
         break;
       }
 
@@ -607,14 +390,7 @@ Respond concisely about the invoices in that period.`;
         }
 
         data = customerResult;
-        userPrompt = `The user asked about customers who owe money. Here's the data:
-- Customers: ${JSON.stringify(customerResult.customers.map((c) => ({
-  name: c.name,
-  unpaidCount: c.unpaidCount,
-  total: `$${(c.unpaidTotal / 100).toFixed(2)}`
-})))}
-
-Respond concisely about which customers have unpaid invoices.`;
+        userPrompt = `Customers with unpaid invoices: ${JSON.stringify(customerResult.customers.map((c) => ({ name: c.name, unpaidCount: c.unpaidCount, total: c.unpaidTotal })))}. Answer concisely.`;
         break;
       }
 
@@ -628,15 +404,7 @@ Respond concisely about which customers have unpaid invoices.`;
           }
 
           data = relationshipResult;
-          userPrompt = `The user asked about jobs with accepted estimates but no invoice. Here's the data:
-- Count: ${relationshipResult.count}
-- Jobs: ${JSON.stringify(relationshipResult.jobs.map((j) => ({
-  title: j.title,
-  customer: j.customerName,
-  acceptedAt: j.acceptedAt
-})))}
-
-Respond concisely about which jobs need invoices created.`;
+          userPrompt = `Jobs with accepted estimates but no invoice: ${relationshipResult.count}. Data: ${JSON.stringify(relationshipResult.jobs.map((j) => ({ title: j.title, customer: j.customerName, acceptedAt: j.acceptedAt })))}. Answer concisely.`;
         }
         break;
       }
@@ -724,37 +492,7 @@ Respond concisely about which jobs need invoices created.`;
         }));
 
         data = { generalData, recentJobs, recentInvoices, customers, materials };
-        userPrompt = `The user asked: "${message}"
-
-Here's what I know about the business:
-- Total jobs: ${generalData.totalJobs}
-- Active jobs: ${generalData.activeJobs}
-- Total invoiced: $${(generalData.totalInvoiced / 100).toFixed(2)}
-- Total paid: $${(generalData.totalPaid / 100).toFixed(2)}
-- Unpaid invoices: ${generalData.unpaidCount}
-
-Recent jobs (last 20):
-${JSON.stringify(recentJobs)}
-
-Recent invoices (last 10):
-${JSON.stringify(recentInvoices)}
-
-Customers:
-${JSON.stringify(customers)}
-
-Materials (last 50):
-${JSON.stringify(materials)}
-
-CRITICAL INSTRUCTIONS:
-1. You must respond using ONLY the data provided above
-2. Use the mandatory format:
-   📊 Answer
-   📁 Data Used
-   ⚠️ Limitations
-3. If you cannot answer with the provided data, say "I don't have enough data to answer that."
-4. Always cite your sources (e.g., "Based on jobs data", "From invoices data")
-5. Never guess, infer, or assume anything not in the data
-6. If data is missing or incomplete, state it clearly in the Limitations section`;
+        userPrompt = `Question: "${message}". Data: Jobs: ${generalData.totalJobs} total, ${generalData.activeJobs} active. Invoiced: $${(generalData.totalInvoiced / 100).toFixed(2)}, Paid: $${(generalData.totalPaid / 100).toFixed(2)}, Unpaid: ${generalData.unpaidCount}. Recent jobs: ${JSON.stringify(recentJobs)}. Recent invoices: ${JSON.stringify(recentInvoices)}. Customers: ${JSON.stringify(customers)}. Materials: ${JSON.stringify(materials)}. Answer concisely.`;
         break;
       }
     }
@@ -819,7 +557,7 @@ CRITICAL INSTRUCTIONS:
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: userPrompt },
         ],
-        max_tokens: 400,
+        max_tokens: 200,
         temperature: 0.1,
       }),
     });
