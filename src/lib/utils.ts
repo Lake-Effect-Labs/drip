@@ -220,3 +220,22 @@ export const THEMES = [
 
 export type ThemeId = (typeof THEMES)[number]["id"];
 
+/**
+ * Generate a pre-filled SMS link for mobile devices
+ * Works on both iOS and Android
+ * @param phoneNumber - Phone number (will be cleaned of non-digits)
+ * @param message - Pre-filled message text
+ * @returns SMS URL that opens messaging app with pre-filled content
+ */
+export function generateSMSLink(phoneNumber: string, message: string): string {
+  // Clean phone number - remove all non-digit characters
+  const cleanedPhone = phoneNumber.replace(/\D/g, "");
+
+  // Encode the message for URL
+  const encodedMessage = encodeURIComponent(message);
+
+  // iOS uses ";" separator, Android uses "?" but both work with "?"
+  // Format: sms:+1234567890?body=Your%20message%20here
+  return `sms:+${cleanedPhone}?body=${encodedMessage}`;
+}
+
