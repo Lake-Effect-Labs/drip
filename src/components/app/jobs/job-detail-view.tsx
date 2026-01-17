@@ -1543,26 +1543,13 @@ export function JobDetailView({
                 estimateDenialReason={estimatesList[0]?.denial_reason || null}
                 estimateMaterials={(estimatesList[0] as any)?.materials || []}
                 estimateLineItems={(estimatesList[0] as any)?.line_items || []}
-                onUpdate={async () => {
-                  // Refresh just the estimates list without full page reload
-                  const { data: estimatesData } = await supabase
-                    .from("estimates")
-                    .select("*")
-                    .eq("job_id", job.id)
-                    .order("created_at", { ascending: false });
-
-                  if (estimatesData) {
-                    const estimatesWithLineItems = await Promise.all(
-                      estimatesData.map(async (est) => {
-                        const { data: lineItems } = await supabase
-                          .from("estimate_line_items")
-                          .select("*")
-                          .eq("estimate_id", est.id);
-                        return { ...est, line_items: lineItems || [] };
-                      })
-                    );
-                    setEstimatesList(estimatesWithLineItems);
-                  }
+                onUpdate={() => {
+                  // Force a complete refresh to reload all estimate, job, and payment data
+                  // This ensures the UI reflects all changes including:
+                  // - Updated line items and materials
+                  // - Payment state changes
+                  // - Estimate status updates
+                  router.refresh();
                 }}
               />
 
