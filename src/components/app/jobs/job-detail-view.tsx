@@ -3095,23 +3095,42 @@ export function JobDetailView({
                 </div>
 
                 <div>
-                  <Label className="text-sm text-muted-foreground">Pre-written Message</Label>
-                  <Textarea 
+                  <Label className="text-sm text-muted-foreground">Message to Customer</Label>
+                  <Textarea
                     value={`Hey ${job.customer?.name || "there"} — here's your estimate for ${formatCurrency(estimatesList[0].line_items.reduce((sum, li) => sum + li.price, 0))}: ${typeof window !== "undefined" ? window.location.origin : ""}/e/${estimatesList[0].public_token}. Let me know if you have any questions!`}
-                    readOnly 
+                    readOnly
                     rows={4}
                     className="mt-2 font-sans"
                   />
-                  <Button 
-                    onClick={() => {
-                      copyEstimateMessage();
-                      setShowCopyDialog(false);
-                    }}
-                    className="w-full mt-2"
-                  >
-                    <Copy className="mr-2 h-4 w-4" />
-                    Copy Message
-                  </Button>
+                  <div className="flex gap-2 mt-2">
+                    <Button
+                      onClick={() => {
+                        if (!job.customer?.phone) {
+                          addToast("No customer phone number on file", "error");
+                          return;
+                        }
+                        const message = `Hey ${job.customer?.name || "there"} — here's your estimate for ${formatCurrency(estimatesList[0].line_items.reduce((sum, li) => sum + li.price, 0))}: ${typeof window !== "undefined" ? window.location.origin : ""}/e/${estimatesList[0].public_token}. Let me know if you have any questions!`;
+                        const smsLink = generateSMSLink(job.customer.phone, message);
+                        window.location.href = smsLink;
+                        setShowCopyDialog(false);
+                      }}
+                      className="flex-1"
+                    >
+                      <Smartphone className="mr-2 h-4 w-4" />
+                      Send SMS
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        copyEstimateMessage();
+                        setShowCopyDialog(false);
+                      }}
+                      className="flex-1"
+                    >
+                      <Copy className="mr-2 h-4 w-4" />
+                      Copy
+                    </Button>
+                  </div>
                 </div>
               </div>
             )}
@@ -3140,23 +3159,42 @@ export function JobDetailView({
                 </div>
 
                 <div>
-                  <Label className="text-sm text-muted-foreground">Pre-written Message</Label>
-                  <Textarea 
+                  <Label className="text-sm text-muted-foreground">Message to Customer</Label>
+                  <Textarea
                     value={`Hey ${job.customer?.name || "there"} — thanks again for letting us work on your project! Here's your invoice for ${formatCurrency(invoicesList[0].amount_total)}: ${typeof window !== "undefined" ? window.location.origin : ""}/i/${invoicesList[0].public_token}. Let us know if you have any questions!`}
-                    readOnly 
+                    readOnly
                     rows={4}
                     className="mt-2 font-sans"
                   />
-                  <Button 
-                    onClick={() => {
-                      copyPaymentRequestMessage();
-                      setShowCopyDialog(false);
-                    }}
-                    className="w-full mt-2"
-                  >
-                    <Copy className="mr-2 h-4 w-4" />
-                    Copy Message
-                  </Button>
+                  <div className="flex gap-2 mt-2">
+                    <Button
+                      onClick={() => {
+                        if (!job.customer?.phone) {
+                          addToast("No customer phone number on file", "error");
+                          return;
+                        }
+                        const message = `Hey ${job.customer?.name || "there"} — thanks again for letting us work on your project! Here's your invoice for ${formatCurrency(invoicesList[0].amount_total)}: ${typeof window !== "undefined" ? window.location.origin : ""}/i/${invoicesList[0].public_token}. Let us know if you have any questions!`;
+                        const smsLink = generateSMSLink(job.customer.phone, message);
+                        window.location.href = smsLink;
+                        setShowCopyDialog(false);
+                      }}
+                      className="flex-1"
+                    >
+                      <Smartphone className="mr-2 h-4 w-4" />
+                      Send SMS
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        copyPaymentRequestMessage();
+                        setShowCopyDialog(false);
+                      }}
+                      className="flex-1"
+                    >
+                      <Copy className="mr-2 h-4 w-4" />
+                      Copy
+                    </Button>
+                  </div>
                 </div>
               </div>
             )}
