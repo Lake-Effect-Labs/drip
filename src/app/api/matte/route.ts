@@ -18,10 +18,22 @@ import {
   getInvoicesForDateRange,
   getCustomersWithUnpaidInvoices,
   getJobsWithAcceptedEstimatesButNoInvoice,
+  getAllCustomers,
+  getCustomerByName,
+  getCustomersByTag,
+  getCustomersByLocation,
 } from "@/lib/matte/queries";
 
 // System prompt for Matte
 const SYSTEM_PROMPT = `You are Matte AI, an assistant for a painting company. You have access to all business data: jobs, customers, invoices, estimates, materials, and payments.
+
+You can answer questions about:
+- Jobs: schedules, statuses, materials, customer info
+- Customers: contact info, location, tags (VIP, repeat customer, good payer, etc.), job history, payment analytics
+- Invoices: amounts, payment status, overdue invoices
+- Estimates: line items, paint colors, acceptance status
+- Materials: what's needed for jobs, paint colors and sheens
+- Payments: payment history, days to pay, revenue
 
 Answer questions directly and concisely using only the provided data. Use minimal tokens. No formatting, emojis, or conversational fluff. Just facts.
 
@@ -391,6 +403,98 @@ export async function POST(request: NextRequest) {
 
         data = customerResult;
         userPrompt = `Customers with unpaid invoices: ${JSON.stringify(customerResult.customers.map((c) => ({ name: c.name, unpaidCount: c.unpaidCount, total: c.unpaidTotal })))}. Answer concisely.`;
+        break;
+      }
+
+      case "ALL_CUSTOMERS": {
+        const allCustomersResult = await getAllCustomers(adminSupabase, companyId);
+
+        if (allCustomersResult.count === 0) {
+          specificRefusal = "No customers found.";
+          break;
+        }
+
+        data = allCustomersResult;
+        userPrompt = `All customers (${allCustomersResult.count} total): ${JSON.stringify(allCustomersResult.customers.map((c) => ({ name: c.name, phone: c.phone, email: c.email, city: c.city, state: c.state, tags: c.tags })))}. Answer concisely.`;
+        break;
+      }
+
+      case "CUSTOMER_DETAIL": {
+        // Extract customer name from entities or message
+        const customerNameToSearch = entities.customerName || entities.jobIdentifier;
+
+        if (!customerNameToSearch) {
+          specificRefusal = "I need a customer name to look up their details.";
+          break;
+        }
+
+        const customerDetailResult = await getCustomerByName(adminSupabase, companyId, customerNameToSearch);
+
+        if (customerDetailResult.count === 0) {
+          specificRefusal = `I don't see any customers matching "${customerNameToSearch}".`;
+          break;
+        }
+
+        data = customerDetailResult;
+        const customerData = customerDetailResult.customers.map((cd) => ({
+          name: cd.customer.name,
+          phone: cd.customer.phone,
+          email: cd.customer.email,
+          address: cd.customer.address1 ? `${cd.customer.address1}, ${cd.customer.city}, ${cd.customer.state} ${cd.customer.zip}` : null,
+          tags: cd.customer.tags,
+          notes: cd.customer.notes,
+          jobs: cd.jobs.length,
+          totalInvoiced: `$${(cd.totalInvoiced / 100).toFixed(2)}`,
+          totalPaid: `$${(cd.totalPaid / 100).toFixed(2)}`,
+          unpaid: `$${(cd.unpaidAmount / 100).toFixed(2)}`,
+          avgDaysToPay: cd.averageDaysToPay,
+          recentJobs: cd.jobs.slice(0, 3).map(j => ({ title: j.title, status: j.status })),
+        }));
+
+        userPrompt = `Customer details: ${JSON.stringify(customerData)}. Answer concisely.`;
+        break;
+      }
+
+      case "CUSTOMERS_BY_TAG": {
+        if (!entities.customerTag) {
+          specificRefusal = "I need a customer tag (like VIP, repeat customer, good payer) to filter by.";
+          break;
+        }
+
+        const tagResult = await getCustomersByTag(adminSupabase, companyId, entities.customerTag);
+
+        if (tagResult.count === 0) {
+          specificRefusal = `No customers found with the ${entities.customerTag} tag.`;
+          break;
+        }
+
+        data = tagResult;
+        userPrompt = `Customers with ${entities.customerTag} tag: ${JSON.stringify(tagResult.customers.map((c) => ({ name: c.name, phone: c.phone, email: c.email, tags: c.tags })))}. Answer concisely.`;
+        break;
+      }
+
+      case "CUSTOMERS_BY_LOCATION": {
+        if (!entities.location) {
+          specificRefusal = "I need a city or state to filter customers by location.";
+          break;
+        }
+
+        const locationResult = await getCustomersByLocation(
+          adminSupabase,
+          companyId,
+          entities.location.city,
+          entities.location.state
+        );
+
+        if (locationResult.count === 0) {
+          const locationStr = entities.location.city || entities.location.state;
+          specificRefusal = `No customers found in ${locationStr}.`;
+          break;
+        }
+
+        data = locationResult;
+        const locationStr = entities.location.city || entities.location.state;
+        userPrompt = `Customers in ${locationStr}: ${JSON.stringify(locationResult.customers.map((c) => ({ name: c.name, phone: c.phone, email: c.email, city: c.city, state: c.state })))}. Answer concisely.`;
         break;
       }
 
