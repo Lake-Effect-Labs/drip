@@ -25,6 +25,10 @@ export type MatteIntent =
   | "ESTIMATE_LOOKUP"
   | "INVOICE_LOOKUP"
   | "CUSTOMER_LOOKUP"
+  | "CUSTOMER_DETAIL"
+  | "CUSTOMERS_BY_TAG"
+  | "CUSTOMERS_BY_LOCATION"
+  | "ALL_CUSTOMERS"
   | "MATERIAL_LOOKUP"
   | "RELATIONSHIP_QUERY"
   | "OUT_OF_SCOPE";
@@ -36,6 +40,8 @@ export interface DetectedEntities {
   dateRange?: { start: Date; end: Date } | "today" | "tomorrow" | "this_week" | "last_month";
   dataType?: "jobs" | "estimates" | "invoices" | "materials" | "paint" | "customers" | "payments";
   relationship?: "accepted_no_invoice" | "unpaid" | "overdue";
+  customerTag?: string; // VIP, repeat_customer, good_payer, etc.
+  location?: { city?: string; state?: string };
 }
 
 interface IntentPattern {
@@ -178,6 +184,45 @@ const intentPatterns: IntentPattern[] = [
     keywords: ["which customers owe", "customers haven't paid", "customers unpaid"],
     patterns: [/which.*customer.*owe/i, /customer.*(unpaid|haven't paid|owe)/i],
   },
+  {
+    intent: "ALL_CUSTOMERS",
+    keywords: ["all customers", "list customers", "show customers", "my customers", "all my customers"],
+    patterns: [
+      /^(all|list|show).*customer/i,
+      /^(my|our).*customer/i,
+      /how.*many.*customer/i,
+      /^customer.*list/i,
+    ],
+  },
+  {
+    intent: "CUSTOMERS_BY_TAG",
+    keywords: ["vip customers", "repeat customers", "good payers", "referral customers"],
+    patterns: [
+      /vip.*customer/i,
+      /customer.*vip/i,
+      /repeat.*customer/i,
+      /customer.*repeat/i,
+      /good.*pay/i,
+      /customer.*good/i,
+      /referral.*customer/i,
+      /customer.*referral/i,
+    ],
+  },
+  {
+    intent: "CUSTOMERS_BY_LOCATION",
+    keywords: ["customers in", "customers from"],
+    patterns: [/customer.*(in|from|at)/i],
+  },
+  {
+    intent: "CUSTOMER_DETAIL",
+    keywords: ["customer info", "customer contact", "customer details", "about customer"],
+    patterns: [
+      /customer.*(info|contact|detail|phone|email|address)/i,
+      /(info|detail|contact|phone|email|address).*customer/i,
+      /about.*customer/i,
+      /tell.*me.*about.*customer/i,
+    ],
+  },
 ];
 
 export function classifyIntent(userInput: string): MatteIntent {
@@ -293,6 +338,42 @@ export function detectEntities(userInput: string): DetectedEntities {
       // Take first 1-2 words as potential identifier
       entities.jobIdentifier = potentialIdentifiers.slice(0, 2).join(' ');
     }
+  }
+
+  // Detect customer tags
+  const tagPatterns = [
+    { pattern: /vip/i, tag: 'vip' },
+    { pattern: /repeat/i, tag: 'repeat_customer' },
+    { pattern: /good.*pay/i, tag: 'good_payer' },
+    { pattern: /referral/i, tag: 'referral' },
+    { pattern: /needs.*follow/i, tag: 'needs_followup' },
+  ];
+
+  for (const { pattern, tag } of tagPatterns) {
+    if (pattern.test(normalized)) {
+      entities.customerTag = tag;
+      break;
+    }
+  }
+
+  // Detect location (city/state)
+  // Look for patterns like "customers in Chicago" or "customers from Illinois"
+  const locationMatch = normalized.match(/(?:in|from|at)\s+([a-z]+(?:\s+[a-z]+)?)/i);
+  if (locationMatch && locationMatch[1]) {
+    const location = locationMatch[1].trim();
+    // Common state abbreviations/names
+    const states = ['IL', 'NY', 'CA', 'TX', 'FL', 'Illinois', 'New York', 'California', 'Texas', 'Florida'];
+
+    if (states.some(s => s.toLowerCase() === location.toLowerCase())) {
+      entities.location = { state: location };
+    } else {
+      entities.location = { city: location };
+    }
+  }
+
+  // Detect customer name if query mentions specific customer
+  if (entities.dataType === 'customers' && entities.jobIdentifier && !entities.customerTag && !entities.location) {
+    entities.customerName = entities.jobIdentifier;
   }
 
   return entities;
