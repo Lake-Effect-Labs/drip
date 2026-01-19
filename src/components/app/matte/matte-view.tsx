@@ -13,7 +13,7 @@ interface Message {
 
 const INITIAL_MESSAGE: Message = {
   role: "assistant",
-  content: "I can answer questions about your jobs, customers, invoices, estimates, materials, and payments. Try asking about customer details, VIP customers, payment history, or anything else about your business data.",
+  content: "Ask me about jobs, customers, invoices, estimates, or materials.",
 };
 
 export function MatteView() {
