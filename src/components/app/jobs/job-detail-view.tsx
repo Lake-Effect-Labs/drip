@@ -1697,8 +1697,8 @@ export function JobDetailView({
                           Cancel
                         </Button>
                       )}
-                      <Button 
-                        onClick={handleSaveSchedule} 
+                      <Button
+                        onClick={handleSaveSchedule}
                         className="w-full sm:flex-1"
                         loading={savingSchedule}
                         disabled={!scheduledDate || !scheduledTime || (scheduledEndDate ? scheduledEndDate < scheduledDate : false)}
@@ -1708,8 +1708,8 @@ export function JobDetailView({
                       </Button>
                     </div>
                   </div>
-                ) : (
-                  /* Schedule Summary */
+                ) : job.scheduled_date && job.scheduled_time ? (
+                  /* Schedule Summary - only show when schedule exists */
                   <>
                     <div className="p-3 sm:p-4 rounded-lg bg-muted/30 space-y-3">
                       <div className="flex items-start gap-2 sm:gap-3 min-w-0">
@@ -1788,6 +1788,16 @@ export function JobDetailView({
                       </div>
                     )}
                   </>
+                ) : (
+                  /* No Schedule - show Create Schedule button */
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={() => setEditingSchedule(true)}
+                      className="flex-1 touch-target min-h-[44px]"
+                    >
+                      Create Schedule
+                    </Button>
+                  </div>
                 )}
               </div>
 

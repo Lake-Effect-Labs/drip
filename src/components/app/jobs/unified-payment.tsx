@@ -179,14 +179,24 @@ export function UnifiedPayment({
   useEffect(() => {
     setCurrentPaymentState(paymentState);
   }, [paymentState]);
-  
+
   useEffect(() => {
     setCurrentPaymentPaidAt(paymentPaidAt);
   }, [paymentPaidAt]);
-  
+
   useEffect(() => {
     setCurrentPaymentMethod(paymentMethod);
   }, [paymentMethod]);
+
+  // Reset estimateWasRevised flag when estimate status changes
+  // This ensures denied/accepted badges show up after customer actions
+  useEffect(() => {
+    setEstimateWasRevised(false);
+    // Close editing mode when estimate status changes from customer actions
+    if (estimateStatus === "denied" || estimateStatus === "accepted") {
+      setEditingEstimate(false);
+    }
+  }, [estimateStatus, estimateDeniedAt, paymentApprovedAt]);
 
   // Update saved line items when initialLineItems prop changes (from parent refresh)
   useEffect(() => {
@@ -1003,7 +1013,12 @@ export function UnifiedPayment({
               
             // Auto-generate materials from line items with paint details
             try {
-              await fetch(`/api/estimate-materials/${estimateId}/generate`, { method: "POST" });
+              const response = await fetch(`/api/estimate-materials/${estimateId}/generate`, { method: "POST" });
+              if (!response.ok) {
+                console.error("Failed to auto-generate materials:", response.status, response.statusText);
+              }
+              // Wait a bit for database to process the materials generation
+              await new Promise(resolve => setTimeout(resolve, 500));
             } catch (error) {
               console.error("Failed to auto-generate materials:", error);
             }
