@@ -1387,9 +1387,10 @@ export function JobDetailView({
   }
 
   function getScheduleLink() {
-    const token = scheduleToken || (job as any).schedule_token;
+    // Use unified portal token instead of schedule_token
+    const token = (job as any).unified_job_token;
     if (!token) return "";
-    return `${typeof window !== "undefined" ? window.location.origin : ""}/s/${token}`;
+    return `${typeof window !== "undefined" ? window.location.origin : ""}/e/${token}?tab=schedule`;
   }
 
   function getScheduleMessage() {
@@ -2883,7 +2884,7 @@ export function JobDetailView({
       <Dialog open={showShareScheduleDialog} onOpenChange={async (open) => {
         setShowShareScheduleDialog(open);
         if (open) {
-          await ensureScheduleToken();
+          await ensureUnifiedToken();
         }
       }}>
         <DialogContent className="max-w-lg">
@@ -2896,10 +2897,6 @@ export function JobDetailView({
                 <Calendar className="mx-auto h-8 w-8 mb-2" />
                 <p>This job hasn't been scheduled yet.</p>
                 <p className="text-sm mt-1">Add a scheduled date and time first.</p>
-              </div>
-            ) : loadingScheduleToken ? (
-              <div className="text-center py-4">
-                <p className="text-sm text-muted-foreground">Generating link...</p>
               </div>
             ) : !getScheduleLink() ? (
               <div className="text-center py-4">
@@ -2926,10 +2923,9 @@ export function JobDetailView({
                         readOnly 
                         className="font-mono text-sm"
                       />
-                      <Button 
+                      <Button
                         variant="outline"
                         onClick={copyScheduleLink}
-                        disabled={loadingScheduleToken}
                         className="shrink-0"
                       >
                         <Copy className="h-4 w-4" />

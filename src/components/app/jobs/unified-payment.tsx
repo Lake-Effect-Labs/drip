@@ -240,6 +240,7 @@ export function UnifiedPayment({
   const [currentPaymentToken, setCurrentPaymentToken] = useState<string | undefined>();
   const [loadingToken, setLoadingToken] = useState(false);
   const [loadingPaymentToken, setLoadingPaymentToken] = useState(false);
+  const [estimateWasRevised, setEstimateWasRevised] = useState(false);
 
   // Fetch estimate token if not available
   useEffect(() => {
@@ -1011,9 +1012,16 @@ export function UnifiedPayment({
 
       // Show appropriate message based on whether this was a revision
       const wasApproved = currentPaymentState === "approved";
+      const wasDenied = estimateStatus === "denied";
+
       if (wasApproved) {
         addToast("Estimate revised - customer needs to approve again", "success");
         // Immediately update local state to show proposed UI
+        setCurrentPaymentState("proposed");
+      } else if (wasDenied) {
+        addToast("Estimate revised - sent to customer for approval", "success");
+        // Mark that the estimate was revised so we hide the denied banner
+        setEstimateWasRevised(true);
         setCurrentPaymentState("proposed");
       } else {
         addToast("Estimate saved", "success");
@@ -1439,7 +1447,7 @@ export function UnifiedPayment({
                 {paymentState.charAt(0).toUpperCase() + paymentState.slice(1)}
               </Badge>
             )}
-            {estimateStatus === "denied" && (
+            {estimateStatus === "denied" && !estimateWasRevised && (
               <Badge variant="destructive">Denied</Badge>
             )}
           </div>
@@ -1451,7 +1459,7 @@ export function UnifiedPayment({
         </div>
 
         {/* DENIED ESTIMATE ALERT */}
-        {estimateStatus === "denied" && !editingEstimate && (
+        {estimateStatus === "denied" && !editingEstimate && !estimateWasRevised && (
           <div className="rounded-lg border-2 border-destructive bg-destructive/10 p-4 space-y-3">
             <div className="flex items-start gap-3">
               <div className="w-6 h-6 rounded-full bg-destructive text-white flex items-center justify-center shrink-0 mt-0.5">
@@ -1470,22 +1478,8 @@ export function UnifiedPayment({
                     <p className="text-sm text-muted-foreground">{estimateDenialReason}</p>
                   </div>
                 )}
-                <div className="flex gap-2 pt-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={async () => {
-                      await loadExistingEstimate();
-                      setEditingEstimate(true);
-                    }}
-                    disabled={loadingEstimateData}
-                  >
-                    <Edit2 className="h-4 w-4 mr-2" />
-                    {loadingEstimateData ? "Loading..." : "Revise Estimate"}
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Review the customer's feedback and revise the estimate. You can adjust pricing, scope, or send a message to discuss their concerns.
+                <p className="text-xs text-muted-foreground mt-2">
+                  Review the customer's feedback and use the "Edit Estimate" button below to revise the estimate.
                 </p>
               </div>
             </div>
@@ -1496,7 +1490,7 @@ export function UnifiedPayment({
         {editingEstimate && (
           <div className="space-y-4">
             {/* Context message when editing approved/denied estimate */}
-            {(currentPaymentState === "approved" || estimateStatus === "denied") && (
+            {(currentPaymentState === "approved" || (estimateStatus === "denied" && !estimateWasRevised)) && (
               <div className="rounded-lg border bg-warning/10 border-warning/20 p-4">
                 {currentPaymentState === "approved" ? (
                   <>
@@ -1840,7 +1834,7 @@ export function UnifiedPayment({
                   })}
                   className="flex-1 touch-target min-h-[44px]"
                 >
-                  {currentPaymentState === "proposed" || currentPaymentState === "approved" || estimateStatus === "denied"
+                  {currentPaymentState === "proposed" || currentPaymentState === "approved" || (estimateStatus === "denied" && !estimateWasRevised)
                     ? "Update Estimate"
                     : "Create Estimate"}
                 </Button>
