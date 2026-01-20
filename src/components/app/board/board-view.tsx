@@ -30,7 +30,14 @@ import { Plus, Search, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { createClient } from "@/lib/supabase/client";
 
-type JobWithCustomer = Job & { customer: Customer | null };
+type LatestEstimate = {
+  id: string;
+  status: string;
+  denied_at: string | null;
+  denial_reason: string | null;
+};
+
+type JobWithCustomer = Job & { customer: Customer | null; latestEstimate?: LatestEstimate | null };
 
 interface BoardViewProps {
   initialJobs: JobWithCustomer[];
@@ -280,6 +287,46 @@ export function BoardView({
         async () => {
           // Refresh jobs when a new one is created to get customer data
           window.location.reload();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [companyId, supabase]);
+
+  // Real-time subscription for estimate updates (status changes like denied/accepted)
+  useEffect(() => {
+    const channel = supabase
+      .channel(`board-estimates-${companyId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "estimates",
+        },
+        (payload) => {
+          // Update the latestEstimate for the affected job
+          const updatedEstimate = payload.new as { id: string; job_id: string; status: string; denied_at: string | null; denial_reason: string | null };
+          if (updatedEstimate.job_id) {
+            setJobs((prev) =>
+              prev.map((job) =>
+                job.id === updatedEstimate.job_id
+                  ? {
+                      ...job,
+                      latestEstimate: {
+                        id: updatedEstimate.id,
+                        status: updatedEstimate.status,
+                        denied_at: updatedEstimate.denied_at,
+                        denial_reason: updatedEstimate.denial_reason,
+                      },
+                    }
+                  : job
+              )
+            );
+          }
         }
       )
       .subscribe();

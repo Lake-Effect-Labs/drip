@@ -47,9 +47,12 @@ export function formatDate(date: Date | string | null | undefined): string {
   });
 }
 
-export function formatTime(time: string): string {
+export function formatTime(time: string | null | undefined): string {
+  if (!time) return "";
   const [hours, minutes] = time.split(":");
+  if (!hours || !minutes) return "";
   const h = parseInt(hours);
+  if (isNaN(h)) return "";
   const ampm = h >= 12 ? "PM" : "AM";
   const hour = h % 12 || 12;
   return `${hour}:${minutes} ${ampm}`;

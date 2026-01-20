@@ -48,7 +48,7 @@ export async function getJobsWithCustomers(
 
   // Get unique customer IDs
   const customerIds = [...new Set(jobs.filter((j) => j.customer_id).map((j) => j.customer_id!))];
-  
+
   // Get customers
   const { data: customers } = customerIds.length > 0
     ? await supabase
@@ -59,9 +59,31 @@ export async function getJobsWithCustomers(
 
   const customerMap = new Map(customers?.map((c) => [c.id, c]) || []);
 
+  // Get latest estimate for each job
+  const jobIds = jobs.map((j) => j.id);
+  const { data: estimates } = await supabase
+    .from("estimates")
+    .select("id, job_id, status, denied_at, denial_reason")
+    .in("job_id", jobIds)
+    .order("created_at", { ascending: false });
+
+  // Group estimates by job_id, keeping only the latest one
+  const latestEstimateMap = new Map<string, { id: string; status: string; denied_at: string | null; denial_reason: string | null }>();
+  estimates?.forEach((est) => {
+    if (est.job_id && !latestEstimateMap.has(est.job_id)) {
+      latestEstimateMap.set(est.job_id, {
+        id: est.id,
+        status: est.status,
+        denied_at: est.denied_at,
+        denial_reason: est.denial_reason,
+      });
+    }
+  });
+
   return jobs.map((job) => ({
     ...job,
     customer: job.customer_id ? customerMap.get(job.customer_id) || null : null,
+    latestEstimate: latestEstimateMap.get(job.id) || null,
   }));
 }
 

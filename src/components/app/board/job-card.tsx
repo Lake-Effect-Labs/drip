@@ -6,9 +6,16 @@ import { useRouter } from "next/navigation";
 import { useRef, useEffect } from "react";
 import { cn, formatDate } from "@/lib/utils";
 import type { Job, Customer } from "@/types/database";
-import { Calendar, MapPin, User } from "lucide-react";
+import { Calendar, MapPin, User, XCircle } from "lucide-react";
 
-type JobWithCustomer = Job & { customer: Customer | null };
+type LatestEstimate = {
+  id: string;
+  status: string;
+  denied_at: string | null;
+  denial_reason: string | null;
+};
+
+type JobWithCustomer = Job & { customer: Customer | null; latestEstimate?: LatestEstimate | null };
 
 interface JobCardProps {
   job: JobWithCustomer;
@@ -105,6 +112,13 @@ export function JobCard({ job }: JobCardProps) {
           <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
             <Calendar className="h-3 w-3" />
             <span>{formatDate(job.scheduled_date)}</span>
+          </div>
+        )}
+
+        {job.latestEstimate?.status === "denied" && (
+          <div className="mt-1 flex items-center gap-1 text-xs text-red-600">
+            <XCircle className="h-3 w-3" />
+            <span>Estimate declined</span>
           </div>
         )}
       </div>

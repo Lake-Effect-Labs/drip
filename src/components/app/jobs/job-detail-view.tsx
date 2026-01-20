@@ -334,7 +334,7 @@ export function JobDetailView({
   const [copyDialogType, setCopyDialogType] = useState<"estimate" | "invoice" | "materials" | "reminder" | "schedule-confirmation">("estimate");
   const [materialType, setMaterialType] = useState<"paint" | "generic">("generic");
   const [editingCostId, setEditingCostId] = useState<string | null>(null);
-  const [editingSchedule, setEditingSchedule] = useState(false);
+  const [editingSchedule, setEditingSchedule] = useState(!job.scheduled_date);
   const [editingAssignment, setEditingAssignment] = useState(false);
   const [editingTracking, setEditingTracking] = useState(false);
   const [editingNotes, setEditingNotes] = useState(false);
