@@ -13,7 +13,7 @@ interface Message {
 
 const INITIAL_MESSAGE: Message = {
   role: "assistant",
-  content: "Ask about jobs, customers, invoices, estimates, or materials.",
+  content: "Ask me about jobs, customers, invoices, estimates, or materials.",
 };
 
 export function MatteView() {

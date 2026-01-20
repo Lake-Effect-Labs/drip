@@ -723,3 +723,296 @@ export async function getJobsWithAcceptedEstimatesButNoInvoice(
     jobs: jobsWithoutInvoices.slice(0, 10),
   };
 }
+
+// Customer-specific query functions
+
+interface AllCustomersData {
+  count: number;
+  customers: Array<{
+    id: string;
+    name: string;
+    phone: string | null;
+    email: string | null;
+    city: string | null;
+    state: string | null;
+    tags?: string[];
+  }>;
+}
+
+export async function getAllCustomers(
+  supabase: SupabaseClient,
+  companyId: string
+): Promise<AllCustomersData> {
+  const { data: customers } = await supabase
+    .from("customers")
+    .select("id, name, phone, email, city, state")
+    .eq("company_id", companyId)
+    .order("name");
+
+  // Get tags for all customers
+  const customerIds = (customers || []).map(c => c.id);
+  const { data: customerTags } = customerIds.length > 0 ? await supabase
+    .from("customer_tags")
+    .select("customer_id, tag")
+    .in("customer_id", customerIds) : { data: null };
+
+  // Build a map of customer tags
+  const tagsMap = new Map<string, string[]>();
+  for (const tag of customerTags || []) {
+    if (!tagsMap.has(tag.customer_id)) {
+      tagsMap.set(tag.customer_id, []);
+    }
+    tagsMap.get(tag.customer_id)!.push(tag.tag);
+  }
+
+  const customersList = (customers || []).map(c => ({
+    id: c.id,
+    name: c.name,
+    phone: c.phone,
+    email: c.email,
+    city: c.city,
+    state: c.state,
+    tags: tagsMap.get(c.id) || [],
+  }));
+
+  return {
+    count: customersList.length,
+    customers: customersList.slice(0, 50), // Limit to 50 for response
+  };
+}
+
+interface CustomerDetailData {
+  customer: {
+    id: string;
+    name: string;
+    phone: string | null;
+    email: string | null;
+    address1: string | null;
+    address2: string | null;
+    city: string | null;
+    state: string | null;
+    zip: string | null;
+    notes: string | null;
+    tags: string[];
+  };
+  jobs: Array<{ id: string; title: string; status: string; scheduledDate?: string }>;
+  invoices: Array<{ id: string; amount: number; status: string; created: string }>;
+  totalInvoiced: number;
+  totalPaid: number;
+  unpaidAmount: number;
+  averageDaysToPay: number | null;
+}
+
+export async function getCustomerByName(
+  supabase: SupabaseClient,
+  companyId: string,
+  searchTerm: string
+): Promise<{ count: number; customers: CustomerDetailData[] }> {
+  // Search for customers by name (case-insensitive, partial match)
+  const { data: customers } = await supabase
+    .from("customers")
+    .select("id, name, phone, email, address1, address2, city, state, zip, notes")
+    .eq("company_id", companyId)
+    .ilike("name", `%${searchTerm}%`)
+    .order("name")
+    .limit(5);
+
+  if (!customers || customers.length === 0) {
+    return { count: 0, customers: [] };
+  }
+
+  const customerDetails: CustomerDetailData[] = [];
+
+  for (const customer of customers) {
+    // Get tags
+    const { data: tags } = await supabase
+      .from("customer_tags")
+      .select("tag")
+      .eq("customer_id", customer.id);
+
+    // Get jobs
+    const { data: jobs } = await supabase
+      .from("jobs")
+      .select("id, title, status, scheduled_date")
+      .eq("customer_id", customer.id)
+      .order("created_at", { ascending: false })
+      .limit(10);
+
+    // Get invoices
+    const { data: invoices } = await supabase
+      .from("invoices")
+      .select("id, amount_total, status, created_at")
+      .eq("customer_id", customer.id)
+      .order("created_at", { ascending: false });
+
+    // Get payments for analytics
+    const invoiceIds = (invoices || []).map(inv => inv.id);
+    const { data: payments } = invoiceIds.length > 0 ? await supabase
+      .from("invoice_payments")
+      .select("invoice_id, amount, paid_at, invoice:invoices(created_at)")
+      .in("invoice_id", invoiceIds) : { data: null };
+
+    // Calculate payment analytics
+    let totalInvoiced = 0;
+    let totalPaid = 0;
+    let unpaidAmount = 0;
+    const daysToPay: number[] = [];
+
+    for (const invoice of invoices || []) {
+      totalInvoiced += invoice.amount_total;
+      if (invoice.status === "paid") {
+        totalPaid += invoice.amount_total;
+
+        // Calculate days to pay for this invoice
+        const invoicePayments = (payments || []).filter(p => p.invoice_id === invoice.id);
+        if (invoicePayments.length > 0) {
+          const createdDate = new Date(invoice.created_at);
+          const paidDate = new Date(invoicePayments[0].paid_at);
+          const days = Math.floor((paidDate.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24));
+          if (days >= 0) {
+            daysToPay.push(days);
+          }
+        }
+      } else {
+        unpaidAmount += invoice.amount_total;
+      }
+    }
+
+    const averageDaysToPay = daysToPay.length > 0
+      ? Math.round(daysToPay.reduce((a, b) => a + b, 0) / daysToPay.length)
+      : null;
+
+    customerDetails.push({
+      customer: {
+        id: customer.id,
+        name: customer.name,
+        phone: customer.phone,
+        email: customer.email,
+        address1: customer.address1,
+        address2: customer.address2,
+        city: customer.city,
+        state: customer.state,
+        zip: customer.zip,
+        notes: customer.notes,
+        tags: (tags || []).map(t => t.tag),
+      },
+      jobs: (jobs || []).map(j => ({
+        id: j.id,
+        title: j.title,
+        status: j.status,
+        scheduledDate: j.scheduled_date,
+      })),
+      invoices: (invoices || []).map(inv => ({
+        id: inv.id,
+        amount: inv.amount_total,
+        status: inv.status,
+        created: inv.created_at,
+      })),
+      totalInvoiced,
+      totalPaid,
+      unpaidAmount,
+      averageDaysToPay,
+    });
+  }
+
+  return { count: customerDetails.length, customers: customerDetails };
+}
+
+interface CustomersByTagData {
+  count: number;
+  customers: Array<{
+    id: string;
+    name: string;
+    phone: string | null;
+    email: string | null;
+    tags: string[];
+  }>;
+}
+
+export async function getCustomersByTag(
+  supabase: SupabaseClient,
+  companyId: string,
+  tag: string
+): Promise<CustomersByTagData> {
+  // Get customers with this tag
+  const { data: customerTags } = await supabase
+    .from("customer_tags")
+    .select("customer_id, customer:customers(id, name, phone, email, company_id)")
+    .eq("tag", tag);
+
+  if (!customerTags || customerTags.length === 0) {
+    return { count: 0, customers: [] };
+  }
+
+  // Filter by company and get all tags for each customer
+  const customersList: Array<{
+    id: string;
+    name: string;
+    phone: string | null;
+    email: string | null;
+    tags: string[];
+  }> = [];
+
+  for (const ct of customerTags) {
+    const customer = ct.customer as any;
+    if (customer && customer.company_id === companyId) {
+      // Get all tags for this customer
+      const { data: allTags } = await supabase
+        .from("customer_tags")
+        .select("tag")
+        .eq("customer_id", customer.id);
+
+      customersList.push({
+        id: customer.id,
+        name: customer.name,
+        phone: customer.phone,
+        email: customer.email,
+        tags: (allTags || []).map(t => t.tag),
+      });
+    }
+  }
+
+  return {
+    count: customersList.length,
+    customers: customersList.slice(0, 20),
+  };
+}
+
+interface CustomersByLocationData {
+  count: number;
+  customers: Array<{
+    id: string;
+    name: string;
+    phone: string | null;
+    email: string | null;
+    city: string | null;
+    state: string | null;
+    address1: string | null;
+  }>;
+}
+
+export async function getCustomersByLocation(
+  supabase: SupabaseClient,
+  companyId: string,
+  city?: string,
+  state?: string
+): Promise<CustomersByLocationData> {
+  let query = supabase
+    .from("customers")
+    .select("id, name, phone, email, city, state, address1")
+    .eq("company_id", companyId);
+
+  if (city) {
+    query = query.ilike("city", `%${city}%`);
+  }
+  if (state) {
+    query = query.ilike("state", `%${state}%`);
+  }
+
+  const { data: customers } = await query.order("name").limit(20);
+
+  return {
+    count: (customers || []).length,
+    customers: customers || [],
+  };
+}

@@ -18,14 +18,166 @@ import {
   getInvoicesForDateRange,
   getCustomersWithUnpaidInvoices,
   getJobsWithAcceptedEstimatesButNoInvoice,
+  getAllCustomers,
+  getCustomerByName,
+  getCustomersByTag,
+  getCustomersByLocation,
 } from "@/lib/matte/queries";
 
 // System prompt for Matte
 const SYSTEM_PROMPT = `You are Matte AI, an assistant for a painting company. You have access to all business data: jobs, customers, invoices, estimates, materials, and payments.
 
+You can answer questions about:
+- Jobs: schedules, statuses, materials, customer info
+- Customers: contact info, location, tags (VIP, repeat customer, good payer, etc.), job history, payment analytics
+- Invoices: amounts, payment status, overdue invoices
+- Estimates: line items, paint colors, acceptance status
+- Materials: what's needed for jobs, paint colors and sheens
+- Payments: payment history, days to pay, revenue
+
 Answer questions directly and concisely using only the provided data. Use minimal tokens. No formatting, emojis, or conversational fluff. Just facts.
 
 If data is missing, say "No data available" or "Not found".`;
+
+// Generate response from data without AI
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function generateResponseFromData(intent: string, data: any, message: string): string {
+  switch (intent) {
+    case "ALL_CUSTOMERS": {
+      if (data.count === 0) return "No customers found.";
+      const customerList = data.customers
+        .slice(0, 10)
+        .map((c: any) => {
+          const parts = [c.name];
+          if (c.phone) parts.push(c.phone);
+          if (c.email) parts.push(c.email);
+          if (c.city && c.state) parts.push(`${c.city}, ${c.state}`);
+          if (c.tags && c.tags.length > 0) parts.push(`Tags: ${c.tags.join(", ")}`);
+          return parts.join(" - ");
+        })
+        .join("\n");
+      return `Found ${data.count} customers:\n\n${customerList}${data.count > 10 ? "\n\n...and more" : ""}`;
+    }
+
+    case "CUSTOMER_DETAIL": {
+      if (data.count === 0) return "Customer not found.";
+      const customer = data.customers[0];
+      const lines = [
+        `Customer: ${customer.name}`,
+        customer.phone ? `Phone: ${customer.phone}` : null,
+        customer.email ? `Email: ${customer.email}` : null,
+        customer.address ? `Address: ${customer.address}` : null,
+        customer.tags?.length > 0 ? `Tags: ${customer.tags.join(", ")}` : null,
+        customer.notes ? `Notes: ${customer.notes}` : null,
+        `\nJob History: ${customer.jobs} total jobs`,
+        `Total Invoiced: ${customer.totalInvoiced}`,
+        `Total Paid: ${customer.totalPaid}`,
+        `Unpaid: ${customer.unpaid}`,
+        customer.avgDaysToPay ? `Average Days to Pay: ${customer.avgDaysToPay} days` : null,
+      ].filter(Boolean);
+
+      if (customer.recentJobs?.length > 0) {
+        lines.push("\nRecent Jobs:");
+        customer.recentJobs.forEach((j: any) => {
+          lines.push(`  - ${j.title} (${j.status})`);
+        });
+      }
+
+      return lines.join("\n");
+    }
+
+    case "CUSTOMERS_BY_TAG": {
+      if (data.count === 0) return "No customers found with that tag.";
+      const customerList = data.customers
+        .slice(0, 10)
+        .map((c: any) => `${c.name} - ${c.phone || "No phone"} - ${c.email || "No email"}`)
+        .join("\n");
+      return `Found ${data.count} customers:\n\n${customerList}${data.count > 10 ? "\n\n...and more" : ""}`;
+    }
+
+    case "CUSTOMERS_BY_LOCATION": {
+      if (data.count === 0) return "No customers found in that location.";
+      const customerList = data.customers
+        .slice(0, 10)
+        .map((c: any) => `${c.name} - ${c.city}, ${c.state} - ${c.phone || "No phone"}`)
+        .join("\n");
+      return `Found ${data.count} customers:\n\n${customerList}${data.count > 10 ? "\n\n...and more" : ""}`;
+    }
+
+    case "CUSTOMER_LOOKUP": {
+      if (data.customers.length === 0) return "All customers have paid their invoices!";
+      const customerList = data.customers
+        .slice(0, 10)
+        .map((c: any) => `${c.name} - ${c.unpaidCount} unpaid invoice${c.unpaidCount > 1 ? "s" : ""} - $${(c.unpaidTotal / 100).toFixed(2)}`)
+        .join("\n");
+      return `Customers with unpaid invoices:\n\n${customerList}`;
+    }
+
+    case "UNPAID_INVOICES": {
+      if (data.count === 0) return "No unpaid invoices!";
+      const total = (data.total / 100).toFixed(2);
+      const invoiceList = data.invoices
+        .slice(0, 5)
+        .map((inv: any) => `${inv.customerName} - $${(inv.amount / 100).toFixed(2)}`)
+        .join("\n");
+      return `${data.count} unpaid invoice${data.count > 1 ? "s" : ""} totaling $${total}:\n\n${invoiceList}${data.count > 5 ? "\n\n...and more" : ""}`;
+    }
+
+    case "OVERDUE_INVOICES": {
+      if (data.count === 0) return "No overdue invoices!";
+      const total = (data.total / 100).toFixed(2);
+      const invoiceList = data.invoices
+        .slice(0, 5)
+        .map((inv: any) => `${inv.customerName} - $${(inv.amount / 100).toFixed(2)}`)
+        .join("\n");
+      return `${data.count} overdue invoice${data.count > 1 ? "s" : ""} totaling $${total}:\n\n${invoiceList}${data.count > 5 ? "\n\n...and more" : ""}`;
+    }
+
+    case "JOBS_TODAY": {
+      if (data.count === 0) return "No jobs scheduled for today.";
+      const jobList = data.jobs
+        .map((j: any) => `${j.title} - ${j.customerName} (${j.status})`)
+        .join("\n");
+      return `${data.count} job${data.count > 1 ? "s" : ""} today:\n\n${jobList}`;
+    }
+
+    case "JOB_LOOKUP": {
+      if (data.count === 0) return "No jobs found.";
+      const jobList = data.jobs
+        .slice(0, 5)
+        .map((j: any) => `${j.title} - ${j.customerName} - ${j.status}${j.scheduledDate ? ` - Scheduled: ${j.scheduledDate}` : ""}`)
+        .join("\n");
+      return `Found ${data.count} job${data.count > 1 ? "s" : ""}:\n\n${jobList}${data.count > 5 ? "\n\n...and more" : ""}`;
+    }
+
+    case "GENERAL_SUMMARY": {
+      const lines = [];
+      if (data.generalData) {
+        lines.push(`Total Jobs: ${data.generalData.totalJobs}`);
+        lines.push(`Active Jobs: ${data.generalData.activeJobs}`);
+        lines.push(`Total Invoiced: $${(data.generalData.totalInvoiced / 100).toFixed(2)}`);
+        lines.push(`Total Paid: $${(data.generalData.totalPaid / 100).toFixed(2)}`);
+        lines.push(`Unpaid Invoices: ${data.generalData.unpaidCount}`);
+      }
+
+      if (data.recentJobs && data.recentJobs.length > 0) {
+        lines.push("\nRecent Jobs:");
+        data.recentJobs.slice(0, 5).forEach((j: any) => {
+          lines.push(`  - ${j.title} (${j.customer}) - ${j.status}`);
+        });
+      }
+
+      if (data.customers && data.customers.length > 0) {
+        lines.push(`\nTotal Customers: ${data.customers.length}`);
+      }
+
+      return lines.join("\n") || "No data available.";
+    }
+
+    default:
+      return "I found the data but couldn't format the response. Please try rephrasing your question.";
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -394,6 +546,98 @@ export async function POST(request: NextRequest) {
         break;
       }
 
+      case "ALL_CUSTOMERS": {
+        const allCustomersResult = await getAllCustomers(adminSupabase, companyId);
+
+        if (allCustomersResult.count === 0) {
+          specificRefusal = "No customers found.";
+          break;
+        }
+
+        data = allCustomersResult;
+        userPrompt = `All customers (${allCustomersResult.count} total): ${JSON.stringify(allCustomersResult.customers.map((c) => ({ name: c.name, phone: c.phone, email: c.email, city: c.city, state: c.state, tags: c.tags })))}. Answer concisely.`;
+        break;
+      }
+
+      case "CUSTOMER_DETAIL": {
+        // Extract customer name from entities or message
+        const customerNameToSearch = entities.customerName || entities.jobIdentifier;
+
+        if (!customerNameToSearch) {
+          specificRefusal = "I need a customer name to look up their details.";
+          break;
+        }
+
+        const customerDetailResult = await getCustomerByName(adminSupabase, companyId, customerNameToSearch);
+
+        if (customerDetailResult.count === 0) {
+          specificRefusal = `I don't see any customers matching "${customerNameToSearch}".`;
+          break;
+        }
+
+        data = customerDetailResult;
+        const customerData = customerDetailResult.customers.map((cd) => ({
+          name: cd.customer.name,
+          phone: cd.customer.phone,
+          email: cd.customer.email,
+          address: cd.customer.address1 ? `${cd.customer.address1}, ${cd.customer.city}, ${cd.customer.state} ${cd.customer.zip}` : null,
+          tags: cd.customer.tags,
+          notes: cd.customer.notes,
+          jobs: cd.jobs.length,
+          totalInvoiced: `$${(cd.totalInvoiced / 100).toFixed(2)}`,
+          totalPaid: `$${(cd.totalPaid / 100).toFixed(2)}`,
+          unpaid: `$${(cd.unpaidAmount / 100).toFixed(2)}`,
+          avgDaysToPay: cd.averageDaysToPay,
+          recentJobs: cd.jobs.slice(0, 3).map(j => ({ title: j.title, status: j.status })),
+        }));
+
+        userPrompt = `Customer details: ${JSON.stringify(customerData)}. Answer concisely.`;
+        break;
+      }
+
+      case "CUSTOMERS_BY_TAG": {
+        if (!entities.customerTag) {
+          specificRefusal = "I need a customer tag (like VIP, repeat customer, good payer) to filter by.";
+          break;
+        }
+
+        const tagResult = await getCustomersByTag(adminSupabase, companyId, entities.customerTag);
+
+        if (tagResult.count === 0) {
+          specificRefusal = `No customers found with the ${entities.customerTag} tag.`;
+          break;
+        }
+
+        data = tagResult;
+        userPrompt = `Customers with ${entities.customerTag} tag: ${JSON.stringify(tagResult.customers.map((c) => ({ name: c.name, phone: c.phone, email: c.email, tags: c.tags })))}. Answer concisely.`;
+        break;
+      }
+
+      case "CUSTOMERS_BY_LOCATION": {
+        if (!entities.location) {
+          specificRefusal = "I need a city or state to filter customers by location.";
+          break;
+        }
+
+        const locationResult = await getCustomersByLocation(
+          adminSupabase,
+          companyId,
+          entities.location.city,
+          entities.location.state
+        );
+
+        if (locationResult.count === 0) {
+          const locationStr = entities.location.city || entities.location.state;
+          specificRefusal = `No customers found in ${locationStr}.`;
+          break;
+        }
+
+        data = locationResult;
+        const locationStr = entities.location.city || entities.location.state;
+        userPrompt = `Customers in ${locationStr}: ${JSON.stringify(locationResult.customers.map((c) => ({ name: c.name, phone: c.phone, email: c.email, city: c.city, state: c.state })))}. Answer concisely.`;
+        break;
+      }
+
       case "RELATIONSHIP_QUERY": {
         if (entities.relationship === "accepted_no_invoice") {
           const relationshipResult = await getJobsWithAcceptedEstimatesButNoInvoice(adminSupabase, companyId);
@@ -536,41 +780,46 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // Call OpenAI API (using gpt-4o-mini for cost efficiency)
-    const openaiApiKey = process.env.OPENAI_API_KEY;
-    if (!openaiApiKey) {
-      // Fallback response if API key not configured
-      return NextResponse.json({
-        response: "I can help answer questions about your jobs, invoices, and materials.",
-      });
+    // Generate response directly from data (no AI needed)
+    let response = "";
+
+    try {
+      const openaiApiKey = process.env.OPENAI_API_KEY;
+
+      if (openaiApiKey) {
+        // Use OpenAI if API key is configured
+        const openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${openaiApiKey}`,
+          },
+          body: JSON.stringify({
+            model: "gpt-4o-mini",
+            messages: [
+              { role: "system", content: SYSTEM_PROMPT },
+              { role: "user", content: userPrompt },
+            ],
+            max_tokens: 200,
+            temperature: 0.1,
+          }),
+        });
+
+        if (openaiResponse.ok) {
+          const openaiData = await openaiResponse.json();
+          response = openaiData.choices[0]?.message?.content || "";
+        }
+      }
+
+      // Fallback: Generate response directly from data if OpenAI fails or is not configured
+      if (!response) {
+        response = generateResponseFromData(intent, data, message);
+      }
+    } catch (error) {
+      console.error("Response generation error:", error);
+      // Generate response from data as fallback
+      response = generateResponseFromData(intent, data, message);
     }
-
-    const openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${openaiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: userPrompt },
-        ],
-        max_tokens: 200,
-        temperature: 0.1,
-      }),
-    });
-
-    if (!openaiResponse.ok) {
-      console.error("OpenAI API error:", await openaiResponse.text());
-      return NextResponse.json({
-        response: "I'm having trouble right now. Please try again.",
-      });
-    }
-
-    const openaiData = await openaiResponse.json();
-    const response = openaiData.choices[0]?.message?.content || "I don't have an answer for that.";
 
     return NextResponse.json({ response });
   } catch (error) {

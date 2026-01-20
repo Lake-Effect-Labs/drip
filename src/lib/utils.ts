@@ -48,11 +48,18 @@ export function formatDate(date: Date | string | null | undefined): string {
 }
 
 export function formatTime(time: string | null | undefined): string {
-  if (!time) return "";
+  if (!time || typeof time !== 'string') {
+    return "";
+  }
+
   const [hours, minutes] = time.split(":");
-  if (!hours || !minutes) return "";
+
+  // Validate that we have both hours and minutes
+  if (!hours || !minutes || isNaN(parseInt(hours)) || isNaN(parseInt(minutes))) {
+    return "";
+  }
+
   const h = parseInt(hours);
-  if (isNaN(h)) return "";
   const ampm = h >= 12 ? "PM" : "AM";
   const hour = h % 12 || 12;
   return `${hour}:${minutes} ${ampm}`;

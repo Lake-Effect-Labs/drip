@@ -3,6 +3,9 @@ import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { getTeamMembers } from "@/lib/supabase/queries";
 import { JobDetailView } from "@/components/app/jobs/job-detail-view";
 
+// Ensure this page is always dynamically rendered with fresh data
+export const dynamic = 'force-dynamic';
+
 export default async function JobPage({
   params,
 }: {

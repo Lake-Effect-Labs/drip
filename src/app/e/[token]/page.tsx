@@ -3,6 +3,9 @@ import { createAdminClient } from "@/lib/supabase/server";
 import { PublicEstimateView } from "@/components/public/public-estimate-view";
 import type { EstimateMaterial } from "@/types/database";
 
+// Ensure this page is always dynamically rendered with fresh data
+export const dynamic = 'force-dynamic';
+
 export default async function PublicEstimatePage({
   params,
 }: {
