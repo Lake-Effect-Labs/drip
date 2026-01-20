@@ -305,12 +305,15 @@ export function UnifiedPayment({
     setLoadingEstimateData(true);
     try {
       // Always try to load from database first to get full details
-      // Fetch the estimate
-      const { data: estimate } = await supabase
+      // Fetch the latest estimate (there may be multiple if revisions were created)
+      const { data: estimates } = await supabase
         .from("estimates")
-        .select("id")
+        .select("id, status, created_at")
         .eq("job_id", jobId)
-        .maybeSingle();
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      const estimate = estimates?.[0] || null;
       
       if (!estimate) {
         // If no estimate exists, use saved or initial line items as fallback
@@ -753,97 +756,81 @@ export function UnifiedPayment({
       // Create or update estimate record for public sharing
       // Always update the estimate, whether or not we have a token
       const token = currentPublicToken || generateToken(24);
-      
-      // First check if estimate exists for this job
-      const { data: existingEstimate } = await supabase
+
+      // First check if estimate exists for this job (get the latest one)
+      const { data: existingEstimates } = await supabase
         .from("estimates")
-        .select("id, public_token")
+        .select("id, public_token, status")
         .eq("job_id", jobId)
-        .maybeSingle();
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      const existingEstimate = existingEstimates?.[0] || null;
 
       let estimateId: string = "";
       let estimateData;
       let estimateError;
 
       if (existingEstimate) {
-        // Check if estimate is accepted - if so, we need to handle it differently
-        // The database trigger prevents modifying accepted estimates, so we need to
-        // first check the status and handle accordingly
-        const { data: currentEstimate } = await supabase
-          .from("estimates")
-          .select("status")
-          .eq("id", existingEstimate.id)
-          .single();
+        // Check if estimate is accepted or denied - if so, we need to handle it differently
+        // The database trigger prevents modifying accepted/denied estimates
+        const currentEstimate = existingEstimate; // Already have the status from the query above
         
         // If estimate is accepted or denied, we can't modify it directly due to database constraints
-        // Instead, we'll create a new estimate or update only if status allows
+        // Instead, we'll create a new estimate revision with a NEW token
+        // The public estimate page will find this new estimate by looking up the latest "sent" estimate for the job
+        // This means the customer's original link will still work - it finds the job, then shows the latest estimate
         if (currentEstimate?.status === "accepted" || currentEstimate?.status === "denied") {
           // For accepted or denied estimates, create a new estimate revision
-          // First, update the old estimate to use a different token (archive it)
-          // Then create the new estimate with the original token so the client link works
-          const oldToken = generateToken(24);
-          const { error: updateOldError } = await supabase
+          // Use a new token (database has unique constraint on public_token)
+          // The estimate viewing page handles this by looking up the latest "sent" estimate for the job
+          const newToken = generateToken(24);
+
+          // Create the new estimate with a new token
+          const { data, error } = await supabase
             .from("estimates")
-            .update({
-              public_token: oldToken, // Archive old estimate with new token
+            .insert({
+              company_id: companyId,
+              job_id: jobId,
+              customer_id: customerId,
+              status: "sent",
+              public_token: newToken,
             })
-            .eq("id", existingEstimate.id);
-          
-          if (updateOldError) {
-            console.error("Error updating old estimate token:", {
-              message: updateOldError.message,
-              details: updateOldError.details,
-              hint: updateOldError.hint,
-              code: updateOldError.code,
+            .select("id, public_token")
+            .single();
+          estimateData = data;
+          estimateError = error;
+          estimateId = data?.id || "";
+
+          // If there was an error, log it properly
+          if (error) {
+            console.error("Error creating new estimate revision:", {
+              message: error.message,
+              details: error.details,
+              hint: error.hint,
+              code: error.code,
             });
-            estimateError = updateOldError;
           } else {
-            // Now create the new estimate with the original token
-            const { data, error } = await supabase
-              .from("estimates")
-              .insert({
-                company_id: companyId,
-                job_id: jobId,
-                customer_id: customerId,
-                status: "sent",
-                public_token: token, // Use original token so client link works
-              })
-              .select("id, public_token")
+            // Reset job approval status since we're creating a new estimate revision
+            // Get current job status first
+            const { data: currentJobForRevision } = await supabase
+              .from("jobs")
+              .select("status")
+              .eq("id", jobId)
               .single();
-            estimateData = data;
-            estimateError = error;
-            estimateId = data?.id || "";
-            
-            // If there was an error, log it properly
-            if (error) {
-              console.error("Error creating new estimate revision:", {
-                message: error.message,
-                details: error.details,
-                hint: error.hint,
-                code: error.code,
-              });
-            } else {
-              // Reset job approval status since we're creating a new estimate revision
-              // Get current job status first
-              const { data: currentJobForRevision } = await supabase
-                .from("jobs")
-                .select("status")
-                .eq("id", jobId)
-                .single();
-              
-              const { error: jobUpdateError } = await supabase
-                .from("jobs")
-                .update({
-                  payment_state: "proposed",
-                  payment_approved_at: null,
-                  status: currentJobForRevision?.status === "quoted" ? "new" : currentJobForRevision?.status || "new", // Reset from quoted if it was quoted
-                  updated_at: new Date().toISOString(),
-                })
-                .eq("id", jobId);
-              
-              if (jobUpdateError) {
-                console.error("Error updating job after creating revision:", jobUpdateError);
-              }
+
+            const { error: jobUpdateError } = await supabase
+              .from("jobs")
+              .update({
+                payment_state: "proposed",
+                payment_approved_at: null,
+                status: currentJobForRevision?.status === "quoted" ? "new" : currentJobForRevision?.status || "new", // Reset from quoted if it was quoted
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", jobId);
+
+            if (jobUpdateError) {
+              console.error("Error updating job after creating revision:", jobUpdateError);
             }
           }
         } else {
@@ -1133,7 +1120,7 @@ export function UnifiedPayment({
       return;
     }
 
-    const link = `${window.location.origin}/e/${token}`;
+    const link = `${window.location.origin}/portal/${token}`;
     copyToClipboard(link);
     addToast("Estimate link copied to clipboard", "success");
     setShareDialogOpen(false);
@@ -1147,7 +1134,7 @@ export function UnifiedPayment({
       return;
     }
 
-    const link = `${window.location.origin}/e/${token}`;
+    const link = `${window.location.origin}/portal/${token}`;
     const customerName = "there"; // Could be passed as prop if needed
     const message = `Hey ${customerName} — here's your estimate for ${formatCurrency(paymentAmount || totalAmount)}: ${link}. Let me know if you have any questions!`;
     copyToClipboard(message);
@@ -1317,7 +1304,7 @@ export function UnifiedPayment({
                 <Label className="text-sm text-muted-foreground">Estimate Link</Label>
                 <div className="flex gap-2 mt-2">
                   <Input 
-                    value={loadingToken ? "Generating..." : (typeof window !== "undefined" && (currentPublicToken || publicToken) ? `${window.location.origin}/e/${currentPublicToken || publicToken}` : "No token available")}
+                    value={loadingToken ? "Generating..." : (typeof window !== "undefined" && (currentPublicToken || publicToken) ? `${window.location.origin}/portal/${currentPublicToken || publicToken}` : "No token available")}
                     readOnly 
                     className="font-mono text-sm"
                   />
@@ -1335,7 +1322,7 @@ export function UnifiedPayment({
               <div>
                 <Label className="text-sm text-muted-foreground">Pre-written Message</Label>
                 <Textarea
-                  value={loadingToken ? "Generating link..." : `Hey there — here's your estimate for ${formatCurrency(paymentAmount || totalAmount)}: ${typeof window !== "undefined" && (currentPublicToken || publicToken) ? `${window.location.origin}/e/${currentPublicToken || publicToken}` : "[link will be generated]"}. Let me know if you have any questions!`}
+                  value={loadingToken ? "Generating link..." : `Hey there — here's your estimate for ${formatCurrency(paymentAmount || totalAmount)}: ${typeof window !== "undefined" && (currentPublicToken || publicToken) ? `${window.location.origin}/portal/${currentPublicToken || publicToken}` : "[link will be generated]"}. Let me know if you have any questions!`}
                   readOnly
                   rows={4}
                   className="mt-2 font-sans"
@@ -1888,14 +1875,18 @@ export function UnifiedPayment({
                         <span className="text-lg font-bold">{formatCurrency(paymentAmount || totalAmount)}</span>
                       </div>
                       <div className="space-y-3">
-                        {(savedLineItems.length > 0 ? savedLineItems : initialLineItems).map((item) => {
-                          // Find matching full estimate line item to get square footage
-                          const fullItem = fullEstimateLineItems.find((eli: any) => eli.id === item.id);
+                        {(savedLineItems.length > 0 ? savedLineItems : initialLineItems).map((item, index) => {
+                          // Find matching full estimate line item by index (since IDs are from different tables)
+                          const fullItem = fullEstimateLineItems[index];
+                          // Match materials by estimate_line_item_id (from fullEstimateLineItems) or by name
+                          const fullItemId = fullItem?.id;
                           const itemMaterials = estimateMaterials.filter(
                             (m: any) => {
-                              if (m.estimate_line_item_id && item.id && m.estimate_line_item_id === item.id) {
+                              // Match by estimate_line_item_id if we have a fullItem
+                              if (m.estimate_line_item_id && fullItemId && m.estimate_line_item_id === fullItemId) {
                                 return true;
                               }
+                              // Fallback to name matching
                               const itemNameLower = item.title?.toLowerCase() || '';
                               const areaDescLower = m.area_description?.toLowerCase() || '';
                               if (areaDescLower && itemNameLower) {
@@ -2025,12 +2016,16 @@ export function UnifiedPayment({
                       <span className="text-lg font-bold">{formatCurrency(paymentAmount || totalAmount)}</span>
                     </div>
                     <div className="space-y-3">
-                      {(savedLineItems.length > 0 ? savedLineItems : initialLineItems).map((item) => {
+                      {(savedLineItems.length > 0 ? savedLineItems : initialLineItems).map((item, index) => {
+                        // Match by index since IDs are from different tables
+                        const fullItemId = fullEstimateLineItems[index]?.id;
                         const itemMaterials = estimateMaterials.filter(
                           (m: any) => {
-                            if (m.estimate_line_item_id && item.id && m.estimate_line_item_id === item.id) {
+                            // Match by estimate_line_item_id if we have a fullItem
+                            if (m.estimate_line_item_id && fullItemId && m.estimate_line_item_id === fullItemId) {
                               return true;
                             }
+                            // Fallback to name matching
                             const itemNameLower = item.title?.toLowerCase() || '';
                             const areaDescLower = m.area_description?.toLowerCase() || '';
                             if (areaDescLower && itemNameLower) {
@@ -2053,7 +2048,7 @@ export function UnifiedPayment({
                               <span className="font-medium">{item.title}</span>
                               <span className="font-medium">{formatCurrency(item.price)}</span>
                             </div>
-                            
+
                             {itemMaterials.length > 0 && (
                               <div className="ml-4 pl-3 border-l-2 border-muted space-y-1 text-xs text-muted-foreground">
                                 {itemMaterials.map((material: any) => (
@@ -2188,14 +2183,17 @@ export function UnifiedPayment({
                   <span className="text-lg font-bold">{formatCurrency(paymentAmount || totalAmount)}</span>
                 </div>
                 <div className="space-y-3">
-                  {(savedLineItems.length > 0 ? savedLineItems : initialLineItems).map((item) => {
-                    // Find matching full estimate line item to get square footage
-                    const fullItem = fullEstimateLineItems.find((eli: any) => eli.id === item.id);
+                  {(savedLineItems.length > 0 ? savedLineItems : initialLineItems).map((item, index) => {
+                    // Find matching full estimate line item by index (since IDs are from different tables)
+                    const fullItem = fullEstimateLineItems[index];
+                    const fullItemId = fullItem?.id;
                     const itemMaterials = estimateMaterials.filter(
                       (m: any) => {
-                        if (m.estimate_line_item_id && item.id && m.estimate_line_item_id === item.id) {
+                        // Match by estimate_line_item_id if we have a fullItem
+                        if (m.estimate_line_item_id && fullItemId && m.estimate_line_item_id === fullItemId) {
                           return true;
                         }
+                        // Fallback to name matching
                         const itemNameLower = item.title?.toLowerCase() || '';
                         const areaDescLower = m.area_description?.toLowerCase() || '';
                         if (areaDescLower && itemNameLower) {
@@ -2225,7 +2223,7 @@ export function UnifiedPayment({
                           </div>
                           <span className="font-medium">{formatCurrency(item.price)}</span>
                         </div>
-                        
+
                         {itemMaterials.length > 0 && (
                           <div className="ml-4 pl-3 border-l-2 border-muted space-y-1 text-xs text-muted-foreground">
                             {itemMaterials.map((material: any) => (

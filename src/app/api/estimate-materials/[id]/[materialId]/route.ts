@@ -28,14 +28,6 @@ export async function PATCH(
       );
     }
 
-    // Don't allow modifying materials for accepted estimates
-    if (estimate.status === "accepted") {
-      return NextResponse.json(
-        { error: "Cannot modify materials for accepted estimates" },
-        { status: 400 }
-      );
-    }
-
     // Verify the material belongs to this estimate
     const { data: existingMaterial, error: materialError } = await supabase
       .from("estimate_materials")
@@ -112,14 +104,6 @@ export async function DELETE(
       return NextResponse.json(
         { error: "Estimate not found" },
         { status: 404 }
-      );
-    }
-
-    // Don't allow deleting materials from accepted estimates
-    if (estimate.status === "accepted") {
-      return NextResponse.json(
-        { error: "Cannot modify materials for accepted estimates" },
-        { status: 400 }
       );
     }
 

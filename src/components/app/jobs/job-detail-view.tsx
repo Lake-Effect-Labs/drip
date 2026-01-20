@@ -169,40 +169,115 @@ export function JobDetailView({
   // Real-time subscription for estimate updates
   useEffect(() => {
     const channel = supabase
-      .channel(`job-${job.id}-estimates`)
+      .channel(`job-${job.id}-estimates-${Date.now()}`)
       .on(
         'postgres_changes',
         {
-          event: 'UPDATE',
+          event: '*', // Listen for ALL events (INSERT, UPDATE, DELETE)
           schema: 'public',
           table: 'estimates',
           filter: `job_id=eq.${job.id}`,
         },
         (payload) => {
-          // Update the estimate in the list
-          setEstimatesList((prev) =>
-            prev.map((est) =>
-              est.id === payload.new.id ? { ...est, ...payload.new } : est
-            )
-          );
+          const eventType = payload.eventType;
 
-          // If estimate was accepted, update job status to quoted
-          if (payload.new.status === 'accepted' && job.status === 'new') {
-            setJob((prev) => ({ ...prev, status: 'quoted' }));
+          if (eventType === 'UPDATE') {
+            // Update the estimate in the list with all new fields
+            // Create a new array and new object to ensure React detects the change
+            setEstimatesList((prev) => {
+              const updated = prev.map((est) =>
+                est.id === (payload.new as any).id
+                  ? {
+                      ...est,
+                      ...(payload.new as any),
+                      // Explicitly include all status-related fields
+                      status: (payload.new as any).status,
+                      denied_at: (payload.new as any).denied_at,
+                      denial_reason: (payload.new as any).denial_reason,
+                      accepted_at: (payload.new as any).accepted_at,
+                      updated_at: (payload.new as any).updated_at,
+                    }
+                  : est
+              );
+              return [...updated]; // New array reference to trigger re-render
+            });
+
+            // If estimate was accepted, update job status to quoted
+            if ((payload.new as any).status === 'accepted' && job.status === 'new') {
+              setJob((prev) => ({ ...prev, status: 'quoted' }));
+            }
+
+            // If estimate was denied, also update job to trigger re-render in child components
+            if ((payload.new as any).status === 'denied') {
+              setJob((prev) => ({
+                ...prev,
+                updated_at: new Date().toISOString(),
+              }));
+            }
+          } else if (eventType === 'INSERT') {
+            // When a new estimate is created (revision), add it to the list
+            setEstimatesList((prev) => {
+              // Add the new estimate at the beginning (most recent)
+              const newEstimate = {
+                ...(payload.new as any),
+                line_items: [],
+                materials: [],
+              };
+              return [newEstimate as any, ...prev];
+            });
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log(`[Realtime] Subscribed to estimate updates for job ${job.id}`);
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error(`[Realtime] Error subscribing to estimate updates for job ${job.id}`);
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
     };
   }, [job.id, job.status, supabase]);
 
+  // Function to refetch estimates from the database
+  async function refetchEstimates() {
+    const { data: estimatesData } = await supabase
+      .from("estimates")
+      .select("*")
+      .eq("job_id", job.id)
+      .order("created_at", { ascending: false });
+
+    if (estimatesData) {
+      // Fetch line items and materials for each estimate
+      const updatedEstimates = await Promise.all(
+        estimatesData.map(async (est) => {
+          const [lineItemsResult, materialsResult] = await Promise.all([
+            supabase
+              .from("estimate_line_items")
+              .select("*")
+              .eq("estimate_id", est.id),
+            supabase
+              .from("estimate_materials")
+              .select("*")
+              .eq("estimate_id", est.id),
+          ]);
+          return {
+            ...est,
+            line_items: lineItemsResult.data || [],
+            materials: materialsResult.data || [],
+          };
+        })
+      );
+      setEstimatesList(updatedEstimates as any);
+    }
+  }
+
   // Real-time subscription for job updates (schedule acceptance, payment updates, etc.)
   useEffect(() => {
     const channel = supabase
-      .channel(`job-${job.id}-updates`)
+      .channel(`job-${job.id}-updates-${Date.now()}`)
       .on(
         'postgres_changes',
         {
@@ -211,15 +286,15 @@ export function JobDetailView({
           table: 'jobs',
           filter: `id=eq.${job.id}`,
         },
-        (payload) => {
+        async (payload) => {
           // Update job with new data
           setJob((prev) => ({ ...prev, ...payload.new }));
-          
+
           // Update progress value if it changed
           if (payload.new.progress_percentage !== undefined) {
             setProgressValue(payload.new.progress_percentage || 0);
           }
-          
+
           // Also update schedule-related state if schedule fields changed
           if (payload.new.scheduled_date !== undefined) {
             setScheduledDate(payload.new.scheduled_date || "");
@@ -233,9 +308,20 @@ export function JobDetailView({
           if (payload.new.scheduled_end_date !== undefined) {
             setIsMultiDay(!!payload.new.scheduled_end_date);
           }
+
+          // If the notes field was updated (which happens when an estimate is denied),
+          // refetch estimates to ensure we have the latest status
+          // This is a fallback in case the estimates realtime subscription doesn't fire
+          if (payload.new.notes !== payload.old?.notes) {
+            await refetchEstimates();
+          }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log(`[Realtime] Subscribed to job updates for job ${job.id}`);
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
@@ -424,8 +510,15 @@ export function JobDetailView({
     }
   }
 
-  // Ensure unified job token exists (for customer portal)
+  // Ensure a token exists for customer portal links
+  // Prioritize the estimate's public_token so all links (estimate, schedule, payment) use the same URL
   async function ensureUnifiedToken() {
+    // First, try to use the estimate's public_token for consistency
+    if (estimatesList[0]?.public_token) {
+      return estimatesList[0].public_token;
+    }
+
+    // Fall back to unified_job_token if no estimate exists
     if ((job as any).unified_job_token) return (job as any).unified_job_token;
 
     try {
@@ -1361,7 +1454,7 @@ export function JobDetailView({
 
     const customerName = job.customer?.name || "there";
     const latestEstimate = estimatesList[0];
-    const estimateUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/e/${token}?tab=estimate`;
+    const estimateUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/portal/${token}?tab=estimate`;
     const total = latestEstimate
       ? formatCurrency(latestEstimate.line_items.reduce((sum, li) => sum + li.price, 0))
       : "[amount]";
@@ -1377,7 +1470,7 @@ export function JobDetailView({
 
     const customerName = job.customer?.name || "there";
     const latestInvoice = invoicesList[0];
-    const invoiceUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/e/${token}?tab=payment`;
+    const invoiceUrl = `${typeof window !== "undefined" ? window.location.origin : ""}/portal/${token}?tab=payment`;
     const amount = latestInvoice
       ? formatCurrency(latestInvoice.amount_total)
       : "[amount]";
@@ -1387,10 +1480,10 @@ export function JobDetailView({
   }
 
   function getScheduleLink() {
-    // Use unified portal token instead of schedule_token
-    const token = (job as any).unified_job_token;
+    // Use the estimate's public_token so all links (estimate, schedule, payment) use the same URL
+    const token = estimatesList[0]?.public_token || (job as any).unified_job_token;
     if (!token) return "";
-    return `${typeof window !== "undefined" ? window.location.origin : ""}/e/${token}?tab=schedule`;
+    return `${typeof window !== "undefined" ? window.location.origin : ""}/portal/${token}?tab=schedule`;
   }
 
   function getScheduleMessage() {
@@ -1763,7 +1856,7 @@ export function JobDetailView({
                               : formatDate(scheduledDate);
                             const timeStr = formatTime(scheduledTime);
 
-                            const link = `${typeof window !== "undefined" ? window.location.origin : ""}/e/${token}?tab=schedule`;
+                            const link = `${typeof window !== "undefined" ? window.location.origin : ""}/portal/${token}?tab=schedule`;
                             const message = `Hi ${customerName}! We'd like to schedule your ${job.title || "painting project"} for ${dateStr}, arriving around ${timeStr}. Please confirm your schedule here: ${link}`;
 
                             const smsLink = generateSMSLink(job.customer.phone, message);
@@ -3103,7 +3196,7 @@ export function JobDetailView({
                   <Label className="text-sm text-muted-foreground">Customer Portal Link</Label>
                   <div className="flex gap-2 mt-2">
                     <Input
-                      value={(job as any).unified_job_token ? `${typeof window !== "undefined" ? window.location.origin : ""}/e/${(job as any).unified_job_token}?tab=estimate` : "Loading..."}
+                      value={estimatesList[0]?.public_token ? `${typeof window !== "undefined" ? window.location.origin : ""}/portal/${estimatesList[0].public_token}?tab=estimate` : "Loading..."}
                       readOnly
                       className="font-mono text-sm"
                     />
@@ -3112,7 +3205,7 @@ export function JobDetailView({
                       onClick={async () => {
                         const token = await ensureUnifiedToken();
                         if (token) {
-                          copyToClipboard(`${typeof window !== "undefined" ? window.location.origin : ""}/e/${token}?tab=estimate`);
+                          copyToClipboard(`${typeof window !== "undefined" ? window.location.origin : ""}/portal/${token}?tab=estimate`);
                           addToast("Link copied!", "success");
                         }
                       }}
@@ -3126,7 +3219,7 @@ export function JobDetailView({
                 <div>
                   <Label className="text-sm text-muted-foreground">Message to Customer</Label>
                   <Textarea
-                    value={`Hey ${job.customer?.name || "there"} — here's your estimate for ${formatCurrency(estimatesList[0].line_items.reduce((sum, li) => sum + li.price, 0))}: ${typeof window !== "undefined" ? window.location.origin : ""}/e/${estimatesList[0].public_token}. Let me know if you have any questions!`}
+                    value={`Hey ${job.customer?.name || "there"} — here's your estimate for ${formatCurrency(estimatesList[0].line_items.reduce((sum, li) => sum + li.price, 0))}: ${typeof window !== "undefined" ? window.location.origin : ""}/portal/${estimatesList[0].public_token}. Let me know if you have any questions!`}
                     readOnly
                     rows={4}
                     className="mt-2 font-sans"
@@ -3142,7 +3235,7 @@ export function JobDetailView({
                         const token = await ensureUnifiedToken();
                         if (!token) return;
 
-                        const link = `${typeof window !== "undefined" ? window.location.origin : ""}/e/${token}?tab=estimate`;
+                        const link = `${typeof window !== "undefined" ? window.location.origin : ""}/portal/${token}?tab=estimate`;
                         const message = `Hey ${job.customer?.name || "there"} — here's your estimate for ${formatCurrency(estimatesList[0].line_items.reduce((sum, li) => sum + li.price, 0))}: ${link}. Let me know if you have any questions!`;
                         const smsLink = generateSMSLink(job.customer.phone, message);
                         window.location.href = smsLink;
@@ -3175,7 +3268,7 @@ export function JobDetailView({
                   <Label className="text-sm text-muted-foreground">Customer Portal Link</Label>
                   <div className="flex gap-2 mt-2">
                     <Input
-                      value={(job as any).unified_job_token ? `${typeof window !== "undefined" ? window.location.origin : ""}/e/${(job as any).unified_job_token}?tab=payment` : "Loading..."}
+                      value={estimatesList[0]?.public_token ? `${typeof window !== "undefined" ? window.location.origin : ""}/portal/${estimatesList[0].public_token}?tab=payment` : "Loading..."}
                       readOnly
                       className="font-mono text-sm"
                     />
@@ -3184,7 +3277,7 @@ export function JobDetailView({
                       onClick={async () => {
                         const token = await ensureUnifiedToken();
                         if (token) {
-                          copyToClipboard(`${typeof window !== "undefined" ? window.location.origin : ""}/e/${token}?tab=payment`);
+                          copyToClipboard(`${typeof window !== "undefined" ? window.location.origin : ""}/portal/${token}?tab=payment`);
                           addToast("Link copied!", "success");
                         }
                       }}
@@ -3214,7 +3307,7 @@ export function JobDetailView({
                         const token = await ensureUnifiedToken();
                         if (!token) return;
 
-                        const link = `${typeof window !== "undefined" ? window.location.origin : ""}/e/${token}?tab=payment`;
+                        const link = `${typeof window !== "undefined" ? window.location.origin : ""}/portal/${token}?tab=payment`;
                         const message = `Hey ${job.customer?.name || "there"} — thanks again for letting us work on your project! Here's your invoice for ${formatCurrency(invoicesList[0].amount_total)}: ${link}. Let us know if you have any questions!`;
                         const smsLink = generateSMSLink(job.customer.phone, message);
                         window.location.href = smsLink;

@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useSearchParams } from "next/navigation";
+import { useState, useEffect, useCallback } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { formatCurrency, formatDate, formatTime } from "@/lib/utils";
-import type { Job, Customer, Company, Estimate, EstimateLineItem, EstimateMaterial, Invoice } from "@/types/database";
+import { createBrowserClient } from "@supabase/ssr";
+import type { Job, Customer, Company, Estimate, EstimateLineItem, EstimateMaterial, Invoice, JobPhoto } from "@/types/database";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -18,12 +19,12 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { 
-  Paintbrush, 
-  CheckCircle, 
-  MapPin, 
-  User, 
-  Calendar, 
+import {
+  Paintbrush,
+  CheckCircle,
+  MapPin,
+  User,
+  Calendar,
   Clock,
   DollarSign,
   FileText,
@@ -31,17 +32,25 @@ import {
   XCircle,
   CreditCard,
   Wallet,
-  Smartphone
+  Smartphone,
+  Star,
+  ExternalLink,
+  Camera,
+  X,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
 import { PaintChipAnimator } from "@/components/public/paint-chip-animator";
 import { EstimateSignoff } from "@/components/public/estimate-signoff";
 
 type JobWithDetails = Job & {
   customer: Customer | null;
-  company: (Pick<Company, "name"> & { 
+  company: (Pick<Company, "name"> & {
     logo_url?: string | null;
     contact_phone?: string | null;
     contact_email?: string | null;
+    review_enabled?: boolean;
+    google_review_link?: string | null;
   }) | null;
   estimate: (Estimate & {
     line_items: EstimateLineItem[];
@@ -53,6 +62,7 @@ type JobWithDetails = Job & {
     title: string;
     price: number; // in cents
   }>;
+  photos?: JobPhoto[];
 };
 
 interface UnifiedPublicJobViewProps {
@@ -68,7 +78,7 @@ export function UnifiedPublicJobView({ job: initialJob, token, isPaymentToken = 
   // Determine initial tab from URL query param, or default based on job state
   const getInitialTab = () => {
     const tabParam = searchParams?.get("tab");
-    if (tabParam === "payment" || tabParam === "estimate" || tabParam === "schedule" || tabParam === "progress") {
+    if (tabParam === "payment" || tabParam === "estimate" || tabParam === "schedule" || tabParam === "progress" || tabParam === "photos") {
       return tabParam;
     }
     // If this is a payment token or payment is due, default to payment tab
@@ -77,9 +87,110 @@ export function UnifiedPublicJobView({ job: initialJob, token, isPaymentToken = 
     }
     return initialJob.estimate ? "estimate" : "schedule";
   };
-  
+
   const [activeTab, setActiveTab] = useState(getInitialTab());
   const [acceptingEstimate, setAcceptingEstimate] = useState(false);
+
+  // Photo lightbox state
+  const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState(0);
+
+  // Group photos by tag
+  const photos = job.photos || [];
+  const beforePhotos = photos.filter(p => p.tag === "before");
+  const afterPhotos = photos.filter(p => p.tag === "after");
+  const progressPhotos = photos.filter(p => p.tag === "progress" || p.tag === "other" || !p.tag);
+
+  const router = useRouter();
+
+  // Real-time subscription for updates from painter
+  useEffect(() => {
+    const supabase = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+
+    // Subscribe to job updates (schedule, progress, payment status)
+    const jobChannel = supabase
+      .channel(`public-job-${job.id}-${Date.now()}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'jobs',
+          filter: `id=eq.${job.id}`,
+        },
+        (payload) => {
+          console.log('[Customer Portal] Job updated:', payload);
+          // Refresh the page to get updated data
+          router.refresh();
+        }
+      )
+      .subscribe();
+
+    // Subscribe to estimate updates
+    const estimateChannel = job.estimate?.id ? supabase
+      .channel(`public-estimate-${job.estimate.id}-${Date.now()}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'estimates',
+          filter: `job_id=eq.${job.id}`,
+        },
+        (payload) => {
+          console.log('[Customer Portal] Estimate updated:', payload);
+          router.refresh();
+        }
+      )
+      .subscribe() : null;
+
+    // Subscribe to new estimates (for revisions)
+    const newEstimateChannel = supabase
+      .channel(`public-new-estimates-${job.id}-${Date.now()}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'estimates',
+          filter: `job_id=eq.${job.id}`,
+        },
+        (payload) => {
+          console.log('[Customer Portal] New estimate created:', payload);
+          router.refresh();
+        }
+      )
+      .subscribe();
+
+    // Subscribe to photo updates
+    const photoChannel = supabase
+      .channel(`public-photos-${job.id}-${Date.now()}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'job_photos',
+          filter: `job_id=eq.${job.id}`,
+        },
+        (payload) => {
+          console.log('[Customer Portal] Photos updated:', payload);
+          router.refresh();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(jobChannel);
+      if (estimateChannel) supabase.removeChannel(estimateChannel);
+      supabase.removeChannel(newEstimateChannel);
+      supabase.removeChannel(photoChannel);
+    };
+  }, [job.id, job.estimate?.id, router]);
+
   const [denyingEstimate, setDenyingEstimate] = useState(false);
   const [confirmingSchedule, setConfirmingSchedule] = useState(false);
   const [denyingSchedule, setDenyingSchedule] = useState(false);
@@ -400,9 +511,19 @@ export function UnifiedPublicJobView({ job: initialJob, token, isPaymentToken = 
 
         {/* Tabs for different sections */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-3 mb-6">
+          <TabsList className={`grid w-full mb-6 ${
+            job.estimate && photos.length > 0 ? "grid-cols-4" :
+            job.estimate || photos.length > 0 ? "grid-cols-3" : "grid-cols-2"
+          }`}>
             {job.estimate && <TabsTrigger value="estimate">Estimate</TabsTrigger>}
             <TabsTrigger value="schedule">Schedule</TabsTrigger>
+            {photos.length > 0 && (
+              <TabsTrigger value="photos" className="gap-1">
+                <Camera className="h-4 w-4" />
+                <span className="hidden sm:inline">Photos</span>
+                <span className="sm:hidden">Photos</span>
+              </TabsTrigger>
+            )}
             <TabsTrigger value="payment">Payment</TabsTrigger>
           </TabsList>
 
@@ -698,25 +819,212 @@ export function UnifiedPublicJobView({ job: initialJob, token, isPaymentToken = 
             </Card>
           </TabsContent>
 
+          {/* Photos Tab */}
+          {photos.length > 0 && (
+            <TabsContent value="photos" className="space-y-6">
+              {/* Before Photos */}
+              {beforePhotos.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Camera className="h-5 w-5" />
+                      Before Photos
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {beforePhotos.map((photo, index) => (
+                        <button
+                          key={photo.id}
+                          onClick={() => {
+                            setLightboxIndex(photos.indexOf(photo));
+                            setLightboxOpen(true);
+                          }}
+                          className="relative aspect-square rounded-lg overflow-hidden bg-muted hover:opacity-90 transition-opacity focus:outline-none focus:ring-2 focus:ring-primary"
+                        >
+                          <img
+                            src={photo.thumbnail_url || photo.public_url}
+                            alt={photo.caption || `Before photo ${index + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                          {photo.caption && (
+                            <div className="absolute bottom-0 left-0 right-0 bg-black/50 px-2 py-1">
+                              <p className="text-white text-xs truncate">{photo.caption}</p>
+                            </div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* After Photos */}
+              {afterPhotos.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <CheckCircle className="h-5 w-5 text-success" />
+                      After Photos
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {afterPhotos.map((photo, index) => (
+                        <button
+                          key={photo.id}
+                          onClick={() => {
+                            setLightboxIndex(photos.indexOf(photo));
+                            setLightboxOpen(true);
+                          }}
+                          className="relative aspect-square rounded-lg overflow-hidden bg-muted hover:opacity-90 transition-opacity focus:outline-none focus:ring-2 focus:ring-primary"
+                        >
+                          <img
+                            src={photo.thumbnail_url || photo.public_url}
+                            alt={photo.caption || `After photo ${index + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                          {photo.caption && (
+                            <div className="absolute bottom-0 left-0 right-0 bg-black/50 px-2 py-1">
+                              <p className="text-white text-xs truncate">{photo.caption}</p>
+                            </div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Progress/Other Photos */}
+              {progressPhotos.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <TrendingUp className="h-5 w-5" />
+                      Progress Photos
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {progressPhotos.map((photo, index) => (
+                        <button
+                          key={photo.id}
+                          onClick={() => {
+                            setLightboxIndex(photos.indexOf(photo));
+                            setLightboxOpen(true);
+                          }}
+                          className="relative aspect-square rounded-lg overflow-hidden bg-muted hover:opacity-90 transition-opacity focus:outline-none focus:ring-2 focus:ring-primary"
+                        >
+                          <img
+                            src={photo.thumbnail_url || photo.public_url}
+                            alt={photo.caption || `Progress photo ${index + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                          {photo.caption && (
+                            <div className="absolute bottom-0 left-0 right-0 bg-black/50 px-2 py-1">
+                              <p className="text-white text-xs truncate">{photo.caption}</p>
+                            </div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* All photos in one section if no tags */}
+              {beforePhotos.length === 0 && afterPhotos.length === 0 && progressPhotos.length === 0 && photos.length > 0 && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <Camera className="h-5 w-5" />
+                      Job Photos
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {photos.map((photo, index) => (
+                        <button
+                          key={photo.id}
+                          onClick={() => {
+                            setLightboxIndex(index);
+                            setLightboxOpen(true);
+                          }}
+                          className="relative aspect-square rounded-lg overflow-hidden bg-muted hover:opacity-90 transition-opacity focus:outline-none focus:ring-2 focus:ring-primary"
+                        >
+                          <img
+                            src={photo.thumbnail_url || photo.public_url}
+                            alt={photo.caption || `Photo ${index + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                          {photo.caption && (
+                            <div className="absolute bottom-0 left-0 right-0 bg-black/50 px-2 py-1">
+                              <p className="text-white text-xs truncate">{photo.caption}</p>
+                            </div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              <p className="text-center text-sm text-muted-foreground">
+                Photos are uploaded by {job.company?.name} to document the job progress.
+              </p>
+            </TabsContent>
+          )}
+
           {/* Payment Tab */}
           <TabsContent value="payment" className="space-y-6">
             {paymentPaid ? (
-              <Card>
-                <CardContent className="pt-8 pb-8">
-                  <div className="text-center">
-                    <div className="w-16 h-16 rounded-full bg-success/10 flex items-center justify-center mx-auto mb-4">
-                      <CheckCircle className="w-8 h-8 text-success" />
+              <>
+                <Card>
+                  <CardContent className="pt-8 pb-8">
+                    <div className="text-center">
+                      <div className="w-16 h-16 rounded-full bg-success/10 flex items-center justify-center mx-auto mb-4">
+                        <CheckCircle className="w-8 h-8 text-success" />
+                      </div>
+                      <h2 className="text-2xl font-bold mb-2">Payment Confirmed!</h2>
+                      <p className="text-muted-foreground mb-6">
+                        Thank you for your payment of {formatCurrency(totalAmount)}.
+                      </p>
+                      <div className="text-sm text-muted-foreground">
+                        {job.company?.name} has been notified.
+                      </div>
                     </div>
-                    <h2 className="text-2xl font-bold mb-2">Payment Confirmed!</h2>
-                    <p className="text-muted-foreground mb-6">
-                      Thank you for your payment of {formatCurrency(totalAmount)}.
-                    </p>
-                    <div className="text-sm text-muted-foreground">
-                      {job.company?.name} has been notified.
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+
+                {/* Review Request - Only show if company has reviews enabled */}
+                {job.company?.review_enabled && job.company?.google_review_link && (
+                  <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
+                    <CardContent className="pt-6 pb-6">
+                      <div className="text-center space-y-4">
+                        <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center mx-auto">
+                          <Star className="w-7 h-7 text-primary" />
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-semibold mb-2">How was your experience?</h3>
+                          <p className="text-muted-foreground text-sm">
+                            If you're happy with our work, we'd love a Google review! It helps other customers find us.
+                          </p>
+                        </div>
+                        <Button
+                          onClick={() => window.open(job.company!.google_review_link!, "_blank", "noopener,noreferrer")}
+                          className="gap-2"
+                          size="lg"
+                        >
+                          <Star className="w-4 h-4" />
+                          Leave a Review
+                          <ExternalLink className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </>
             ) : job.payment_state && job.payment_state !== "none" ? (
               <>
                 {/* Amount Card */}
@@ -876,6 +1184,74 @@ export function UnifiedPublicJobView({ job: initialJob, token, isPaymentToken = 
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Photo Lightbox */}
+      {lightboxOpen && photos.length > 0 && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center"
+          onClick={() => setLightboxOpen(false)}
+        >
+          {/* Close button */}
+          <button
+            onClick={() => setLightboxOpen(false)}
+            className="absolute top-4 right-4 text-white/80 hover:text-white p-2 z-50"
+          >
+            <X className="h-8 w-8" />
+          </button>
+
+          {/* Previous button */}
+          {photos.length > 1 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setLightboxIndex((prev) => (prev - 1 + photos.length) % photos.length);
+              }}
+              className="absolute left-4 text-white/80 hover:text-white p-2 z-50"
+            >
+              <ChevronLeft className="h-10 w-10" />
+            </button>
+          )}
+
+          {/* Image */}
+          <div
+            className="max-w-[90vw] max-h-[85vh] flex flex-col items-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={photos[lightboxIndex]?.public_url}
+              alt={photos[lightboxIndex]?.caption || `Photo ${lightboxIndex + 1}`}
+              className="max-w-full max-h-[80vh] object-contain"
+            />
+            {/* Caption and counter */}
+            <div className="mt-4 text-center text-white">
+              {photos[lightboxIndex]?.caption && (
+                <p className="text-lg mb-2">{photos[lightboxIndex].caption}</p>
+              )}
+              <p className="text-sm text-white/60">
+                {lightboxIndex + 1} of {photos.length}
+                {photos[lightboxIndex]?.tag && (
+                  <span className="ml-2 px-2 py-0.5 rounded bg-white/20 text-xs">
+                    {photos[lightboxIndex].tag}
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
+
+          {/* Next button */}
+          {photos.length > 1 && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setLightboxIndex((prev) => (prev + 1) % photos.length);
+              }}
+              className="absolute right-4 text-white/80 hover:text-white p-2 z-50"
+            >
+              <ChevronRight className="h-10 w-10" />
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

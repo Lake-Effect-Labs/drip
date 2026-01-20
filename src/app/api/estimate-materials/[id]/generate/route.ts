@@ -28,15 +28,7 @@ export async function POST(
       );
     }
 
-    // Don't allow regenerating materials for accepted estimates
-    if (estimate.status === "accepted") {
-      return NextResponse.json(
-        { error: "Cannot modify materials for accepted estimates" },
-        { status: 400 }
-      );
-    }
-
-    // Regenerate materials
+    // Regenerate materials (allowed for any status - painter can update their records anytime)
     const materials = await regenerateEstimateMaterials(estimateId);
 
     return NextResponse.json({

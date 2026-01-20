@@ -91,14 +91,6 @@ export async function POST(
       );
     }
 
-    // Don't allow adding materials to accepted estimates
-    if (estimate.status === "accepted") {
-      return NextResponse.json(
-        { error: "Cannot modify materials for accepted estimates" },
-        { status: 400 }
-      );
-    }
-
     // Calculate line total from quantity and cost
     const quantityGallons = body.quantity_gallons || 0;
     const costPerGallon = body.cost_per_gallon || 0;

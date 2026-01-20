@@ -37,6 +37,8 @@ import {
   CreditCard,
   Upload,
   Image as ImageIcon,
+  Star,
+  ExternalLink,
 } from "lucide-react";
 
 interface SettingsViewProps {
@@ -90,6 +92,11 @@ export function SettingsView({
   const [savingCompany, setSavingCompany] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [logoPreview, setLogoPreview] = useState<string | null>((company as any).logo_url || null);
+
+  // Review settings
+  const [reviewEnabled, setReviewEnabled] = useState((company as any).review_enabled || false);
+  const [googleReviewLink, setGoogleReviewLink] = useState((company as any).google_review_link || "");
+  const [savingReviewSettings, setSavingReviewSettings] = useState(false);
 
   // Config form - use empty strings, show placeholders with suggestions
   const [wallsRate, setWallsRate] = useState(
@@ -193,6 +200,33 @@ export function SettingsView({
       setUploadingLogo(false);
       // Reset file input
       e.target.value = "";
+    }
+  }
+
+  async function handleSaveReviewSettings() {
+    setSavingReviewSettings(true);
+    try {
+      const { error } = await supabase
+        .from("companies")
+        .update({
+          review_enabled: reviewEnabled,
+          google_review_link: reviewEnabled && googleReviewLink.trim() ? googleReviewLink.trim() : null,
+        })
+        .eq("id", company.id);
+
+      if (error) throw error;
+
+      setCompany((prev) => ({
+        ...prev,
+        review_enabled: reviewEnabled,
+        google_review_link: reviewEnabled && googleReviewLink.trim() ? googleReviewLink.trim() : null,
+      }));
+
+      addToast("Review settings saved!", "success");
+    } catch {
+      addToast("Failed to save review settings", "error");
+    } finally {
+      setSavingReviewSettings(false);
     }
   }
 
@@ -850,6 +884,73 @@ export function SettingsView({
             <Button onClick={handleSaveCompany} loading={savingCompany}>
               Save Company Settings
             </Button>
+
+            {/* Customer Reviews Section */}
+            <div className="rounded-lg border bg-card p-4 space-y-4 mt-6">
+              <h3 className="font-semibold flex items-center gap-2">
+                <Star className="h-4 w-4" />
+                Customer Reviews
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                Enable this to prompt customers to leave a Google review after they pay for a completed job.
+              </p>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={reviewEnabled}
+                  onClick={() => setReviewEnabled(!reviewEnabled)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${
+                    reviewEnabled ? "bg-primary" : "bg-muted"
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      reviewEnabled ? "translate-x-5" : "translate-x-0"
+                    }`}
+                  />
+                </button>
+                <Label className="text-sm font-medium">
+                  {reviewEnabled ? "Reviews enabled" : "Reviews disabled"}
+                </Label>
+              </div>
+
+              {reviewEnabled && (
+                <div className="space-y-2">
+                  <Label htmlFor="googleReviewLink">Google Review Link</Label>
+                  <div className="space-y-1">
+                    <Input
+                      id="googleReviewLink"
+                      type="url"
+                      placeholder="https://g.page/r/..."
+                      value={googleReviewLink}
+                      onChange={(e) => setGoogleReviewLink(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Find your link at{" "}
+                      <a
+                        href="https://support.google.com/business/answer/7035772"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline inline-flex items-center gap-1"
+                      >
+                        Google Business Profile
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <Button
+                onClick={handleSaveReviewSettings}
+                loading={savingReviewSettings}
+                disabled={reviewEnabled && !googleReviewLink.trim()}
+              >
+                Save Review Settings
+              </Button>
+            </div>
           </TabsContent>
 
           {/* Estimating Tab */}

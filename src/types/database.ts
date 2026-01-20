@@ -21,6 +21,8 @@ export interface Database {
           logo_url: string | null;
           contact_phone: string | null;
           contact_email: string | null;
+          review_enabled: boolean;
+          google_review_link: string | null;
           created_at: string;
         };
         Insert: {
@@ -34,6 +36,8 @@ export interface Database {
           logo_url?: string | null;
           contact_phone?: string | null;
           contact_email?: string | null;
+          review_enabled?: boolean;
+          google_review_link?: string | null;
           created_at?: string;
         };
         Update: {
@@ -47,6 +51,8 @@ export interface Database {
           logo_url?: string | null;
           contact_phone?: string | null;
           contact_email?: string | null;
+          review_enabled?: boolean;
+          google_review_link?: string | null;
           created_at?: string;
         };
         Relationships: [];
@@ -845,7 +851,7 @@ export interface Database {
           file_name: string | null;
           file_size_bytes: number | null;
           mime_type: string | null;
-          tag: "before" | "after" | "other" | null;
+          tag: "before" | "after" | "progress" | "other" | null;
           caption: string | null;
           uploaded_by_user_id: string | null;
           created_at: string;
@@ -860,7 +866,7 @@ export interface Database {
           file_name?: string | null;
           file_size_bytes?: number | null;
           mime_type?: string | null;
-          tag?: "before" | "after" | "other" | null;
+          tag?: "before" | "after" | "progress" | "other" | null;
           caption?: string | null;
           uploaded_by_user_id?: string | null;
           created_at?: string;
@@ -875,7 +881,7 @@ export interface Database {
           file_name?: string | null;
           file_size_bytes?: number | null;
           mime_type?: string | null;
-          tag?: "before" | "after" | "other" | null;
+          tag?: "before" | "after" | "progress" | "other" | null;
           caption?: string | null;
           uploaded_by_user_id?: string | null;
           created_at?: string;

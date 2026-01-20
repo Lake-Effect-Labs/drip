@@ -1,183 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
-import { classifyIntent, detectEntities } from "@/lib/matte/intents";
-import {
-  getUnpaidInvoices,
-  getOverdueInvoices,
-  getPaymentsThisWeek,
-  getJobsForDate,
-  getJobsInProgress,
-  getStuckJobs,
-  getMaterialsForDate,
-  getJobsMissingMaterials,
-  getFocusToday,
-  getGeneralSummary,
-  getJobsByNameOrCustomer,
-  getEstimatesForJob,
-  getMaterialsForJob,
-  getInvoicesForDateRange,
-  getCustomersWithUnpaidInvoices,
-  getJobsWithAcceptedEstimatesButNoInvoice,
-  getAllCustomers,
-  getCustomerByName,
-  getCustomersByTag,
-  getCustomersByLocation,
-} from "@/lib/matte/queries";
 
-// System prompt for Matte
-const SYSTEM_PROMPT = `You are Matte AI, an assistant for a painting company. You have access to all business data: jobs, customers, invoices, estimates, materials, and payments.
-
-You can answer questions about:
-- Jobs: schedules, statuses, materials, customer info
-- Customers: contact info, location, tags (VIP, repeat customer, good payer, etc.), job history, payment analytics
-- Invoices: amounts, payment status, overdue invoices
-- Estimates: line items, paint colors, acceptance status
-- Materials: what's needed for jobs, paint colors and sheens
-- Payments: payment history, days to pay, revenue
-
-Answer questions directly and concisely using only the provided data. Use minimal tokens. No formatting, emojis, or conversational fluff. Just facts.
-
-If data is missing, say "No data available" or "Not found".`;
-
-// Generate response from data without AI
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function generateResponseFromData(intent: string, data: any, message: string): string {
-  switch (intent) {
-    case "ALL_CUSTOMERS": {
-      if (data.count === 0) return "No customers found.";
-      const customerList = data.customers
-        .slice(0, 10)
-        .map((c: any) => {
-          const parts = [c.name];
-          if (c.phone) parts.push(c.phone);
-          if (c.email) parts.push(c.email);
-          if (c.city && c.state) parts.push(`${c.city}, ${c.state}`);
-          if (c.tags && c.tags.length > 0) parts.push(`Tags: ${c.tags.join(", ")}`);
-          return parts.join(" - ");
-        })
-        .join("\n");
-      return `Found ${data.count} customers:\n\n${customerList}${data.count > 10 ? "\n\n...and more" : ""}`;
-    }
-
-    case "CUSTOMER_DETAIL": {
-      if (data.count === 0) return "Customer not found.";
-      const customer = data.customers[0];
-      const lines = [
-        `Customer: ${customer.name}`,
-        customer.phone ? `Phone: ${customer.phone}` : null,
-        customer.email ? `Email: ${customer.email}` : null,
-        customer.address ? `Address: ${customer.address}` : null,
-        customer.tags?.length > 0 ? `Tags: ${customer.tags.join(", ")}` : null,
-        customer.notes ? `Notes: ${customer.notes}` : null,
-        `\nJob History: ${customer.jobs} total jobs`,
-        `Total Invoiced: ${customer.totalInvoiced}`,
-        `Total Paid: ${customer.totalPaid}`,
-        `Unpaid: ${customer.unpaid}`,
-        customer.avgDaysToPay ? `Average Days to Pay: ${customer.avgDaysToPay} days` : null,
-      ].filter(Boolean);
-
-      if (customer.recentJobs?.length > 0) {
-        lines.push("\nRecent Jobs:");
-        customer.recentJobs.forEach((j: any) => {
-          lines.push(`  - ${j.title} (${j.status})`);
-        });
-      }
-
-      return lines.join("\n");
-    }
-
-    case "CUSTOMERS_BY_TAG": {
-      if (data.count === 0) return "No customers found with that tag.";
-      const customerList = data.customers
-        .slice(0, 10)
-        .map((c: any) => `${c.name} - ${c.phone || "No phone"} - ${c.email || "No email"}`)
-        .join("\n");
-      return `Found ${data.count} customers:\n\n${customerList}${data.count > 10 ? "\n\n...and more" : ""}`;
-    }
-
-    case "CUSTOMERS_BY_LOCATION": {
-      if (data.count === 0) return "No customers found in that location.";
-      const customerList = data.customers
-        .slice(0, 10)
-        .map((c: any) => `${c.name} - ${c.city}, ${c.state} - ${c.phone || "No phone"}`)
-        .join("\n");
-      return `Found ${data.count} customers:\n\n${customerList}${data.count > 10 ? "\n\n...and more" : ""}`;
-    }
-
-    case "CUSTOMER_LOOKUP": {
-      if (data.customers.length === 0) return "All customers have paid their invoices!";
-      const customerList = data.customers
-        .slice(0, 10)
-        .map((c: any) => `${c.name} - ${c.unpaidCount} unpaid invoice${c.unpaidCount > 1 ? "s" : ""} - $${(c.unpaidTotal / 100).toFixed(2)}`)
-        .join("\n");
-      return `Customers with unpaid invoices:\n\n${customerList}`;
-    }
-
-    case "UNPAID_INVOICES": {
-      if (data.count === 0) return "No unpaid invoices!";
-      const total = (data.total / 100).toFixed(2);
-      const invoiceList = data.invoices
-        .slice(0, 5)
-        .map((inv: any) => `${inv.customerName} - $${(inv.amount / 100).toFixed(2)}`)
-        .join("\n");
-      return `${data.count} unpaid invoice${data.count > 1 ? "s" : ""} totaling $${total}:\n\n${invoiceList}${data.count > 5 ? "\n\n...and more" : ""}`;
-    }
-
-    case "OVERDUE_INVOICES": {
-      if (data.count === 0) return "No overdue invoices!";
-      const total = (data.total / 100).toFixed(2);
-      const invoiceList = data.invoices
-        .slice(0, 5)
-        .map((inv: any) => `${inv.customerName} - $${(inv.amount / 100).toFixed(2)}`)
-        .join("\n");
-      return `${data.count} overdue invoice${data.count > 1 ? "s" : ""} totaling $${total}:\n\n${invoiceList}${data.count > 5 ? "\n\n...and more" : ""}`;
-    }
-
-    case "JOBS_TODAY": {
-      if (data.count === 0) return "No jobs scheduled for today.";
-      const jobList = data.jobs
-        .map((j: any) => `${j.title} - ${j.customerName} (${j.status})`)
-        .join("\n");
-      return `${data.count} job${data.count > 1 ? "s" : ""} today:\n\n${jobList}`;
-    }
-
-    case "JOB_LOOKUP": {
-      if (data.count === 0) return "No jobs found.";
-      const jobList = data.jobs
-        .slice(0, 5)
-        .map((j: any) => `${j.title} - ${j.customerName} - ${j.status}${j.scheduledDate ? ` - Scheduled: ${j.scheduledDate}` : ""}`)
-        .join("\n");
-      return `Found ${data.count} job${data.count > 1 ? "s" : ""}:\n\n${jobList}${data.count > 5 ? "\n\n...and more" : ""}`;
-    }
-
-    case "GENERAL_SUMMARY": {
-      const lines = [];
-      if (data.generalData) {
-        lines.push(`Total Jobs: ${data.generalData.totalJobs}`);
-        lines.push(`Active Jobs: ${data.generalData.activeJobs}`);
-        lines.push(`Total Invoiced: $${(data.generalData.totalInvoiced / 100).toFixed(2)}`);
-        lines.push(`Total Paid: $${(data.generalData.totalPaid / 100).toFixed(2)}`);
-        lines.push(`Unpaid Invoices: ${data.generalData.unpaidCount}`);
-      }
-
-      if (data.recentJobs && data.recentJobs.length > 0) {
-        lines.push("\nRecent Jobs:");
-        data.recentJobs.slice(0, 5).forEach((j: any) => {
-          lines.push(`  - ${j.title} (${j.customer}) - ${j.status}`);
-        });
-      }
-
-      if (data.customers && data.customers.length > 0) {
-        lines.push(`\nTotal Customers: ${data.customers.length}`);
-      }
-
-      return lines.join("\n") || "No data available.";
-    }
-
-    default:
-      return "I found the data but couldn't format the response. Please try rephrasing your question.";
-  }
-}
+// Concise system prompt to minimize tokens
+const SYSTEM_PROMPT = `You are Matte, a painting business assistant. Answer questions using ONLY the provided data. Be extremely brief - 1-3 sentences max. No greetings, no fluff, just facts. Format numbers as currency when relevant. If data not found, say "Not found" or "No data".`;
 
 export async function POST(request: NextRequest) {
   try {
@@ -210,623 +35,372 @@ export async function POST(request: NextRequest) {
     }
 
     const companyId = companyUser.company_id;
+    const query = message.toLowerCase();
 
-    // Classify intent
-    const intent = classifyIntent(message);
+    // Fetch comprehensive business data based on query context
+    const data = await fetchRelevantData(adminSupabase, companyId, query);
 
-    // Detect entities for flexible queries
-    const entities = detectEntities(message);
+    // Build a concise data summary for the AI
+    const dataSummary = buildDataSummary(data, query);
 
-    // Fetch data based on intent
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let data: any = {};
-    let userPrompt = "";
-    let specificRefusal = "";
+    // Call OpenAI with minimal tokens
+    const openaiApiKey = process.env.OPENAI_API_KEY;
 
-    switch (intent) {
-      case "UNPAID_INVOICES": {
-        const result = await getUnpaidInvoices(adminSupabase, companyId);
-        data = result;
-        const totalDollars = (result.total / 100).toFixed(2);
-        userPrompt = `Unpaid invoices: ${result.count}, Total: $${totalDollars}. Data: ${JSON.stringify(result.invoices.map((inv) => ({ customer: inv.customerName, amount: inv.amount })))}. Answer concisely.`;
-        break;
-      }
-
-      case "OVERDUE_INVOICES": {
-        const result = await getOverdueInvoices(adminSupabase, companyId);
-        data = result;
-        const totalDollars = (result.total / 100).toFixed(2);
-        userPrompt = `Overdue invoices: ${result.count}, Total: $${totalDollars}. Data: ${JSON.stringify(result.invoices.map((inv) => ({ customer: inv.customerName, amount: inv.amount })))}. Answer concisely.`;
-        break;
-      }
-
-      case "PAYMENTS_THIS_WEEK": {
-        const result = await getPaymentsThisWeek(adminSupabase, companyId);
-        data = result;
-        const totalDollars = (result.total / 100).toFixed(2);
-        userPrompt = `Payments this week: ${result.count}, Total: $${totalDollars}. Data: ${JSON.stringify(result.payments.map((p) => ({ customer: p.customerName, amount: p.amount })))}. Answer concisely.`;
-        break;
-      }
-
-      case "JOBS_TODAY": {
-        const today = new Date();
-        // Use local date to avoid timezone issues
-        const todayLocal = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-        const result = await getJobsForDate(adminSupabase, companyId, todayLocal);
-        data = result;
-        
-        // Format today's date for the prompt
-        const todayStr = today.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric", year: "numeric" });
-        
-        // Always log for debugging
-        console.log("JOBS_TODAY - Today date object:", todayLocal);
-        console.log("JOBS_TODAY - Today date string:", `${todayLocal.getFullYear()}-${String(todayLocal.getMonth() + 1).padStart(2, "0")}-${String(todayLocal.getDate()).padStart(2, "0")}`);
-        console.log("JOBS_TODAY - Result count:", result.count);
-        console.log("JOBS_TODAY - Jobs found:", result.jobs);
-        
-        userPrompt = `Today: ${todayStr}. Jobs: ${result.count}. Data: ${JSON.stringify(result.jobs.map((j) => ({ title: j.title, customer: j.customerName, status: j.status })))}. Answer concisely.`;
-        break;
-      }
-
-      case "JOBS_TOMORROW": {
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        const result = await getJobsForDate(adminSupabase, companyId, tomorrow);
-        data = result;
-        userPrompt = `Jobs tomorrow: ${result.count}. Data: ${JSON.stringify(result.jobs.map((j) => ({ title: j.title, customer: j.customerName, status: j.status })))}. Answer concisely.`;
-        break;
-      }
-
-      case "JOBS_IN_PROGRESS": {
-        const result = await getJobsInProgress(adminSupabase, companyId);
-        data = result;
-        userPrompt = `Jobs in progress: ${result.count}. Data: ${JSON.stringify(result.jobs.map((j) => ({ title: j.title, customer: j.customerName, status: j.status })))}. Answer concisely.`;
-        break;
-      }
-
-      case "STUCK_JOBS": {
-        const result = await getStuckJobs(adminSupabase, companyId);
-        data = result;
-        userPrompt = `Stuck jobs: ${result.count}. Data: ${JSON.stringify(result.jobs.map((j) => ({ title: j.title, customer: j.customerName, status: j.status })))}. Answer concisely.`;
-        break;
-      }
-
-      case "MATERIALS_TODAY": {
-        const result = await getMaterialsForDate(adminSupabase, companyId, new Date());
-        data = result;
-        
-        if (result.materials.length === 0) {
-          userPrompt = `Materials today: 0. Answer concisely.`;
-        } else {
-          userPrompt = `Materials today: ${JSON.stringify(result.materials.map((m) => ({ name: m.name, job: m.jobTitle, customer: m.customerName })))}. Answer concisely.`;
-        }
-        break;
-      }
-
-      case "MATERIALS_TOMORROW": {
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
-        const result = await getMaterialsForDate(adminSupabase, companyId, tomorrow);
-        data = result;
-        
-        if (result.materials.length === 0) {
-          userPrompt = `Materials tomorrow: 0. Answer concisely.`;
-        } else {
-          userPrompt = `Materials tomorrow: ${JSON.stringify(result.materials.map((m) => ({ name: m.name, job: m.jobTitle, customer: m.customerName })))}. Answer concisely.`;
-        }
-        break;
-      }
-
-      case "JOBS_MISSING_MATERIALS": {
-        const result = await getJobsMissingMaterials(adminSupabase, companyId);
-        data = result;
-        userPrompt = `Jobs missing materials: ${result.count}. Data: ${JSON.stringify(result.jobs.map((j) => ({ title: j.title, customer: j.customerName })))}. Answer concisely.`;
-        break;
-      }
-
-      case "FOCUS_TODAY": {
-        const result = await getFocusToday(adminSupabase, companyId);
-        data = result;
-        const unpaidTotalDollars = (result.unpaidTotal / 100).toFixed(2);
-        userPrompt = `Focus today: Jobs: ${result.jobsToday}, Unpaid invoices: ${result.unpaidInvoices}, Unpaid total: $${unpaidTotalDollars}. Answer concisely.`;
-        break;
-      }
-
-      case "GENERAL_SUMMARY": {
-        const result = await getGeneralSummary(adminSupabase, companyId);
-        
-        // Also fetch recent jobs and invoices for context
-        const { data: recentJobs } = await adminSupabase
-          .from("jobs")
-          .select("id, title, status, customer:customers(name)")
-          .eq("company_id", companyId)
-          .order("created_at", { ascending: false })
-          .limit(20);
-
-        const { data: recentInvoices } = await adminSupabase
-          .from("invoices")
-          .select("id, amount_total, status, created_at, customer:customers(name)")
-          .eq("company_id", companyId)
-          .order("created_at", { ascending: false })
-          .limit(10);
-
-        const { data: customers } = await adminSupabase
-          .from("customers")
-          .select("id, name")
-          .eq("company_id", companyId)
-          .order("name")
-          .limit(50);
-
-        const generalData = result;
-        const invoicedDollars = (result.totalInvoiced / 100).toFixed(2);
-        const paidDollars = (result.totalPaid / 100).toFixed(2);
-        
-        const recentJobsList = (recentJobs || []).map((j: any) => ({
-          id: j.id,
-          title: j.title,
-          status: j.status,
-          customerName: j.customer?.name || "Unknown",
-        }));
-
-        const recentInvoicesList = (recentInvoices || []).map((inv: any) => ({
-          id: inv.id,
-          amount: inv.amount_total,
-          status: inv.status,
-          customerName: inv.customer?.name || "Unknown",
-          created: inv.created_at,
-        }));
-
-        data = { generalData, recentJobs: recentJobsList, recentInvoices: recentInvoicesList, customers };
-        userPrompt = `Question: "${message}". Business data: Jobs: ${generalData.totalJobs} total, ${generalData.activeJobs} active. Invoiced: $${invoicedDollars}, Paid: $${paidDollars}, Unpaid: ${generalData.unpaidCount}. Recent jobs: ${JSON.stringify(recentJobsList)}. Recent invoices: ${JSON.stringify(recentInvoicesList)}. Customers: ${JSON.stringify(customers?.map((c: any) => ({ name: c.name })) || [])}. Answer concisely.`;
-        break;
-      }
-
-      case "TOTAL_JOBS": {
-        const result = await getGeneralSummary(adminSupabase, companyId);
-        data = result;
-        userPrompt = `Total jobs: ${result.totalJobs}. Answer concisely.`;
-        break;
-      }
-
-      case "TOTAL_REVENUE": {
-        const result = await getGeneralSummary(adminSupabase, companyId);
-        data = result;
-        const invoicedDollars = (result.totalInvoiced / 100).toFixed(2);
-        userPrompt = `Total invoiced: $${invoicedDollars}. Answer concisely.`;
-        break;
-      }
-
-      case "JOBS_THIS_WEEK": {
-        // Calculate jobs this week
-        const weekAgo = new Date();
-        weekAgo.setDate(weekAgo.getDate() - 7);
-        const { data: jobs } = await adminSupabase
-          .from("jobs")
-          .select("id, created_at")
-          .eq("company_id", companyId)
-          .gte("created_at", weekAgo.toISOString());
-        const jobsThisWeek = jobs?.length || 0;
-        data = { count: jobsThisWeek };
-        userPrompt = `Jobs this week: ${jobsThisWeek}. Answer concisely.`;
-        break;
-      }
-
-      case "ACTIVE_JOBS": {
-        const result = await getGeneralSummary(adminSupabase, companyId);
-        data = result;
-        userPrompt = `Active jobs: ${result.activeJobs}. Answer concisely.`;
-        break;
-      }
-
-      case "JOBS_BY_STATUS": {
-        const { data: jobs } = await adminSupabase
-          .from("jobs")
-          .select("status")
-          .eq("company_id", companyId);
-        const jobsByStatus = (jobs || []).reduce((acc, job) => {
-          acc[job.status] = (acc[job.status] || 0) + 1;
-          return acc;
-        }, {} as Record<string, number>);
-        data = { jobsByStatus };
-        userPrompt = `Jobs by status: ${JSON.stringify(jobsByStatus)}. Answer concisely.`;
-        break;
-      }
-
-      // New flexible intent handlers
-      case "JOB_LOOKUP":
-      case "ESTIMATE_LOOKUP":
-      case "MATERIAL_LOOKUP": {
-        if (!entities.jobIdentifier) {
-          specificRefusal = "I need a job or customer name to look up that information.";
-          break;
-        }
-
-        // Handle queries like "my jobs" or "all jobs" - fall back to general summary
-        const identifierLower = entities.jobIdentifier.toLowerCase();
-        if (identifierLower === 'my' || identifierLower === 'all' || identifierLower.includes('my ') || identifierLower.includes('all ')) {
-          // Fall back to general summary with jobs list
-          const result = await getGeneralSummary(adminSupabase, companyId);
-          const { data: recentJobs } = await adminSupabase
-            .from("jobs")
-            .select("id, title, status, customer:customers(name)")
-            .eq("company_id", companyId)
-            .order("created_at", { ascending: false })
-            .limit(20);
-          
-          data = { jobs: recentJobs || [] };
-          const jobsList = (recentJobs || []).map((j: any) => ({
-            title: j.title,
-            customer: j.customer?.name || "Unknown",
-            status: j.status,
-          }));
-          
-          userPrompt = `Recent jobs: ${JSON.stringify(jobsList)}. Answer concisely.`;
-          break;
-        }
-
-        // First, find the job(s)
-        const jobsResult = await getJobsByNameOrCustomer(adminSupabase, companyId, entities.jobIdentifier);
-
-        if (jobsResult.count === 0) {
-          specificRefusal = `I don't see any jobs matching "${entities.jobIdentifier}". Try asking about a specific customer name or job title.`;
-          break;
-        }
-
-        const job = jobsResult.jobs[0]; // Use first match
-
-        if (intent === "ESTIMATE_LOOKUP") {
-          const estimateResult = await getEstimatesForJob(adminSupabase, companyId, job.id);
-          if (estimateResult.count === 0) {
-            specificRefusal = `I don't see any estimates for the ${job.title} job.`;
-            break;
-          }
-          data = estimateResult;
-          const totalDollars = (estimateResult.total / 100).toFixed(2);
-          userPrompt = `Estimates for "${job.title}" (${job.customerName}): ${estimateResult.count} estimates, Total: $${totalDollars}. Data: ${JSON.stringify(estimateResult.estimates.map((e) => ({ status: e.status, total: e.total, lineItems: e.lineItems.slice(0, 3) })))}. Answer concisely.`;
-        } else if (intent === "MATERIAL_LOOKUP") {
-          const materialsResult = await getMaterialsForJob(adminSupabase, companyId, job.id);
-          if (materialsResult.materials.length === 0) {
-            specificRefusal = `I don't see any materials listed for the ${job.title} job.`;
-            break;
-          }
-          data = materialsResult;
-          userPrompt = `Materials for "${job.title}" (${job.customerName}): ${JSON.stringify(materialsResult.materials.map((m) => ({ name: m.name, paintColor: m.paintColor, sheen: m.sheen, checked: m.checked })))}. Answer concisely.`;
-        } else {
-          // JOB_LOOKUP
-          data = jobsResult;
-          userPrompt = `Jobs matching "${entities.jobIdentifier}": ${jobsResult.count}. Data: ${JSON.stringify(jobsResult.jobs.map((j) => ({ title: j.title, customer: j.customerName, status: j.status, scheduledDate: j.scheduledDate })))}. Answer concisely.`;
-        }
-        break;
-      }
-
-      case "INVOICE_LOOKUP": {
-        let startDate: Date;
-        let endDate: Date;
-
-        if (entities.dateRange === "last_month") {
-          const now = new Date();
-          startDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-          endDate = new Date(now.getFullYear(), now.getMonth(), 1);
-        } else if (entities.dateRange === "this_week") {
-          const now = new Date();
-          const dayOfWeek = now.getDay();
-          startDate = new Date(now);
-          startDate.setDate(now.getDate() - dayOfWeek);
-          endDate = new Date(now);
-          endDate.setDate(now.getDate() + (7 - dayOfWeek));
-        } else {
-          specificRefusal = "I need a date range (like 'last month' or 'this week') to look up invoices.";
-          break;
-        }
-
-        const invoiceResult = await getInvoicesForDateRange(adminSupabase, companyId, startDate, endDate);
-
-        if (invoiceResult.count === 0) {
-          specificRefusal = `I don't see any invoices in that date range.`;
-          break;
-        }
-
-        data = invoiceResult;
-        const totalDollars = (invoiceResult.total / 100).toFixed(2);
-        const dateRangeStr = entities.dateRange === "last_month" ? "last month" : "this week";
-        userPrompt = `Invoices ${dateRangeStr}: ${invoiceResult.count}, Total: $${totalDollars}. Data: ${JSON.stringify(invoiceResult.invoices.map((inv) => ({ customer: inv.customerName, job: inv.jobTitle, amount: inv.amount, status: inv.status })))}. Answer concisely.`;
-        break;
-      }
-
-      case "CUSTOMER_LOOKUP": {
-        const customerResult = await getCustomersWithUnpaidInvoices(adminSupabase, companyId);
-
-        if (customerResult.customers.length === 0) {
-          specificRefusal = "All customers have paid their invoices!";
-          break;
-        }
-
-        data = customerResult;
-        userPrompt = `Customers with unpaid invoices: ${JSON.stringify(customerResult.customers.map((c) => ({ name: c.name, unpaidCount: c.unpaidCount, total: c.unpaidTotal })))}. Answer concisely.`;
-        break;
-      }
-
-      case "ALL_CUSTOMERS": {
-        const allCustomersResult = await getAllCustomers(adminSupabase, companyId);
-
-        if (allCustomersResult.count === 0) {
-          specificRefusal = "No customers found.";
-          break;
-        }
-
-        data = allCustomersResult;
-        userPrompt = `All customers (${allCustomersResult.count} total): ${JSON.stringify(allCustomersResult.customers.map((c) => ({ name: c.name, phone: c.phone, email: c.email, city: c.city, state: c.state, tags: c.tags })))}. Answer concisely.`;
-        break;
-      }
-
-      case "CUSTOMER_DETAIL": {
-        // Extract customer name from entities or message
-        const customerNameToSearch = entities.customerName || entities.jobIdentifier;
-
-        if (!customerNameToSearch) {
-          specificRefusal = "I need a customer name to look up their details.";
-          break;
-        }
-
-        const customerDetailResult = await getCustomerByName(adminSupabase, companyId, customerNameToSearch);
-
-        if (customerDetailResult.count === 0) {
-          specificRefusal = `I don't see any customers matching "${customerNameToSearch}".`;
-          break;
-        }
-
-        data = customerDetailResult;
-        const customerData = customerDetailResult.customers.map((cd) => ({
-          name: cd.customer.name,
-          phone: cd.customer.phone,
-          email: cd.customer.email,
-          address: cd.customer.address1 ? `${cd.customer.address1}, ${cd.customer.city}, ${cd.customer.state} ${cd.customer.zip}` : null,
-          tags: cd.customer.tags,
-          notes: cd.customer.notes,
-          jobs: cd.jobs.length,
-          totalInvoiced: `$${(cd.totalInvoiced / 100).toFixed(2)}`,
-          totalPaid: `$${(cd.totalPaid / 100).toFixed(2)}`,
-          unpaid: `$${(cd.unpaidAmount / 100).toFixed(2)}`,
-          avgDaysToPay: cd.averageDaysToPay,
-          recentJobs: cd.jobs.slice(0, 3).map(j => ({ title: j.title, status: j.status })),
-        }));
-
-        userPrompt = `Customer details: ${JSON.stringify(customerData)}. Answer concisely.`;
-        break;
-      }
-
-      case "CUSTOMERS_BY_TAG": {
-        if (!entities.customerTag) {
-          specificRefusal = "I need a customer tag (like VIP, repeat customer, good payer) to filter by.";
-          break;
-        }
-
-        const tagResult = await getCustomersByTag(adminSupabase, companyId, entities.customerTag);
-
-        if (tagResult.count === 0) {
-          specificRefusal = `No customers found with the ${entities.customerTag} tag.`;
-          break;
-        }
-
-        data = tagResult;
-        userPrompt = `Customers with ${entities.customerTag} tag: ${JSON.stringify(tagResult.customers.map((c) => ({ name: c.name, phone: c.phone, email: c.email, tags: c.tags })))}. Answer concisely.`;
-        break;
-      }
-
-      case "CUSTOMERS_BY_LOCATION": {
-        if (!entities.location) {
-          specificRefusal = "I need a city or state to filter customers by location.";
-          break;
-        }
-
-        const locationResult = await getCustomersByLocation(
-          adminSupabase,
-          companyId,
-          entities.location.city,
-          entities.location.state
-        );
-
-        if (locationResult.count === 0) {
-          const locationStr = entities.location.city || entities.location.state;
-          specificRefusal = `No customers found in ${locationStr}.`;
-          break;
-        }
-
-        data = locationResult;
-        const locationStr = entities.location.city || entities.location.state;
-        userPrompt = `Customers in ${locationStr}: ${JSON.stringify(locationResult.customers.map((c) => ({ name: c.name, phone: c.phone, email: c.email, city: c.city, state: c.state })))}. Answer concisely.`;
-        break;
-      }
-
-      case "RELATIONSHIP_QUERY": {
-        if (entities.relationship === "accepted_no_invoice") {
-          const relationshipResult = await getJobsWithAcceptedEstimatesButNoInvoice(adminSupabase, companyId);
-
-          if (relationshipResult.count === 0) {
-            specificRefusal = "All jobs with accepted estimates have been invoiced!";
-            break;
-          }
-
-          data = relationshipResult;
-          userPrompt = `Jobs with accepted estimates but no invoice: ${relationshipResult.count}. Data: ${JSON.stringify(relationshipResult.jobs.map((j) => ({ title: j.title, customer: j.customerName, acceptedAt: j.acceptedAt })))}. Answer concisely.`;
-        }
-        break;
-      }
-
-      case "OUT_OF_SCOPE": {
-        // Even if out of scope, if it mentions business terms, try to answer with available data
-        const normalized = message.toLowerCase();
-        if (/(job|material|invoice|customer|payment|estimate|paint|revenue|money|paid|unpaid)/i.test(normalized)) {
-          // Fall through to default case to fetch and answer with available data
-          // (intentionally no break)
-        } else {
-          return NextResponse.json({
-            response: "I can only answer questions about your jobs, invoices, estimates, materials, and customers.",
-          });
-        }
-      }
-
-      default: {
-        // Fallback: fetch comprehensive data for general questions
-        const [generalData, jobsData, invoicesData, customersData] = await Promise.all([
-          getGeneralSummary(adminSupabase, companyId),
-          adminSupabase
-            .from("jobs")
-            .select("id, title, status, scheduled_date, scheduled_time, customer:customers(name)")
-            .eq("company_id", companyId)
-            .limit(20)
-            .order("created_at", { ascending: false }),
-          adminSupabase
-            .from("invoices")
-            .select("id, amount_total, status, created_at, customer:customers(name), job:jobs(title)")
-            .eq("company_id", companyId)
-            .limit(10)
-            .order("created_at", { ascending: false }),
-          adminSupabase
-            .from("customers")
-            .select("id, name, email, phone")
-            .eq("company_id", companyId)
-            .limit(10)
-            .order("name")
-        ]);
-
-        const recentJobs = (jobsData.data || []).map(j => ({
-          title: j.title,
-          status: j.status,
-          customer: (j.customer as any)?.name || "Unknown",
-          scheduledDate: j.scheduled_date,
-          scheduledTime: j.scheduled_time
-        }));
-
-        const recentInvoices = (invoicesData.data || []).map(i => ({
-          customer: (i.customer as any)?.name || "Unknown",
-          job: (i.job as any)?.title || "Unknown",
-          amount: `$${(i.amount_total / 100).toFixed(2)}`,
-          status: i.status
-        }));
-
-        const customers = (customersData.data || []).map(c => ({
-          name: c.name,
-          email: c.email,
-          phone: c.phone
-        }));
-
-        // Also fetch materials for better context
-        // First get job IDs for this company
-        const { data: companyJobs } = await adminSupabase
-          .from("jobs")
-          .select("id")
-          .eq("company_id", companyId);
-        
-        const jobIds = companyJobs?.map(j => j.id) || [];
-        
-        const { data: materialsData } = jobIds.length > 0 ? await adminSupabase
-          .from("job_materials")
-          .select("name, notes, quantity_decimal, unit, job:jobs(title, customer:customers(name))")
-          .in("job_id", jobIds)
-          .limit(50) : { data: null };
-
-        const materials = (materialsData || []).map((m: any) => ({
-          name: m.name,
-          notes: m.notes,
-          quantity: m.quantity_decimal,
-          unit: m.unit,
-          jobTitle: m.job?.title || "Unknown",
-          customerName: m.job?.customer?.name || "Unknown",
-        }));
-
-        data = { generalData, recentJobs, recentInvoices, customers, materials };
-        userPrompt = `Question: "${message}". Data: Jobs: ${generalData.totalJobs} total, ${generalData.activeJobs} active. Invoiced: $${(generalData.totalInvoiced / 100).toFixed(2)}, Paid: $${(generalData.totalPaid / 100).toFixed(2)}, Unpaid: ${generalData.unpaidCount}. Recent jobs: ${JSON.stringify(recentJobs)}. Recent invoices: ${JSON.stringify(recentInvoices)}. Customers: ${JSON.stringify(customers)}. Materials: ${JSON.stringify(materials)}. Answer concisely.`;
-        break;
-      }
-    }
-
-    // Handle specific refusals first
-    if (specificRefusal) {
+    if (!openaiApiKey) {
+      // Fallback: generate basic response without AI
       return NextResponse.json({
-        response: specificRefusal,
+        response: generateFallbackResponse(data, query),
       });
     }
 
-    // Check if data is empty (skip check for metrics and date-based queries that should return 0)
-    const skipEmptyCheck = [
-      "TOTAL_JOBS",
-      "TOTAL_REVENUE",
-      "JOBS_THIS_WEEK",
-      "ACTIVE_JOBS",
-      "JOBS_BY_STATUS",
-      "JOBS_TODAY",
-      "JOBS_TOMORROW",
-      "MATERIALS_TODAY",
-      "MATERIALS_TOMORROW",
-      "GENERAL_SUMMARY"
-    ].includes(intent);
-    
-    // Don't refuse if we have general data (jobs, invoices, customers) even if specific query returned empty
-    const hasGeneralData = data.generalData || data.recentJobs || data.recentInvoices || data.customers || data.materials;
-    
-    if (
-      !skipEmptyCheck &&
-      !hasGeneralData &&
-      (
-        (data.count !== undefined && data.count === 0) ||
-        (data.jobs && data.jobs.length === 0) ||
-        (data.materials && data.materials.length === 0) ||
-        (data.payments && data.payments.length === 0)
-      )
-    ) {
+    const openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${openaiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: `Question: ${message}\n\nData:\n${dataSummary}` },
+        ],
+        max_tokens: 150, // Keep responses short
+        temperature: 0.1,
+      }),
+    });
+
+    if (!openaiResponse.ok) {
+      console.error("OpenAI error:", await openaiResponse.text());
       return NextResponse.json({
-        response: "I don't see any data for that right now.",
+        response: generateFallbackResponse(data, query),
       });
     }
 
-    // Generate response directly from data (no AI needed)
-    let response = "";
-
-    try {
-      const openaiApiKey = process.env.OPENAI_API_KEY;
-
-      if (openaiApiKey) {
-        // Use OpenAI if API key is configured
-        const openaiResponse = await fetch("https://api.openai.com/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${openaiApiKey}`,
-          },
-          body: JSON.stringify({
-            model: "gpt-4o-mini",
-            messages: [
-              { role: "system", content: SYSTEM_PROMPT },
-              { role: "user", content: userPrompt },
-            ],
-            max_tokens: 200,
-            temperature: 0.1,
-          }),
-        });
-
-        if (openaiResponse.ok) {
-          const openaiData = await openaiResponse.json();
-          response = openaiData.choices[0]?.message?.content || "";
-        }
-      }
-
-      // Fallback: Generate response directly from data if OpenAI fails or is not configured
-      if (!response) {
-        response = generateResponseFromData(intent, data, message);
-      }
-    } catch (error) {
-      console.error("Response generation error:", error);
-      // Generate response from data as fallback
-      response = generateResponseFromData(intent, data, message);
-    }
+    const openaiData = await openaiResponse.json();
+    const response = openaiData.choices[0]?.message?.content || generateFallbackResponse(data, query);
 
     return NextResponse.json({ response });
   } catch (error) {
     console.error("Matte API error:", error);
     return NextResponse.json(
-      { response: "I'm having trouble right now. Please try again." },
+      { response: "Something went wrong. Please try again." },
       { status: 500 }
     );
   }
+}
+
+interface BusinessData {
+  jobs: any[];
+  customers: any[];
+  estimates: any[];
+  invoices: any[];
+  materials: any[];
+  summary: {
+    totalJobs: number;
+    activeJobs: number;
+    totalCustomers: number;
+    unpaidInvoices: number;
+    unpaidTotal: number;
+    totalRevenue: number;
+  };
+}
+
+async function fetchRelevantData(
+  supabase: any,
+  companyId: string,
+  query: string
+): Promise<BusinessData> {
+  // Determine what data to fetch based on query keywords
+  const needsJobs = /(job|schedul|today|tomorrow|work|progress|status)/i.test(query);
+  const needsCustomers = /(customer|client|contact|phone|email|who)/i.test(query);
+  const needsEstimates = /(estimate|quote|price|cost|paint|color|sheen|sqft|square)/i.test(query);
+  const needsInvoices = /(invoice|paid|unpaid|owe|payment|revenue|money|overdue)/i.test(query);
+  const needsMaterials = /(material|paint|color|gallon|sheen|product|supplies)/i.test(query);
+  const needsSummary = /(total|how many|summary|overview|all)/i.test(query);
+
+  // Always fetch at least some context
+  const fetchAll = !needsJobs && !needsCustomers && !needsEstimates && !needsInvoices && !needsMaterials;
+
+  const results: BusinessData = {
+    jobs: [],
+    customers: [],
+    estimates: [],
+    invoices: [],
+    materials: [],
+    summary: {
+      totalJobs: 0,
+      activeJobs: 0,
+      totalCustomers: 0,
+      unpaidInvoices: 0,
+      unpaidTotal: 0,
+      totalRevenue: 0,
+    },
+  };
+
+  // Extract potential search terms (names, etc.)
+  const searchTerms = extractSearchTerms(query);
+
+  // Parallel data fetching for efficiency
+  const promises: Promise<void>[] = [];
+
+  // Jobs
+  if (needsJobs || fetchAll || needsSummary) {
+    promises.push(
+      (async () => {
+        let jobQuery = supabase
+          .from("jobs")
+          .select("id, title, status, scheduled_date, scheduled_end_date, scheduled_time, progress_percentage, address1, city, customer:customers(name, phone, email)")
+          .eq("company_id", companyId)
+          .order("created_at", { ascending: false })
+          .limit(30);
+
+        // If searching for specific job/customer
+        if (searchTerms.length > 0) {
+          const searchConditions = searchTerms.map(term =>
+            `title.ilike.%${term}%,customer.name.ilike.%${term}%`
+          ).join(',');
+          jobQuery = jobQuery.or(searchConditions);
+        }
+
+        const { data } = await jobQuery;
+        results.jobs = data || [];
+      })()
+    );
+  }
+
+  // Customers
+  if (needsCustomers || fetchAll) {
+    promises.push(
+      (async () => {
+        let customerQuery = supabase
+          .from("customers")
+          .select("id, name, phone, email, address1, city, state, notes")
+          .eq("company_id", companyId)
+          .order("name")
+          .limit(30);
+
+        if (searchTerms.length > 0) {
+          const searchConditions = searchTerms.map(term =>
+            `name.ilike.%${term}%`
+          ).join(',');
+          customerQuery = customerQuery.or(searchConditions);
+        }
+
+        const { data } = await customerQuery;
+        results.customers = data || [];
+      })()
+    );
+  }
+
+  // Estimates with line items and materials
+  if (needsEstimates || needsMaterials || fetchAll) {
+    promises.push(
+      (async () => {
+        const { data: estimates } = await supabase
+          .from("estimates")
+          .select(`
+            id, status, sqft, accepted_at, created_at,
+            job:jobs(id, title, customer:customers(name)),
+            line_items:estimate_line_items(name, price, sqft, paint_color_name_or_code, sheen, product_line, gallons_estimate)
+          `)
+          .eq("company_id", companyId)
+          .order("created_at", { ascending: false })
+          .limit(20);
+
+        results.estimates = estimates || [];
+
+        // Also fetch estimate_materials for paint details
+        if (estimates && estimates.length > 0) {
+          const estimateIds = estimates.map((e: any) => e.id);
+          const { data: materials } = await supabase
+            .from("estimate_materials")
+            .select("*, estimate:estimates(job:jobs(title, customer:customers(name)))")
+            .in("estimate_id", estimateIds)
+            .limit(50);
+
+          results.materials = materials || [];
+        }
+      })()
+    );
+  }
+
+  // Invoices
+  if (needsInvoices || needsSummary || fetchAll) {
+    promises.push(
+      (async () => {
+        const { data } = await supabase
+          .from("invoices")
+          .select("id, amount_total, status, created_at, customer:customers(name), job:jobs(title)")
+          .eq("company_id", companyId)
+          .order("created_at", { ascending: false })
+          .limit(20);
+
+        results.invoices = data || [];
+      })()
+    );
+  }
+
+  // Summary stats
+  if (needsSummary || fetchAll) {
+    promises.push(
+      (async () => {
+        const [jobsCount, customersCount, invoicesData] = await Promise.all([
+          supabase.from("jobs").select("id, status").eq("company_id", companyId),
+          supabase.from("customers").select("id").eq("company_id", companyId),
+          supabase.from("invoices").select("id, amount_total, status").eq("company_id", companyId),
+        ]);
+
+        const jobs = jobsCount.data || [];
+        const invoices = invoicesData.data || [];
+
+        results.summary = {
+          totalJobs: jobs.length,
+          activeJobs: jobs.filter((j: any) => ["scheduled", "in_progress"].includes(j.status)).length,
+          totalCustomers: (customersCount.data || []).length,
+          unpaidInvoices: invoices.filter((i: any) => i.status !== "paid").length,
+          unpaidTotal: invoices.filter((i: any) => i.status !== "paid").reduce((sum: number, i: any) => sum + i.amount_total, 0),
+          totalRevenue: invoices.reduce((sum: number, i: any) => sum + i.amount_total, 0),
+        };
+      })()
+    );
+  }
+
+  await Promise.all(promises);
+  return results;
+}
+
+function extractSearchTerms(query: string): string[] {
+  // Remove common words and extract potential names/identifiers
+  const stopWords = ['the', 'a', 'an', 'for', 'about', 'tell', 'me', 'what', 'how', 'many', 'much', 'is', 'are', 'do', 'does', 'have', 'has', 'need', 'needs', 'all', 'my', 'show', 'list', 'get', 'find', 'job', 'jobs', 'customer', 'customers', 'invoice', 'invoices', 'estimate', 'estimates', 'material', 'materials', 'paint', 'today', 'tomorrow', 'week', 'month'];
+
+  const words = query.toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '')
+    .split(/\s+/)
+    .filter(w => w.length > 2 && !stopWords.includes(w));
+
+  return words.slice(0, 3); // Max 3 search terms
+}
+
+function buildDataSummary(data: BusinessData, query: string): string {
+  const parts: string[] = [];
+
+  // Summary stats
+  if (data.summary.totalJobs > 0) {
+    parts.push(`Stats: ${data.summary.totalJobs} jobs (${data.summary.activeJobs} active), ${data.summary.totalCustomers} customers, $${(data.summary.totalRevenue / 100).toFixed(0)} revenue, ${data.summary.unpaidInvoices} unpaid ($${(data.summary.unpaidTotal / 100).toFixed(0)})`);
+  }
+
+  // Jobs (concise)
+  if (data.jobs.length > 0) {
+    const today = new Date().toISOString().split('T')[0];
+    const todayJobs = data.jobs.filter((j: any) => j.scheduled_date?.startsWith(today));
+
+    const jobList = data.jobs.slice(0, 10).map((j: any) => {
+      const customer = j.customer?.name || 'Unknown';
+      const date = j.scheduled_date ? j.scheduled_date.split('T')[0] : 'unscheduled';
+      return `${j.title} (${customer}, ${j.status}, ${date})`;
+    });
+
+    if (todayJobs.length > 0) {
+      parts.push(`Today: ${todayJobs.length} jobs`);
+    }
+    parts.push(`Jobs: ${jobList.join('; ')}`);
+  }
+
+  // Customers (concise)
+  if (data.customers.length > 0) {
+    const customerList = data.customers.slice(0, 10).map((c: any) => {
+      const contact = c.phone || c.email || 'no contact';
+      return `${c.name} (${contact})`;
+    });
+    parts.push(`Customers: ${customerList.join('; ')}`);
+  }
+
+  // Estimates with paint details
+  if (data.estimates.length > 0) {
+    const estimateList = data.estimates.slice(0, 8).map((e: any) => {
+      const job = e.job?.title || 'Unknown job';
+      const customer = e.job?.customer?.name || '';
+      const total = (e.line_items || []).reduce((sum: number, li: any) => sum + (li.price || 0), 0);
+      const paintColors = (e.line_items || [])
+        .filter((li: any) => li.paint_color_name_or_code)
+        .map((li: any) => `${li.name}: ${li.paint_color_name_or_code} ${li.sheen || ''} ${li.gallons_estimate ? li.gallons_estimate + 'gal' : ''}`)
+        .join(', ');
+
+      return `${job} (${customer}): $${(total / 100).toFixed(0)}, ${e.status}${paintColors ? `, Paint: ${paintColors}` : ''}`;
+    });
+    parts.push(`Estimates: ${estimateList.join('; ')}`);
+  }
+
+  // Materials (paint details from estimate_materials)
+  if (data.materials.length > 0) {
+    const materialList = data.materials.slice(0, 15).map((m: any) => {
+      const job = m.estimate?.job?.title || 'Unknown';
+      const color = m.paint_color || m.area_description || 'N/A';
+      const qty = m.quantity_gallons ? `${m.quantity_gallons}gal` : '';
+      return `${job}: ${color} ${m.sheen || ''} ${m.product_line || ''} ${qty}`.trim();
+    });
+    parts.push(`Materials: ${materialList.join('; ')}`);
+  }
+
+  // Invoices (concise)
+  if (data.invoices.length > 0) {
+    const unpaid = data.invoices.filter((i: any) => i.status !== 'paid');
+    if (unpaid.length > 0) {
+      const unpaidList = unpaid.slice(0, 5).map((i: any) =>
+        `${i.customer?.name || 'Unknown'}: $${(i.amount_total / 100).toFixed(0)}`
+      );
+      parts.push(`Unpaid: ${unpaidList.join('; ')}`);
+    }
+  }
+
+  return parts.join('\n') || 'No data available.';
+}
+
+function generateFallbackResponse(data: BusinessData, query: string): string {
+  const q = query.toLowerCase();
+
+  // Job count questions
+  if (/how many.*job/i.test(q)) {
+    return `You have ${data.summary.totalJobs} total jobs, ${data.summary.activeJobs} active.`;
+  }
+
+  // Today's jobs
+  if (/today/i.test(q) && /job/i.test(q)) {
+    const today = new Date().toISOString().split('T')[0];
+    const todayJobs = data.jobs.filter((j: any) => j.scheduled_date?.startsWith(today));
+    if (todayJobs.length === 0) return "No jobs scheduled for today.";
+    const list = todayJobs.map((j: any) => `${j.title} (${j.customer?.name || 'Unknown'})`).join(', ');
+    return `${todayJobs.length} jobs today: ${list}`;
+  }
+
+  // Unpaid invoices
+  if (/unpaid|owe/i.test(q)) {
+    if (data.summary.unpaidInvoices === 0) return "No unpaid invoices!";
+    const unpaid = data.invoices.filter((i: any) => i.status !== 'paid');
+    const list = unpaid.slice(0, 5).map((i: any) =>
+      `${i.customer?.name || 'Unknown'}: $${(i.amount_total / 100).toFixed(0)}`
+    ).join(', ');
+    return `${data.summary.unpaidInvoices} unpaid invoices ($${(data.summary.unpaidTotal / 100).toFixed(0)}): ${list}`;
+  }
+
+  // Customer questions
+  if (/customer/i.test(q)) {
+    if (data.customers.length === 0) return "No customers found.";
+    const list = data.customers.slice(0, 5).map((c: any) => c.name).join(', ');
+    return `${data.summary.totalCustomers} customers. Recent: ${list}`;
+  }
+
+  // Materials/paint
+  if (/material|paint|color/i.test(q)) {
+    if (data.materials.length === 0) return "No materials data found.";
+    const list = data.materials.slice(0, 5).map((m: any) => {
+      const color = m.paint_color || m.area_description || 'N/A';
+      return `${m.estimate?.job?.title || 'Job'}: ${color}`;
+    }).join(', ');
+    return `Materials: ${list}`;
+  }
+
+  // Default summary
+  return `${data.summary.totalJobs} jobs, ${data.summary.totalCustomers} customers, $${(data.summary.totalRevenue / 100).toFixed(0)} total revenue, ${data.summary.unpaidInvoices} unpaid invoices.`;
 }
