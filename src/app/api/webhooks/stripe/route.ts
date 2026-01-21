@@ -80,14 +80,8 @@ export async function POST(request: Request) {
         }
         break;
       }
-      // FUTURE: SaaS billing - subscription checkout
-      case "checkout.session.completed": {
-        // TODO: Handle subscription checkout for SaaS billing
-        // const session = event.data.object as Stripe.Checkout.Session;
-        // const companyId = session.metadata?.company_id;
-        // Update company subscription status
-        break;
-      }
+      // FUTURE: SaaS billing - subscription checkout will use same checkout.session.completed
+      // but check for company_id in metadata instead of job_id
 
       // FUTURE: SaaS billing - subscription events
       case "customer.subscription.created":

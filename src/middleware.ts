@@ -14,9 +14,9 @@ export const config = {
      * - favicon.ico (favicon file)
      * - public files (images, etc)
      * - api routes that don't need auth
-     * - public estimate/invoice pages
+     * - public customer portal pages
      */
-    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$|e/|i/|api/webhooks).*)",
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$|portal/|api/webhooks|api/estimates|api/schedules|api/payments).*)",
   ],
 };
 

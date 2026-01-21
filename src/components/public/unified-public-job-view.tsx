@@ -1218,7 +1218,7 @@ export function UnifiedPublicJobView({ job: initialJob, token, isPaymentToken = 
             onClick={(e) => e.stopPropagation()}
           >
             <img
-              src={photos[lightboxIndex]?.public_url}
+              src={photos[lightboxIndex]?.public_url || photos[lightboxIndex]?.thumbnail_url}
               alt={photos[lightboxIndex]?.caption || `Photo ${lightboxIndex + 1}`}
               className="max-w-full max-h-[80vh] object-contain"
             />

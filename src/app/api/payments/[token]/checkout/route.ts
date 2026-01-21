@@ -20,14 +20,43 @@ export async function POST(
   }
 
   try {
-    // Get job by payment_token
-    const { data: job, error: jobError } = await supabase
+    // Try to find job by multiple token types
+    // 1. First try payment_token
+    let { data: job } = await supabase
       .from("jobs")
       .select("*")
       .eq("payment_token", token)
       .single();
 
-    if (jobError || !job) {
+    // 2. If not found, try unified_job_token
+    if (!job) {
+      const { data: jobByUnified } = await supabase
+        .from("jobs")
+        .select("*")
+        .eq("unified_job_token", token)
+        .single();
+      job = jobByUnified;
+    }
+
+    // 3. If still not found, try finding via estimate public_token
+    if (!job) {
+      const { data: estimate } = await supabase
+        .from("estimates")
+        .select("job_id")
+        .eq("public_token", token)
+        .single();
+
+      if (estimate?.job_id) {
+        const { data: jobByEstimate } = await supabase
+          .from("jobs")
+          .select("*")
+          .eq("id", estimate.job_id)
+          .single();
+        job = jobByEstimate;
+      }
+    }
+
+    if (!job) {
       return NextResponse.json(
         { error: "Payment not found" },
         { status: 404 }

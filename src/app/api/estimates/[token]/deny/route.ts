@@ -75,7 +75,7 @@ export async function POST(
         ? `${job.notes}\n\n${denialNote}`
         : denialNote;
 
-      await supabase
+      const { error: jobUpdateError } = await supabase
         .from("jobs")
         .update({
           // Keep job in current status - don't archive
@@ -84,6 +84,13 @@ export async function POST(
           updated_at: new Date().toISOString(),
         })
         .eq("id", estimate.job_id);
+
+      if (jobUpdateError) {
+        if (process.env.NODE_ENV === "development") {
+          console.error("Error updating job notes:", jobUpdateError);
+        }
+        // Don't fail the request - denial was successful, job note is secondary
+      }
     }
 
     return NextResponse.json({

@@ -1,12 +1,52 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/server";
+import { createAdminClient, createClient } from "@/lib/supabase/server";
 
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
+
+  // Auth check - verify the requester is authenticated and authorized
+  const supabase = await createClient();
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return NextResponse.json(
+      { error: "Unauthorized" },
+      { status: 401 }
+    );
+  }
+
+  // Only allow users to delete themselves, or company owners to delete team members
   const adminSupabase = createAdminClient();
+
+  // Check if requester is the same user being deleted
+  const isSelfDelete = user.id === id;
+
+  if (!isSelfDelete) {
+    // Check if requester owns a company that the target user belongs to
+    const { data: requesterCompanies } = await adminSupabase
+      .from("companies")
+      .select("id")
+      .eq("owner_user_id", user.id);
+
+    const { data: targetMemberships } = await adminSupabase
+      .from("company_users")
+      .select("company_id")
+      .eq("user_id", id);
+
+    const ownsTargetCompany = requesterCompanies?.some(
+      company => targetMemberships?.some(m => m.company_id === company.id)
+    );
+
+    if (!ownsTargetCompany) {
+      return NextResponse.json(
+        { error: "Forbidden: You can only delete yourself or team members from your company" },
+        { status: 403 }
+      );
+    }
+  }
 
   try {
     // Check if user exists

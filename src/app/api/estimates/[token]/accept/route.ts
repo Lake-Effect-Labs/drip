@@ -41,6 +41,14 @@ export async function POST(
       return NextResponse.json({ success: true, message: "Already accepted" });
     }
 
+    // Check if estimate was denied - cannot accept a denied estimate
+    if (estimate.status === "denied") {
+      return NextResponse.json(
+        { error: "Cannot accept a denied estimate" },
+        { status: 400 }
+      );
+    }
+
     // Check if signoff is required and not completed
     if (estimate.requires_signoff && !estimate.signoff_completed_at) {
       return NextResponse.json(
@@ -142,17 +150,27 @@ export async function POST(
       }
       
       // Update existing job status to quoted and payment state to approved
-      await supabase
+      const { error: jobUpdateError } = await supabase
         .from("jobs")
-        .update({ 
-          status: "quoted", 
+        .update({
+          status: "quoted",
           payment_state: "approved",
           payment_approved_at: new Date().toISOString(),
           payment_amount: paymentAmount > 0 ? paymentAmount : undefined,
           unified_job_token: unifiedJobToken,
-          updated_at: new Date().toISOString() 
+          updated_at: new Date().toISOString()
         })
         .eq("id", jobId);
+
+      if (jobUpdateError) {
+        if (process.env.NODE_ENV === "development") {
+          console.error("Error updating job:", jobUpdateError);
+        }
+        return NextResponse.json(
+          { error: "Failed to update job" },
+          { status: 500 }
+        );
+      }
     }
     
     // Get unified_job_token for response
