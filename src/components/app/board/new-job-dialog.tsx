@@ -16,7 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
 import { useToast } from "@/components/ui/toast";
 import { validatePhoneNumber } from "@/lib/utils";
-import type { Job, Customer, JobTemplateWithRelations } from "@/types/database";
+import type { Job, Customer } from "@/types/database";
 
 type JobWithCustomer = Job & { customer: Customer | null };
 
@@ -46,8 +46,6 @@ export function NewJobDialog({
   initialCustomerId,
 }: NewJobDialogProps) {
   const [loading, setLoading] = useState(false);
-  const [templates, setTemplates] = useState<JobTemplateWithRelations[]>([]);
-  const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customerSearchQuery, setCustomerSearchQuery] = useState("");
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
@@ -68,7 +66,6 @@ export function NewJobDialog({
 
   useEffect(() => {
     if (open) {
-      loadTemplates();
       loadCustomers();
     }
   }, [open]);
@@ -91,17 +88,6 @@ export function NewJobDialog({
       }
     }
   }, [initialCustomerId, customers, selectedCustomerId]);
-
-  async function loadTemplates() {
-    try {
-      const response = await fetch("/api/job-templates");
-      if (!response.ok) throw new Error("Failed to load templates");
-      const data = await response.json();
-      setTemplates(data);
-    } catch (error) {
-      console.error("Error loading templates:", error);
-    }
-  }
 
   async function loadCustomers() {
     try {
@@ -167,7 +153,6 @@ export function NewJobDialog({
     setZip("");
     setNotes("");
     setAssignedUserId("");
-    setSelectedTemplateId("");
     setSelectedCustomerId(null);
     setCustomerSearchQuery("");
   }
@@ -241,22 +226,6 @@ export function NewJobDialog({
 
       const job = await jobResponse.json();
 
-      // Apply template if selected
-      if (selectedTemplateId) {
-        const templateResponse = await fetch(
-          `/api/job-templates/${selectedTemplateId}/use`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ job_id: job.id }),
-          }
-        );
-
-        if (!templateResponse.ok) {
-          console.error("Failed to apply template, but job created");
-        }
-      }
-
       onJobCreated(job);
       resetForm();
     } catch (error) {
@@ -278,34 +247,6 @@ export function NewJobDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 mt-4">
-          {/* Template Selection */}
-          {templates.length > 0 && (
-            <div className="space-y-2 rounded-lg border bg-muted/30 p-4">
-              <Label htmlFor="template" className="text-sm font-medium">
-                Start from Template (Optional)
-              </Label>
-              <Select
-                id="template"
-                value={selectedTemplateId}
-                onChange={(e) => setSelectedTemplateId(e.target.value)}
-                className="min-h-[44px]"
-              >
-                <option value="">None - Blank Job</option>
-                {templates.map((template) => (
-                  <option key={template.id} value={template.id}>
-                    {template.name}
-                    {template.description && ` - ${template.description.substring(0, 40)}${template.description.length > 40 ? '...' : ''}`}
-                  </option>
-                ))}
-              </Select>
-              {selectedTemplateId && (
-                <p className="text-xs text-muted-foreground mt-2">
-                  ℹ️ Template notes and materials will be added after creating the job
-                </p>
-              )}
-            </div>
-          )}
-
           {/* Job Title */}
           <div className="space-y-2">
             <Label htmlFor="title">Job Title *</Label>

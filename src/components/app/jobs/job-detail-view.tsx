@@ -21,7 +21,6 @@ import {
 import type { Job, Customer, Estimate, EstimateLineItem, Invoice, JobMaterial, EstimatingConfig } from "@/types/database";
 import { JobHistoryTimeline } from "./job-history-timeline";
 import { MessageTemplatesDialog } from "./message-templates-dialog";
-import { JobTemplatesDialog } from "./job-templates-dialog";
 import { PhotoGallery } from "./photo-gallery";
 import { UnifiedPayment } from "./unified-payment";
 import { Button } from "@/components/ui/button";
@@ -228,13 +227,7 @@ export function JobDetailView({
           }
         }
       )
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED') {
-          console.log(`[Realtime] Subscribed to estimate updates for job ${job.id}`);
-        } else if (status === 'CHANNEL_ERROR') {
-          console.error(`[Realtime] Error subscribing to estimate updates for job ${job.id}`);
-        }
-      });
+      .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
@@ -1658,6 +1651,7 @@ export function JobDetailView({
                 jobId={job.id}
                 companyId={companyId}
                 customerId={job.customer_id}
+                jobStatus={job.status}
                 paymentState={(job.payment_state as any) || "none"}
                 paymentAmount={job.payment_amount || null}
                 paymentApprovedAt={job.payment_approved_at || null}
@@ -1684,21 +1678,7 @@ export function JobDetailView({
               {/* Scheduling Section */}
               <div className="rounded-lg border bg-card p-4 space-y-4">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <h3 className="font-semibold">Schedule</h3>
-                    {(job as any).schedule_state === "accepted" && (
-                      <Badge variant="success">
-                        <CheckCircle className="h-3 w-3 mr-1" />
-                        Confirmed by Customer
-                      </Badge>
-                    )}
-                    {(job as any).schedule_state === "proposed" && (
-                      <Badge variant="secondary">
-                        <Clock className="h-3 w-3 mr-1" />
-                        Waiting for Confirmation
-                      </Badge>
-                    )}
-                  </div>
+                  <h3 className="font-semibold">Schedule</h3>
                   {!editingSchedule && (
                     <Button
                       variant="ghost"
@@ -1829,54 +1809,31 @@ export function JobDetailView({
                       </div>
                     </div>
 
-                    {/* Status Info */}
-                    {(job as any).schedule_state === "accepted" && (job as any).schedule_accepted_at && (
-                      <div className="text-sm text-muted-foreground">
-                        Confirmed by customer on {formatDate((job as any).schedule_accepted_at)}
-                      </div>
-                    )}
-
                     {/* Actions */}
                     {job.scheduled_date && (
-                      <div className="flex flex-col gap-2">
+                      <div className="flex gap-2">
                         <Button
+                          type="button"
                           variant="outline"
-                          onClick={async () => {
-                            if (!job.customer?.phone) {
-                              addToast("No customer phone number on file", "error");
-                              return;
-                            }
-                            // Ensure unified token exists
-                            const token = await ensureUnifiedToken();
-                            if (!token) return;
-
-                            const customerName = job.customer?.name || "there";
-                            const dateStr = scheduledEndDate && scheduledEndDate !== scheduledDate
-                              ? `${formatDate(scheduledDate)} through ${formatDate(scheduledEndDate)}`
-                              : formatDate(scheduledDate);
-                            const timeStr = formatTime(scheduledTime);
-
-                            const link = `${typeof window !== "undefined" ? window.location.origin : ""}/portal/${token}?tab=schedule`;
-                            const message = `Hi ${customerName}! We'd like to schedule your ${job.title || "painting project"} for ${dateStr}, arriving around ${timeStr}. Please confirm your schedule here: ${link}`;
-
-                            const smsLink = generateSMSLink(job.customer.phone, message);
-                            window.location.href = smsLink;
-                          }}
-                          className="w-full"
+                          size="sm"
+                          onClick={() => setEditingSchedule(true)}
+                          className="flex-1 touch-target min-h-[44px]"
                         >
-                          <Smartphone className="mr-2 h-4 w-4" />
-                          Send SMS to Customer
+                          <Pencil className="mr-2 h-4 w-4" />
+                          Edit
                         </Button>
                         <Button
+                          type="button"
                           variant="outline"
+                          size="sm"
                           onClick={async () => {
                             await ensureScheduleToken();
                             setShowShareScheduleDialog(true);
                           }}
-                          className="w-full"
+                          className="flex-1 touch-target min-h-[44px]"
                         >
-                          <Copy className="mr-2 h-4 w-4" />
-                          Copy Link or Message
+                          <Share2 className="mr-2 h-4 w-4" />
+                          Share
                         </Button>
                       </div>
                     )}
@@ -2444,167 +2401,6 @@ export function JobDetailView({
                 )}
               </div>
 
-              {/* Tracking Section */}
-              <div className="rounded-lg border bg-card p-4 space-y-4">
-                {!editingTracking && timeEntries.length > 0 ? (
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="font-semibold">Time Tracking</h3>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setEditingTracking(true)}
-                        className="touch-target min-h-[44px]"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    {/* Simplified view - show workers and total hours */}
-                    <div className="space-y-2">
-                      {(() => {
-                        // Group entries by user
-                        const groupedByUser = timeEntries.reduce((acc, entry) => {
-                          const userId = entry.user_id || 'unknown';
-                          const userName = userId !== 'unknown' 
-                            ? (teamMembers.find(m => m.id === userId)?.fullName || entry.user?.full_name || 'Unknown')
-                            : 'Unknown';
-                          if (!acc[userId]) {
-                            acc[userId] = { name: userName, totalHours: 0, entries: [] };
-                          }
-                          const hours = entry.duration_seconds ? entry.duration_seconds / 3600 : 0;
-                          acc[userId].totalHours += hours;
-                          acc[userId].entries.push(entry);
-                          return acc;
-                        }, {} as Record<string, { name: string; totalHours: number; entries: typeof timeEntries }>);
-
-                        return Object.entries(groupedByUser).map(([userId, data]) => (
-                          <div key={userId} className="flex items-center justify-between rounded-lg border bg-muted/30 p-2">
-                            <span className="text-sm font-medium">{data.name}</span>
-                            <span className="text-sm text-muted-foreground">{data.totalHours.toFixed(1)}h</span>
-                          </div>
-                        ));
-                      })()}
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-semibold">Time Tracking</h3>
-                      {editingTracking && timeEntries.length > 0 && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setEditingTracking(false)}
-                        >
-                          <X className="h-4 w-4" />
-                        </Button>
-                      )}
-                    </div>
-                    {/* Time Tracking */}
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <Label className="text-sm font-medium">Time Logs</Label>
-                        <Button
-                          size="sm"
-                          onClick={() => setShowAddTimeDialog(true)}
-                          className="touch-target min-h-[44px]"
-                        >
-                          <Plus className="mr-2 h-4 w-4" />
-                          Add Hours
-                        </Button>
-                      </div>
-
-                      {/* Time Entries List */}
-                      {loadingTimeEntries ? (
-                        <p className="text-sm text-muted-foreground text-center py-4">Loading...</p>
-                      ) : timeEntries.length === 0 ? (
-                        <p className="text-sm text-muted-foreground text-center py-4">No time entries yet</p>
-                      ) : (
-                        <div className="space-y-2">
-                          {timeEntries.map((entry) => {
-                            const hours = entry.duration_seconds ? (entry.duration_seconds / 3600).toFixed(1) : "0";
-                            const date = new Date(entry.started_at).toLocaleDateString([], { month: "short", day: "numeric" });
-                            const userName = entry.user_id 
-                              ? (teamMembers.find(m => m.id === entry.user_id)?.fullName || entry.user?.full_name || "Unknown")
-                              : "Unknown";
-
-                            return (
-                              <div key={entry.id} className="flex items-center justify-between rounded-lg border bg-muted/30 p-3">
-                                <div className="flex-1">
-                                  <p className="text-sm font-medium">{userName}</p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {date} • {hours}h
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  {editingTimeEntry === entry.id ? (
-                                    <>
-                                      <Input
-                                        type="number"
-                                        step="0.25"
-                                        min="0"
-                                        defaultValue={hours}
-                                        className="w-20 h-8 text-sm"
-                                        onBlur={(e) => {
-                                          const newHours = parseFloat(e.target.value);
-                                          if (!isNaN(newHours) && newHours > 0) {
-                                            handleUpdateTimeEntry(entry.id, newHours);
-                                          } else {
-                                            setEditingTimeEntry(null);
-                                          }
-                                        }}
-                                        onKeyDown={(e) => {
-                                          if (e.key === 'Enter') {
-                                            const newHours = parseFloat((e.target as HTMLInputElement).value);
-                                            if (!isNaN(newHours) && newHours > 0) {
-                                              handleUpdateTimeEntry(entry.id, newHours);
-                                            } else {
-                                              setEditingTimeEntry(null);
-                                            }
-                                          } else if (e.key === 'Escape') {
-                                            setEditingTimeEntry(null);
-                                          }
-                                        }}
-                                        autoFocus
-                                      />
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        onClick={() => setEditingTimeEntry(null)}
-                                        className="h-8"
-                                      >
-                                        <X className="h-3 w-3" />
-                                      </Button>
-                                    </>
-                                  ) : (
-                                    <>
-                                      <button
-                                        onClick={() => setEditingTimeEntry(entry.id)}
-                                        className="text-muted-foreground hover:text-foreground"
-                                        title="Edit hours"
-                                      >
-                                        <Pencil className="h-4 w-4" />
-                                      </button>
-                                      <button
-                                        onClick={() => handleDeleteTimeEntry(entry.id)}
-                                        className="text-muted-foreground hover:text-destructive"
-                                        title="Delete entry"
-                                      >
-                                        <Trash2 className="h-4 w-4" />
-                                      </button>
-                                    </>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
-
                 {/* Photos Section */}
                 <div className="rounded-lg border bg-card p-4 space-y-4">
                   {!editingPhotos ? (
@@ -3090,87 +2886,6 @@ export function JobDetailView({
               >
                 <Copy className="mr-2 h-4 w-4" />
                 Duplicate
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Job Templates Dialog */}
-      <JobTemplatesDialog
-        open={showTemplateDialog}
-        onOpenChange={setShowTemplateDialog}
-        mode={templateDialogMode}
-        jobId={job.id}
-        companyId={companyId}
-        onRefresh={() => router.refresh()}
-      />
-
-      {/* Add Hours Dialog */}
-      <Dialog open={showAddTimeDialog} onOpenChange={setShowAddTimeDialog}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Add Hours</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="timeWorker">Worker</Label>
-              <Select
-                id="timeWorker"
-                value={newTimeEntry.userId}
-                onChange={(e) => setNewTimeEntry({ ...newTimeEntry, userId: e.target.value })}
-              >
-                <option value="">Select worker</option>
-                {teamMembers.map((member) => (
-                  <option key={member.id} value={member.id}>
-                    {member.fullName}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="timeDate">Date</Label>
-              <Input
-                id="timeDate"
-                type="date"
-                value={newTimeEntry.date}
-                onChange={(e) => setNewTimeEntry({ ...newTimeEntry, date: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="timeHours">Hours</Label>
-              <Input
-                id="timeHours"
-                type="number"
-                step="0.25"
-                min="0"
-                placeholder="0.0"
-                value={newTimeEntry.hours}
-                onChange={(e) => setNewTimeEntry({ ...newTimeEntry, hours: e.target.value })}
-              />
-            </div>
-            <div className="flex gap-2 justify-end">
-              <Button
-                variant="outline"
-                onClick={() => setShowAddTimeDialog(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={async () => {
-                  await handleAddTimeEntry();
-                  setShowAddTimeDialog(false);
-                  setNewTimeEntry({
-                    userId: currentUserId,
-                    hours: "",
-                    date: new Date().toISOString().split("T")[0],
-                  });
-                }}
-                loading={addingTimeEntry}
-                disabled={!newTimeEntry.hours || !newTimeEntry.userId}
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                Add Hours
               </Button>
             </div>
           </div>

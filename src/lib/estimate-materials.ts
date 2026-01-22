@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/server";
 import { EstimateLineItem, EstimateMaterial, InsertTables } from "@/types/database";
 
 // Default cost per gallon if not found in inventory
@@ -9,7 +9,7 @@ const DEFAULT_COST_PER_GALLON = 45.0;
  * Creates paint materials based on paint details in line items
  */
 export async function generateEstimateMaterials(estimateId: string): Promise<EstimateMaterial[]> {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
 
   // Get all line items for this estimate
   const { data: lineItems, error: lineItemsError } = await supabase
@@ -121,7 +121,7 @@ export async function generateEstimateMaterials(estimateId: string): Promise<Est
  * Regenerates estimate materials by deleting auto-generated ones and creating new ones
  */
 export async function regenerateEstimateMaterials(estimateId: string): Promise<EstimateMaterial[]> {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
 
   // Delete all auto-generated materials for this estimate
   const { error: deleteError } = await supabase
@@ -142,7 +142,7 @@ export async function regenerateEstimateMaterials(estimateId: string): Promise<E
  * Gets materials breakdown for an estimate
  */
 export async function getEstimateMaterialsBreakdown(estimateId: string) {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
 
   const { data: materials, error } = await supabase
     .from("estimate_materials")

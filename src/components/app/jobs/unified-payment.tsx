@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -127,6 +126,7 @@ interface UnifiedPaymentProps {
   jobId: string;
   companyId: string;
   customerId: string | null;
+  jobStatus?: string; // Job status to determine if job is done
   paymentState: PaymentState;
   paymentAmount: number | null; // in cents
   paymentApprovedAt: string | null;
@@ -151,6 +151,7 @@ export function UnifiedPayment({
   jobId,
   companyId,
   customerId,
+  jobStatus,
   paymentState,
   paymentAmount,
   paymentApprovedAt,
@@ -166,6 +167,8 @@ export function UnifiedPayment({
   estimateLineItems: initialEstimateLineItems = [],
   onUpdate,
 }: UnifiedPaymentProps) {
+  // Check if job is done (done, paid, or archive status)
+  const isJobDone = jobStatus === "done" || jobStatus === "paid" || jobStatus === "archive";
   const supabase = createClient();
   const { addToast } = useToast();
   const router = useRouter();
@@ -174,19 +177,24 @@ export function UnifiedPayment({
   const [currentPaymentState, setCurrentPaymentState] = useState<PaymentState>(paymentState);
   const [currentPaymentPaidAt, setCurrentPaymentPaidAt] = useState<string | null>(paymentPaidAt);
   const [currentPaymentMethod, setCurrentPaymentMethod] = useState<string | null>(paymentMethod);
-  
+  const [currentPaymentAmount, setCurrentPaymentAmount] = useState<number | null>(paymentAmount);
+
   // Update local state when prop changes
   useEffect(() => {
     setCurrentPaymentState(paymentState);
   }, [paymentState]);
-  
+
   useEffect(() => {
     setCurrentPaymentPaidAt(paymentPaidAt);
   }, [paymentPaidAt]);
-  
+
   useEffect(() => {
     setCurrentPaymentMethod(paymentMethod);
   }, [paymentMethod]);
+
+  useEffect(() => {
+    setCurrentPaymentAmount(paymentAmount);
+  }, [paymentAmount]);
 
   // Update saved line items when initialLineItems prop changes (from parent refresh)
   useEffect(() => {
@@ -233,19 +241,15 @@ export function UnifiedPayment({
   const [editingEstimate, setEditingEstimate] = useState(false);
   const [loadingEstimateData, setLoadingEstimateData] = useState(false);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
-  const [sharePaymentDialogOpen, setSharePaymentDialogOpen] = useState(false);
   const [estimateMaterials, setEstimateMaterials] = useState<any[]>(initialEstimateMaterials);
-  const [selectedPaymentMethods, setSelectedPaymentMethods] = useState<string[]>(["cash", "check", "venmo", "stripe"]);
   const [currentPublicToken, setCurrentPublicToken] = useState<string | undefined>(publicToken);
-  const [currentPaymentToken, setCurrentPaymentToken] = useState<string | undefined>();
   const [loadingToken, setLoadingToken] = useState(false);
-  const [loadingPaymentToken, setLoadingPaymentToken] = useState(false);
   const [estimateWasRevised, setEstimateWasRevised] = useState(false);
 
   // Fetch estimate token if not available
   useEffect(() => {
     async function fetchEstimateToken() {
-      if (currentPublicToken || !jobId || paymentState !== "proposed") return;
+      if (currentPublicToken || !jobId || paymentState !== "sent") return;
       
       setLoadingToken(true);
       try {
@@ -267,32 +271,6 @@ export function UnifiedPayment({
     
     fetchEstimateToken();
   }, [jobId, paymentState, currentPublicToken, supabase]);
-
-  // Fetch payment token if not available
-  useEffect(() => {
-    async function fetchPaymentToken() {
-      if (currentPaymentToken || !jobId || paymentState !== "due") return;
-      
-      setLoadingPaymentToken(true);
-      try {
-        const { data: jobData } = await supabase
-          .from("jobs")
-          .select("payment_token")
-          .eq("id", jobId)
-          .single();
-        
-        if (jobData?.payment_token) {
-          setCurrentPaymentToken(jobData.payment_token);
-        }
-      } catch (err) {
-        console.error("Error fetching payment token:", err);
-      } finally {
-        setLoadingPaymentToken(false);
-      }
-    }
-    
-    fetchPaymentToken();
-  }, [jobId, paymentState, currentPaymentToken, supabase]);
 
   // Sync estimate materials and line items from props (they're now fetched server-side)
   useEffect(() => {
@@ -561,32 +539,13 @@ export function UnifiedPayment({
   const getLabel = () => {
     switch (paymentState) {
       case "none":
-      case "proposed":
         return "Estimate";
-      case "approved":
-        return "Agreed Price";
-      case "due":
-        return "Payment Due";
+      case "sent":
+        return "Estimate Sent";
       case "paid":
         return "Paid";
       default:
         return "Payment";
-    }
-  };
-
-  // Helper to get badge variant
-  const getBadgeVariant = () => {
-    switch (paymentState) {
-      case "proposed":
-        return "secondary";
-      case "approved":
-        return "default";
-      case "due":
-        return "warning" as any;
-      case "paid":
-        return "success";
-      default:
-        return "outline";
     }
   };
 
@@ -640,7 +599,7 @@ export function UnifiedPayment({
     setLineItems(lineItems.filter((_, i) => i !== index));
   };
 
-  // Create or update proposed payment
+  // Create or update sent payment
   async function handleSaveProposed() {
     // Validate that at least one line item is complete
     const hasValidItem = lineItems.some(item => {
@@ -660,43 +619,8 @@ export function UnifiedPayment({
 
     setSaving(true);
     try {
-      // Update job payment - reset approval if revising an approved estimate
-      const jobUpdate: any = {
-        payment_state: "proposed",
-        payment_amount: totalAmount,
-      };
-      
-      // If this was previously approved, reset the approval
-      if (currentPaymentState === "approved") {
-        jobUpdate.payment_approved_at = null;
-      }
-
-      const { error: jobError } = await supabase
-        .from("jobs")
-        .update(jobUpdate)
-        .eq("id", jobId);
-
-      if (jobError) {
-        console.error("Job update error:", jobError);
-        throw jobError;
-      }
-
-      // Update local state immediately for instant UI feedback
-      setCurrentPaymentState("proposed");
-
-      // Delete old line items
-      const { error: deleteError } = await supabase
-        .from("job_payment_line_items")
-        .delete()
-        .eq("job_id", jobId);
-
-      if (deleteError) {
-        console.error("Delete line items error:", deleteError);
-        throw deleteError;
-      }
-
-      // Insert new line items
-      const itemsToInsert = lineItems
+      // Build job payment line items
+      const jobPaymentLineItems = lineItems
         .filter(item => {
           if (item.type === "area") {
             return item.ratePerSqft && item.sqft && parseFloat(item.ratePerSqft) > 0 && parseFloat(item.sqft) > 0;
@@ -740,274 +664,119 @@ export function UnifiedPayment({
           };
         });
 
-      if (itemsToInsert.length === 0) {
+      if (jobPaymentLineItems.length === 0) {
         throw new Error("No valid line items to save");
       }
 
-      const { error: itemsError } = await supabase
-        .from("job_payment_line_items")
-        .insert(itemsToInsert);
-
-      if (itemsError) {
-        console.error("Items insert error:", itemsError);
-        throw itemsError;
-      }
-
-      // Create or update estimate record for public sharing
-      // Always update the estimate, whether or not we have a token
-      const token = currentPublicToken || generateToken(24);
-
-      // First check if estimate exists for this job (get the latest one)
-      const { data: existingEstimates } = await supabase
-        .from("estimates")
-        .select("id, public_token, status")
-        .eq("job_id", jobId)
-        .order("created_at", { ascending: false })
-        .limit(1);
-
-      const existingEstimate = existingEstimates?.[0] || null;
-
-      let estimateId: string = "";
-      let estimateData;
-      let estimateError;
-
-      if (existingEstimate) {
-        // Check if estimate is accepted or denied - if so, we need to handle it differently
-        // The database trigger prevents modifying accepted/denied estimates
-        const currentEstimate = existingEstimate; // Already have the status from the query above
-        
-        // If estimate is accepted or denied, we can't modify it directly due to database constraints
-        // Instead, we'll create a new estimate revision with a NEW token
-        // The public estimate page will find this new estimate by looking up the latest "sent" estimate for the job
-        // This means the customer's original link will still work - it finds the job, then shows the latest estimate
-        if (currentEstimate?.status === "accepted" || currentEstimate?.status === "denied") {
-          // For accepted or denied estimates, create a new estimate revision
-          // Use a new token (database has unique constraint on public_token)
-          // The estimate viewing page handles this by looking up the latest "sent" estimate for the job
-          const newToken = generateToken(24);
-
-          // Create the new estimate with a new token
-          const { data, error } = await supabase
-            .from("estimates")
-            .insert({
-              company_id: companyId,
-              job_id: jobId,
-              customer_id: customerId,
-              status: "sent",
-              public_token: newToken,
-            })
-            .select("id, public_token")
-            .single();
-          estimateData = data;
-          estimateError = error;
-          estimateId = data?.id || "";
-
-          // If there was an error, log it properly
-          if (error) {
-            console.error("Error creating new estimate revision:", {
-              message: error.message,
-              details: error.details,
-              hint: error.hint,
-              code: error.code,
-            });
+      // Build estimate line items
+      const estimateLineItemsData = lineItems
+        .filter(item => {
+          if (item.type === "area") {
+            return item.ratePerSqft && item.sqft && parseFloat(item.ratePerSqft) > 0 && parseFloat(item.sqft) > 0;
+          } else if (item.type === "labor") {
+            return item.hours && item.ratePerHour && parseFloat(item.hours) > 0 && parseFloat(item.ratePerHour) > 0;
           } else {
-            // Reset job approval status since we're creating a new estimate revision
-            // Get current job status first
-            const { data: currentJobForRevision } = await supabase
-              .from("jobs")
-              .select("status")
-              .eq("id", jobId)
-              .single();
-
-            const { error: jobUpdateError } = await supabase
-              .from("jobs")
-              .update({
-                payment_state: "proposed",
-                payment_approved_at: null,
-                status: currentJobForRevision?.status === "quoted" ? "new" : currentJobForRevision?.status || "new", // Reset from quoted if it was quoted
-                updated_at: new Date().toISOString(),
-              })
-              .eq("id", jobId);
-
-            if (jobUpdateError) {
-              console.error("Error updating job after creating revision:", jobUpdateError);
-            }
+            return item.title.trim() && item.price.trim() && parseFloat(item.price) > 0;
           }
-        } else {
-          // Update existing estimate and reset approval status
-          const updateData: any = {
-            public_token: token,
-            status: "sent",
-            updated_at: new Date().toISOString(),
+        })
+        .map((item) => {
+          let name = "";
+          let price = 0;
+          let serviceType: "sqft" | "flat" = "flat";
+
+          if (item.type === "area" && item.areaType && item.ratePerSqft && item.sqft) {
+            const areaLabels: Record<string, string> = {
+              walls: "Interior Walls",
+              ceilings: "Ceilings",
+              trim: "Interior Trim",
+              doors: "Doors",
+              exterior_walls: "Exterior Walls",
+              exterior_trim: "Exterior Trim",
+              deck_fence: "Deck/Fence",
+              siding: "Siding",
+              other: "Other"
+            };
+            name = areaLabels[item.areaType];
+            price = Math.round((parseFloat(item.ratePerSqft) || 0) * (parseFloat(item.sqft) || 0) * 100);
+            serviceType = "sqft";
+          } else if (item.type === "labor" && item.hours && item.ratePerHour) {
+            name = "Labor";
+            price = Math.round((parseFloat(item.hours) || 0) * (parseFloat(item.ratePerHour) || 0) * 100);
+          } else {
+            name = item.title.trim();
+            price = Math.round((parseFloat(item.price) || 0) * 100);
+          }
+
+          // Store brand and product line information in description for material generation
+          let description = "";
+          if (item.paintBrand || item.paintProductLine || item.paintNotes) {
+            const parts: string[] = [];
+            if (item.paintBrand) parts.push(`BRAND:${item.paintBrand}`);
+            if (item.paintProductLine) parts.push(`PRODUCT_LINE:${item.paintProductLine}`);
+            if (item.paintNotes) parts.push(`NOTES:${item.paintNotes}`);
+            description = parts.join("|");
+          }
+
+          return {
+            service_key: "other",
+            service_type: serviceType,
+            name,
+            description: description || null,
+            price,
+            sqft: item.type === "area" && item.sqft ? parseFloat(item.sqft) : null,
+            rate_per_sqft: item.type === "area" && item.ratePerSqft ? parseFloat(item.ratePerSqft) : null,
+            paint_color_name_or_code: item.paintColor || null,
+            sheen: item.paintSheen || null,
+            product_line: item.paintProductLine || item.paintBrand || null,
+            gallons_estimate: item.paintQuantity ? parseFloat(item.paintQuantity) : null,
+            vendor_sku: null,
           };
-          
-          // Only update customer_id if provided
-          if (customerId) {
-            updateData.customer_id = customerId;
-          }
-          
-          // Reset acceptance if revising
-          updateData.accepted_at = null;
-          updateData.denied_at = null;
-          updateData.denial_reason = null;
-          
-          const { data, error } = await supabase
-            .from("estimates")
-            .update(updateData)
-            .eq("id", existingEstimate.id)
-            .select("id, public_token")
-            .single();
-          estimateData = data;
-          estimateError = error;
-          estimateId = existingEstimate.id;
-          
-          // Reset job approval status since we're revising the estimate
-          // Check if job was previously approved
-          const { data: currentJob } = await supabase
-            .from("jobs")
-            .select("payment_state, status")
-            .eq("id", jobId)
-            .single();
-          
-          if (currentJob?.payment_state === "approved") {
-            await supabase
-              .from("jobs")
-              .update({
-                payment_state: "proposed",
-                payment_approved_at: null,
-                status: currentJob.status === "quoted" ? "new" : currentJob.status, // Reset from quoted if it was quoted
-                updated_at: new Date().toISOString(),
-              })
-              .eq("id", jobId);
-          }
-        }
-      } else {
-        // Create new estimate
-        const { data, error } = await supabase
-          .from("estimates")
-          .insert({
-            company_id: companyId,
-            job_id: jobId,
-            customer_id: customerId,
-            status: "sent",
-            public_token: token,
-          })
-          .select("id, public_token")
-          .single();
-        estimateData = data;
-        estimateError = error;
-        estimateId = data?.id || "";
+        });
+
+      // Call the API to save everything (bypasses RLS)
+      const response = await fetch(`/api/jobs/${jobId}/payment`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jobPaymentLineItems,
+          estimateLineItems: estimateLineItemsData,
+          totalAmount,
+          companyId,
+          customerId,
+          existingToken: currentPublicToken,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to save estimate");
       }
 
-      if (estimateError) {
-        console.error("Estimate create/update error:", {
-          message: estimateError.message,
-          details: estimateError.details,
-          hint: estimateError.hint,
-          code: estimateError.code,
-        });
-        // Don't throw - estimate creation is optional for sharing
-      } else if (estimateData && estimateId) {
-        setCurrentPublicToken(estimateData.public_token);
+      const result = await response.json();
+      const estimateId = result.estimateId;
 
-        // Delete old estimate line items
-        await supabase
-          .from("estimate_line_items")
-          .delete()
-          .eq("estimate_id", estimateId);
+      // Update local state immediately for instant UI feedback
+      setCurrentPaymentState("proposed");
+      setCurrentPaymentAmount(totalAmount);
 
-        // Create estimate line items with paint details
-        const estimateLineItems = lineItems
-            .filter(item => {
-              if (item.type === "area") {
-                return item.ratePerSqft && item.sqft && parseFloat(item.ratePerSqft) > 0 && parseFloat(item.sqft) > 0;
-              } else if (item.type === "labor") {
-                return item.hours && item.ratePerHour && parseFloat(item.hours) > 0 && parseFloat(item.ratePerHour) > 0;
-              } else {
-                return item.title.trim() && item.price.trim() && parseFloat(item.price) > 0;
-              }
-            })
-            .map((item) => {
-              let name = "";
-              let price = 0;
-              let serviceType: "sqft" | "flat" = "flat";
+      if (result.estimate?.public_token) {
+        setCurrentPublicToken(result.estimate.public_token);
+      }
 
-              if (item.type === "area" && item.areaType && item.ratePerSqft && item.sqft) {
-                const areaLabels: Record<string, string> = {
-                  walls: "Interior Walls",
-                  ceilings: "Ceilings",
-                  trim: "Interior Trim",
-                  doors: "Doors",
-                  exterior_walls: "Exterior Walls",
-                  exterior_trim: "Exterior Trim",
-                  deck_fence: "Deck/Fence",
-                  siding: "Siding",
-                  other: "Other"
-                };
-                name = areaLabels[item.areaType];
-                price = Math.round((parseFloat(item.ratePerSqft) || 0) * (parseFloat(item.sqft) || 0) * 100);
-                serviceType = "sqft";
-              } else if (item.type === "labor" && item.hours && item.ratePerHour) {
-                name = "Labor";
-                price = Math.round((parseFloat(item.hours) || 0) * (parseFloat(item.ratePerHour) || 0) * 100);
-              } else {
-                name = item.title.trim();
-                price = Math.round((parseFloat(item.price) || 0) * 100);
-              }
-
-              // Store brand and product line information in description for material generation
-              // Format: "BRAND:brand_name|PRODUCT_LINE:product_line|NOTES:notes"
-              let description = "";
-              if (item.paintBrand || item.paintProductLine || item.paintNotes) {
-                const parts: string[] = [];
-                if (item.paintBrand) parts.push(`BRAND:${item.paintBrand}`);
-                if (item.paintProductLine) parts.push(`PRODUCT_LINE:${item.paintProductLine}`);
-                if (item.paintNotes) parts.push(`NOTES:${item.paintNotes}`);
-                description = parts.join("|");
-              }
-
-              return {
-                estimate_id: estimateId,
-                service_key: "other",
-                service_type: serviceType,
-                name,
-                description: description || null,
-                price,
-                sqft: item.type === "area" && item.sqft ? parseFloat(item.sqft) : null,
-                rate_per_sqft: item.type === "area" && item.ratePerSqft ? parseFloat(item.ratePerSqft) : null,
-                paint_color_name_or_code: item.paintColor || null,
-                sheen: item.paintSheen || null,
-                product_line: item.paintProductLine || item.paintBrand || null, // Store product line if exists, otherwise brand
-                gallons_estimate: item.paintQuantity ? parseFloat(item.paintQuantity) : null,
-                vendor_sku: null,
-              };
-            });
-          
-          if (estimateLineItems.length > 0) {
-            await supabase
-              .from("estimate_line_items")
-              .insert(estimateLineItems);
-              
-            // Auto-generate materials from line items with paint details
-            try {
-              await fetch(`/api/estimate-materials/${estimateId}/generate`, { method: "POST" });
-            } catch (error) {
-              console.error("Failed to auto-generate materials:", error);
-            }
-          }
+      // Auto-generate materials from line items with paint details
+      if (estimateId && estimateLineItemsData.length > 0) {
+        try {
+          await fetch(`/api/estimate-materials/${estimateId}/generate`, { method: "POST" });
+        } catch (error) {
+          console.error("Failed to auto-generate materials:", error);
         }
+      }
 
-      // Show appropriate message based on whether this was a revision
-      const wasApproved = currentPaymentState === "approved";
+      // Show appropriate message
       const wasDenied = estimateStatus === "denied";
 
-      if (wasApproved) {
-        addToast("Estimate revised - customer needs to approve again", "success");
-        // Immediately update local state to show proposed UI
-        setCurrentPaymentState("proposed");
-      } else if (wasDenied) {
-        addToast("Estimate revised - sent to customer for approval", "success");
-        // Mark that the estimate was revised so we hide the denied banner
+      if (wasDenied) {
+        addToast("Estimate revised and sent to customer", "success");
         setEstimateWasRevised(true);
         setCurrentPaymentState("proposed");
       } else {
@@ -1045,48 +814,11 @@ export function UnifiedPayment({
             setSavedLineItems(savedItems);
           } else {
             // Fallback to current line items if database fetch fails
-            const savedItems = lineItems
-              .filter(item => {
-                if (item.type === "area") {
-                  return item.ratePerSqft && item.sqft && parseFloat(item.ratePerSqft) > 0 && parseFloat(item.sqft) > 0;
-                } else if (item.type === "labor") {
-                  return item.hours && item.ratePerHour && parseFloat(item.hours) > 0 && parseFloat(item.ratePerHour) > 0;
-                } else {
-                  return item.title.trim() && item.price.trim() && parseFloat(item.price) > 0;
-                }
-              })
-              .map((item, index) => {
-                let title = "";
-                let price = 0;
-
-                if (item.type === "area" && item.areaType && item.ratePerSqft && item.sqft) {
-                  const areaLabels: Record<string, string> = {
-                    walls: "Interior Walls",
-                    ceilings: "Ceilings",
-                    trim: "Interior Trim",
-                    doors: "Doors",
-                    exterior_walls: "Exterior Walls",
-                    exterior_trim: "Exterior Trim",
-                    deck_fence: "Deck/Fence",
-                    siding: "Siding",
-                    other: "Other"
-                  };
-                  title = `${areaLabels[item.areaType]} - ${item.sqft} sqft @ $${item.ratePerSqft}/sqft`;
-                  price = Math.round((parseFloat(item.ratePerSqft) || 0) * (parseFloat(item.sqft) || 0) * 100);
-                } else if (item.type === "labor" && item.hours && item.ratePerHour) {
-                  title = `Labor - ${item.hours} hrs @ $${item.ratePerHour}/hr`;
-                  price = Math.round((parseFloat(item.hours) || 0) * (parseFloat(item.ratePerHour) || 0) * 100);
-                } else {
-                  title = item.title.trim();
-                  price = Math.round((parseFloat(item.price) || 0) * 100);
-                }
-
-                return {
-                  id: `saved-${index}-${Date.now()}`,
-                  title,
-                  price,
-                };
-              });
+            const savedItems = jobPaymentLineItems.map((item, index) => ({
+              id: `saved-${index}-${Date.now()}`,
+              title: item.title,
+              price: item.price,
+            }));
             setSavedLineItems(savedItems);
           }
         } catch (error) {
@@ -1136,144 +868,35 @@ export function UnifiedPayment({
 
     const link = `${window.location.origin}/portal/${token}`;
     const customerName = "there"; // Could be passed as prop if needed
-    const message = `Hey ${customerName} — here's your estimate for ${formatCurrency(paymentAmount || totalAmount)}: ${link}. Let me know if you have any questions!`;
+    const message = `Hey ${customerName} — here's your estimate for ${formatCurrency(currentPaymentAmount || totalAmount)}: ${link}. Let me know if you have any questions!`;
     copyToClipboard(message);
     addToast("Message copied to clipboard", "success");
     setShareDialogOpen(false);
-  }
-
-  // Customer approves (from public page or internal)
-  async function handleApprove() {
-    setSaving(true);
-    try {
-      const { error } = await supabase
-        .from("jobs")
-        .update({
-          payment_state: "approved",
-          payment_approved_at: new Date().toISOString(),
-        })
-        .eq("id", jobId);
-
-      if (error) throw error;
-
-      // Update local state immediately for instant UI feedback
-      setCurrentPaymentState("approved");
-      
-      addToast("Price approved! 🎉", "success");
-      onUpdate();
-    } catch (err) {
-      console.error("Failed to approve:", err);
-      addToast("Failed to approve", "error");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  // Ensure payment token exists
-  async function ensurePaymentToken() {
-    if (currentPaymentToken) return currentPaymentToken;
-    
-    setLoadingPaymentToken(true);
-    try {
-      // First check if job already has a payment_token
-      const { data: jobData } = await supabase
-        .from("jobs")
-        .select("payment_token")
-        .eq("id", jobId)
-        .single();
-
-      if (jobData?.payment_token) {
-        setCurrentPaymentToken(jobData.payment_token);
-        return jobData.payment_token;
-      }
-
-      // Generate new token
-      const token = generateToken(24);
-      
-      const { error } = await supabase
-        .from("jobs")
-        .update({
-          payment_token: token,
-        })
-        .eq("id", jobId);
-
-      if (error) throw error;
-
-      setCurrentPaymentToken(token);
-      return token;
-    } catch (err) {
-      console.error("Failed to generate payment token:", err);
-      addToast("Failed to generate payment link", "error");
-      return null;
-    } finally {
-      setLoadingPaymentToken(false);
-    }
-  }
-
-  // Mark as due (when job is done)
-  async function handleMarkDue() {
-    // Use default payment methods if none selected (cash, check, venmo, stripe)
-    const methodsToUse = selectedPaymentMethods.length > 0 
-      ? selectedPaymentMethods 
-      : ["cash", "check", "venmo", "stripe"];
-
-    setSaving(true);
-    try {
-      // Generate payment token if it doesn't exist
-      const token = await ensurePaymentToken();
-      if (!token) {
-        setSaving(false);
-        return;
-      }
-
-      const { error } = await supabase
-        .from("jobs")
-        .update({
-          payment_state: "due",
-          payment_token: token,
-          payment_methods: methodsToUse,
-        })
-        .eq("id", jobId);
-
-      if (error) throw error;
-
-      // Update local state immediately for instant UI feedback
-      setCurrentPaymentState("due");
-      
-      addToast("Payment requested", "success");
-      onUpdate();
-    } catch (err) {
-      console.error("Failed to mark due:", err);
-      addToast("Failed to request payment", "error");
-    } finally {
-      setSaving(false);
-    }
   }
 
   // Mark as paid
   async function handleMarkPaid() {
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from("jobs")
-        .update({
-          payment_state: "paid",
-          payment_paid_at: new Date().toISOString(),
-          payment_method: paidMethod,
-          status: "paid", // Also update job status to move card to paid column
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", jobId);
+      const response = await fetch(`/api/jobs/${jobId}/mark-paid`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentMethod: paidMethod }),
+      });
 
-      if (error) throw error;
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to mark as paid");
+      }
+
+      const result = await response.json();
 
       // Update local state immediately for instant UI feedback
-      const paidAt = new Date().toISOString();
       setCurrentPaymentState("paid");
-      setCurrentPaymentPaidAt(paidAt);
+      setCurrentPaymentPaidAt(result.paidAt);
       setCurrentPaymentMethod(paidMethod);
-      
-      addToast("Payment recorded! 💰", "success");
+
+      addToast("Payment recorded!", "success");
       setMarkPaidDialogOpen(false);
       onUpdate();
     } catch (err) {
@@ -1322,7 +945,7 @@ export function UnifiedPayment({
               <div>
                 <Label className="text-sm text-muted-foreground">Pre-written Message</Label>
                 <Textarea
-                  value={loadingToken ? "Generating link..." : `Hey there — here's your estimate for ${formatCurrency(paymentAmount || totalAmount)}: ${typeof window !== "undefined" && (currentPublicToken || publicToken) ? `${window.location.origin}/portal/${currentPublicToken || publicToken}` : "[link will be generated]"}. Let me know if you have any questions!`}
+                  value={loadingToken ? "Generating link..." : `Hey there — here's your estimate for ${formatCurrency(currentPaymentAmount || totalAmount)}: ${typeof window !== "undefined" && (currentPublicToken || publicToken) ? `${window.location.origin}/portal/${currentPublicToken || publicToken}` : "[link will be generated]"}. Let me know if you have any questions!`}
                   readOnly
                   rows={4}
                   className="mt-2 font-sans"
@@ -1341,106 +964,12 @@ export function UnifiedPayment({
         </DialogContent>
       </Dialog>
 
-      {/* Share Payment Dialog */}
-      <Dialog open={sharePaymentDialogOpen} onOpenChange={async (open) => {
-        setSharePaymentDialogOpen(open);
-        if (open) {
-          await ensurePaymentToken();
-        }
-      }}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Share Payment</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            {loadingPaymentToken ? (
-              <div className="text-center py-4">
-                <p className="text-sm text-muted-foreground">Generating link...</p>
-              </div>
-            ) : !currentPaymentToken ? (
-              <div className="text-center py-4">
-                <p className="text-sm text-destructive">No token available</p>
-              </div>
-            ) : (
-              <>
-                <div className="rounded-lg border bg-card p-4">
-                  <p className="text-sm text-muted-foreground mb-2">Amount Due</p>
-                  <p className="font-semibold text-lg">
-                    {formatCurrency(paymentAmount || 0)}
-                  </p>
-                </div>
-
-                <div className="space-y-3">
-                  <div>
-                    <Label className="text-sm text-muted-foreground">Payment Link</Label>
-                    <div className="flex gap-2 mt-2">
-                      <Input 
-                        value={typeof window !== "undefined" && currentPaymentToken ? `${window.location.origin}/j/${currentPaymentToken}?tab=payment` : ""} 
-                        readOnly 
-                        className="font-mono text-sm"
-                      />
-                      <Button 
-                        variant="outline"
-                        onClick={() => {
-                          const link = `${window.location.origin}/j/${currentPaymentToken}?tab=payment`;
-                          copyToClipboard(link);
-                          addToast("Payment link copied", "success");
-                        }}
-                        disabled={loadingPaymentToken}
-                        className="shrink-0"
-                      >
-                        <Copy className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div>
-                    <Label className="text-sm text-muted-foreground">Pre-written Message</Label>
-                    <Textarea 
-                      value={`Hey there — here's your invoice for ${formatCurrency(paymentAmount || 0)}: ${typeof window !== "undefined" && currentPaymentToken ? `${window.location.origin}/j/${currentPaymentToken}?tab=payment` : "[link will be generated]"}. Thank you!`}
-                      readOnly 
-                      rows={4}
-                      className="mt-2 font-sans"
-                    />
-                    <Button 
-                      onClick={() => {
-                        const link = `${window.location.origin}/j/${currentPaymentToken}?tab=payment`;
-                        const customerName = "there"; // Could be passed as prop if needed
-                        const message = `Hey ${customerName} — here's your invoice for ${formatCurrency(paymentAmount || 0)}: ${link}. Thank you!`;
-                        copyToClipboard(message);
-                        addToast("Message copied to clipboard", "success");
-                        setSharePaymentDialogOpen(false);
-                      }}
-                      className="w-full mt-2"
-                      disabled={loadingPaymentToken}
-                    >
-                      <Copy className="mr-2 h-4 w-4" />
-                      Copy Message
-                    </Button>
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
       <div className="rounded-lg border bg-card p-4 space-y-4">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h3 className="font-semibold">{getLabel()}</h3>
-            {paymentState !== "none" && (
-              <Badge variant={getBadgeVariant()}>
-                {paymentState.charAt(0).toUpperCase() + paymentState.slice(1)}
-              </Badge>
-            )}
-            {estimateStatus === "denied" && !estimateWasRevised && (
-              <Badge variant="destructive">Denied</Badge>
-            )}
-          </div>
-          {paymentAmount && (
+          <h3 className="font-semibold">{getLabel()}</h3>
+          {currentPaymentAmount && (
             <div className="text-xl font-bold">
-              {formatCurrency(paymentAmount)}
+              {formatCurrency(currentPaymentAmount)}
             </div>
           )}
         </div>
@@ -1476,33 +1005,15 @@ export function UnifiedPayment({
         {/* EDITING MODE - Show form when editing any state */}
         {editingEstimate && (
           <div className="space-y-4">
-            {/* Context message when editing approved/denied estimate */}
-            {(currentPaymentState === "approved" || (estimateStatus === "denied" && !estimateWasRevised)) && (
+            {/* Context message when editing denied estimate */}
+            {estimateStatus === "denied" && !estimateWasRevised && (
               <div className="rounded-lg border bg-warning/10 border-warning/20 p-4">
-                {currentPaymentState === "approved" ? (
-                  <>
-                    <p className="text-sm font-medium text-warning mb-2">
-                      Revising Approved Estimate
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      Current approved price: {formatCurrency(paymentAmount || 0)}
-                    </p>
-                    {paymentApprovedAt && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Originally approved {formatDate(paymentApprovedAt)}
-                      </p>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <p className="text-sm font-medium text-warning mb-2">
-                      Revising Denied Estimate
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      Make changes based on customer feedback and resend.
-                    </p>
-                  </>
-                )}
+                <p className="text-sm font-medium text-warning mb-2">
+                  Revising Denied Estimate
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Make changes based on customer feedback and resend.
+                </p>
               </div>
             )}
             
@@ -1821,7 +1332,7 @@ export function UnifiedPayment({
                   })}
                   className="flex-1 touch-target min-h-[44px]"
                 >
-                  {currentPaymentState === "proposed" || currentPaymentState === "approved" || (estimateStatus === "denied" && !estimateWasRevised)
+                  {currentPaymentState === "proposed" || (estimateStatus === "denied" && !estimateWasRevised)
                     ? "Update Estimate"
                     : "Create Estimate"}
                 </Button>
@@ -1872,7 +1383,7 @@ export function UnifiedPayment({
                     <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
                       <div className="flex items-center justify-between">
                         <h4 className="font-medium text-sm">Estimate Total</h4>
-                        <span className="text-lg font-bold">{formatCurrency(paymentAmount || totalAmount)}</span>
+                        <span className="text-lg font-bold">{formatCurrency(currentPaymentAmount || totalAmount)}</span>
                       </div>
                       <div className="space-y-3">
                         {(savedLineItems.length > 0 ? savedLineItems : initialLineItems).map((item, index) => {
@@ -1963,10 +1474,12 @@ export function UnifiedPayment({
                         }}
                         className="flex-1 touch-target min-h-[44px]"
                       >
-                        Edit Estimate
+                        <Pencil className="mr-2 h-4 w-4" />
+                        Edit
                       </Button>
                       <Button
                         type="button"
+                        variant="outline"
                         size="sm"
                         onClick={async () => {
                           await ensurePublicToken();
@@ -1975,8 +1488,19 @@ export function UnifiedPayment({
                         className="flex-1 touch-target min-h-[44px]"
                       >
                         <Share2 className="mr-2 h-4 w-4" />
-                        Share Estimate
+                        Share
                       </Button>
+                      {isJobDone && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => setMarkPaidDialogOpen(true)}
+                          className="flex-1 touch-target min-h-[44px]"
+                        >
+                          <Check className="mr-2 h-4 w-4" />
+                          Mark Paid
+                        </Button>
+                      )}
                     </div>
                   </>
                 ) : (
@@ -1992,171 +1516,9 @@ export function UnifiedPayment({
               </div>
             )}
 
-            {/* APPROVED STATE */}
-            {currentPaymentState === "approved" && (
-              <div className="space-y-4">
-                <div className="rounded-lg border bg-success/10 border-success/20 p-4">
-                  <p className="text-sm font-medium text-success mb-2">
-                    ✓ Thanks for approving!
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    Price is locked at {formatCurrency(paymentAmount || 0)}
-                  </p>
-                  {paymentApprovedAt && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Approved {formatDate(paymentApprovedAt)}
-                    </p>
-                  )}
-                </div>
-
-                {(savedLineItems.length > 0 || initialLineItems.length > 0) && (
-                  <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <h4 className="font-medium text-sm">Estimate Details</h4>
-                      <span className="text-lg font-bold">{formatCurrency(paymentAmount || totalAmount)}</span>
-                    </div>
-                    <div className="space-y-3">
-                      {(savedLineItems.length > 0 ? savedLineItems : initialLineItems).map((item, index) => {
-                        // Match by index since IDs are from different tables
-                        const fullItemId = fullEstimateLineItems[index]?.id;
-                        const itemMaterials = estimateMaterials.filter(
-                          (m: any) => {
-                            // Match by estimate_line_item_id if we have a fullItem
-                            if (m.estimate_line_item_id && fullItemId && m.estimate_line_item_id === fullItemId) {
-                              return true;
-                            }
-                            // Fallback to name matching
-                            const itemNameLower = item.title?.toLowerCase() || '';
-                            const areaDescLower = m.area_description?.toLowerCase() || '';
-                            if (areaDescLower && itemNameLower) {
-                              if (areaDescLower.includes(itemNameLower) || itemNameLower.includes(areaDescLower)) {
-                                return true;
-                              }
-                              const itemWords = itemNameLower.split(/\s+/);
-                              const areaWords = areaDescLower.split(/\s+/);
-                              if (itemWords.some(word => word.length > 3 && areaWords.includes(word))) {
-                                return true;
-                              }
-                            }
-                            return false;
-                          }
-                        );
-
-                        return (
-                          <div key={item.id} className="space-y-2">
-                            <div className="flex justify-between text-sm">
-                              <span className="font-medium">{item.title}</span>
-                              <span className="font-medium">{formatCurrency(item.price)}</span>
-                            </div>
-
-                            {itemMaterials.length > 0 && (
-                              <div className="ml-4 pl-3 border-l-2 border-muted space-y-1 text-xs text-muted-foreground">
-                                {itemMaterials.map((material: any) => (
-                                  <div key={material.id} className="space-y-0.5">
-                                    {material.paint_product && (
-                                      <div className="font-medium text-foreground">
-                                        {material.paint_product}
-                                      </div>
-                                    )}
-                                    {(material.color_name || material.color_code || material.sheen) && (
-                                      <div>
-                                        {material.color_name && <span>{material.color_name}</span>}
-                                        {material.color_code && <span className="ml-1">({material.color_code})</span>}
-                                        {material.sheen && <span className="ml-1">- {material.sheen}</span>}
-                                      </div>
-                                    )}
-                                    {material.quantity_gallons && (
-                                      <div className="text-xs">
-                                        {material.quantity_gallons} {material.quantity_gallons === 1 ? 'gallon' : 'gallons'}
-                                      </div>
-                                    )}
-                                    {material.notes && (
-                                      <div className="italic text-muted-foreground mt-1">
-                                        {material.notes}
-                                      </div>
-                                    )}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={async () => {
-                      await loadExistingEstimate();
-                      setEditingEstimate(true);
-                    }}
-                    disabled={loadingEstimateData}
-                    className="flex-1"
-                  >
-                    <Edit2 className="mr-2 h-4 w-4" />
-                    {loadingEstimateData ? "Loading..." : "Revise Estimate"}
-                  </Button>
-                  <Button
-                    onClick={handleMarkDue}
-                    loading={saving}
-                    className="flex-1"
-                  >
-                    <DollarSign className="mr-2 h-4 w-4" />
-                    Finalize Payment
-                  </Button>
-                </div>
-              </div>
-            )}
           </>
         )}
 
-        {/* DUE STATE - Payment Requested */}
-        {currentPaymentState === "due" && (
-          <div className="space-y-4">
-            <div className="rounded-lg border bg-warning/10 border-warning/20 p-4">
-              <p className="text-sm font-medium text-foreground mb-2">
-                💰 Payment Requested
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Amount due: {formatCurrency(paymentAmount || 0)}
-              </p>
-            </div>
-
-            {/* Line Items (read-only) */}
-            <div className="space-y-2">
-              {initialLineItems.map((item) => (
-                <div key={item.id} className="flex justify-between text-sm">
-                  <span>{item.title}</span>
-                  <span className="font-medium">{formatCurrency(item.price)}</span>
-                </div>
-              ))}
-            </div>
-
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={async () => {
-                  await ensurePaymentToken();
-                  setSharePaymentDialogOpen(true);
-                }}
-                className="flex-1"
-              >
-                <Share2 className="mr-2 h-4 w-4" />
-                Share Payment
-              </Button>
-              <Button
-                onClick={() => setMarkPaidDialogOpen(true)}
-                className="flex-1"
-              >
-                <Check className="mr-2 h-4 w-4" />
-                Mark as Paid
-              </Button>
-            </div>
-          </div>
-        )}
 
         {/* PAID STATE - Payment Complete */}
         {currentPaymentState === "paid" && (
@@ -2180,7 +1542,7 @@ export function UnifiedPayment({
               <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <h4 className="font-medium text-sm">Estimate Total</h4>
-                  <span className="text-lg font-bold">{formatCurrency(paymentAmount || totalAmount)}</span>
+                  <span className="text-lg font-bold">{formatCurrency(currentPaymentAmount || totalAmount)}</span>
                 </div>
                 <div className="space-y-3">
                   {(savedLineItems.length > 0 ? savedLineItems : initialLineItems).map((item, index) => {
@@ -2273,7 +1635,7 @@ export function UnifiedPayment({
           <div className="space-y-4 mt-4">
             <div className="rounded-lg bg-muted p-3">
               <p className="text-sm text-muted-foreground">Amount:</p>
-              <p className="text-2xl font-bold">{formatCurrency(paymentAmount || 0)}</p>
+              <p className="text-2xl font-bold">{formatCurrency(currentPaymentAmount || 0)}</p>
             </div>
 
             <div className="space-y-2">

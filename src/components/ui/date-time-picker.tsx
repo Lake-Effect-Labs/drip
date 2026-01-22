@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Calendar, Clock } from "lucide-react";
 import { Input } from "./input";
 import { Label } from "./label";
+import { Select } from "./select";
 import { cn } from "@/lib/utils";
 
 interface DateTimePickerProps {
@@ -15,6 +16,28 @@ interface DateTimePickerProps {
   className?: string;
   disabled?: boolean;
 }
+
+// Generate time options in 15-minute intervals
+const generateTimeOptions = () => {
+  const options: { value: string; label: string }[] = [];
+  for (let hour = 0; hour < 24; hour++) {
+    for (let minute = 0; minute < 60; minute += 15) {
+      const hourStr = hour.toString().padStart(2, "0");
+      const minuteStr = minute.toString().padStart(2, "0");
+      const value = `${hourStr}:${minuteStr}`;
+
+      // Format label as 12-hour time
+      const hour12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+      const ampm = hour < 12 ? "AM" : "PM";
+      const label = `${hour12}:${minuteStr} ${ampm}`;
+
+      options.push({ value, label });
+    }
+  }
+  return options;
+};
+
+const TIME_OPTIONS = generateTimeOptions();
 
 export function DateTimePicker({
   date,
@@ -80,15 +103,21 @@ export function DateTimePicker({
             )}
           >
             <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none z-10" />
-            <Input
-              type="time"
+            <Select
               value={timeValue}
               onChange={(e) => onTimeChange(e.target.value)}
               onFocus={() => setFocused("time")}
               onBlur={() => setFocused(null)}
               disabled={disabled}
               className="pl-10 border-0 focus-visible:ring-0 focus-visible:ring-offset-0 min-h-[44px] cursor-pointer bg-transparent"
-            />
+            >
+              <option value="">Select time</option>
+              {TIME_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </Select>
           </div>
         </div>
       </div>

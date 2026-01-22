@@ -165,13 +165,13 @@ export function ScheduleView({
   const jobsByDate = useMemo(() => {
     const map = new Map<string, JobWithCustomer[]>();
     const { start, end } = periodBounds;
-    
+
     jobsForPeriod.forEach((job) => {
       if (!job.scheduled_date) return;
-      
+
       const startDate = parseISO(job.scheduled_date);
       const endDate = job.scheduled_end_date ? parseISO(job.scheduled_end_date) : startDate;
-      
+
       // Add job to all days it spans within the view period
       const currentDate = new Date(startDate);
       while (currentDate <= endDate) {
@@ -184,6 +184,16 @@ export function ScheduleView({
         currentDate.setDate(currentDate.getDate() + 1);
       }
     });
+
+    // Sort jobs within each day by scheduled_time
+    map.forEach((jobs, dateKey) => {
+      jobs.sort((a, b) => {
+        const timeA = a.scheduled_time || "23:59";
+        const timeB = b.scheduled_time || "23:59";
+        return timeA.localeCompare(timeB);
+      });
+    });
+
     return map;
   }, [jobsForPeriod, periodBounds]);
 

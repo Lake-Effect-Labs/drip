@@ -4,7 +4,12 @@
       "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(git push)",
-      "Bash(npm run build:*)"
+      "Bash(npm run build:*)",
+      "Bash(git push:*)",
+      "Bash(git mv:*)",
+      "Bash(xargs ls:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)"
     ]
   }
 }
