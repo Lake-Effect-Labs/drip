@@ -249,7 +249,7 @@ export function UnifiedPayment({
   // Fetch estimate token if not available
   useEffect(() => {
     async function fetchEstimateToken() {
-      if (currentPublicToken || !jobId || paymentState !== "sent") return;
+      if (currentPublicToken || !jobId || paymentState !== "proposed") return;
       
       setLoadingToken(true);
       try {
@@ -540,7 +540,7 @@ export function UnifiedPayment({
     switch (paymentState) {
       case "none":
         return "Estimate";
-      case "sent":
+      case "proposed":
         return "Estimate Sent";
       case "paid":
         return "Paid";
