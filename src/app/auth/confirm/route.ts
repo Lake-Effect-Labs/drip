@@ -1,14 +1,22 @@
 import { createClient } from "@/lib/supabase/server";
 import { type NextRequest, NextResponse } from "next/server";
-import { cookies } from "next/headers";
+
+// Whitelist of allowed redirect paths to prevent open redirect attacks
+const ALLOWED_REDIRECTS = ["/app", "/reset-password", "/join"];
+
+function isAllowedRedirect(path: string): boolean {
+  // Only allow internal paths that start with allowed prefixes
+  return ALLOWED_REDIRECTS.some(allowed => path === allowed || path.startsWith(allowed + "/") || path.startsWith(allowed + "?"));
+}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? "/app";
-  const type = searchParams.get("type"); // Can be 'recovery', 'signup', 'invite', etc.
+  const rawNext = searchParams.get("next") ?? "/app";
+  const type = searchParams.get("type");
 
-  console.log("🔐 Auth confirm - code:", !!code, "next:", next, "type:", type);
+  // Validate redirect path - default to /app if not allowed
+  const next = isAllowedRedirect(rawNext) ? rawNext : "/app";
 
   if (code) {
     const supabase = await createClient();
@@ -16,12 +24,7 @@ export async function GET(request: NextRequest) {
     try {
       const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
-      console.log("Exchange result - error:", error?.message, "session:", !!data?.session, "user:", data?.user?.email);
-
       if (!error && data.session) {
-        console.log("✅ Session exchanged successfully for user:", data.user?.email);
-        console.log("Session type:", data.session.user?.app_metadata);
-
         // Create redirect URL
         const redirectUrl = new URL(next, request.url);
 
@@ -30,16 +33,8 @@ export async function GET(request: NextRequest) {
           redirectUrl.searchParams.set("session", "active");
         }
 
-        const response = NextResponse.redirect(redirectUrl);
-
-        // The Supabase client has already set cookies via the cookie handler
-        // but we'll ensure they're properly set in the response
-        console.log("✅ Redirecting to:", redirectUrl.toString());
-
-        return response;
+        return NextResponse.redirect(redirectUrl);
       }
-
-      console.error("❌ Exchange failed:", error);
 
       // Provide more specific error messages
       if (error?.message?.includes("expired")) {
@@ -47,12 +42,10 @@ export async function GET(request: NextRequest) {
           new URL("/login?error=Link+expired.+Please+request+a+new+one.", request.url)
         );
       }
-    } catch (err) {
-      console.error("❌ Unexpected error during code exchange:", err);
+    } catch {
+      // Code exchange failed
     }
   }
-
-  console.log("No code or exchange failed, redirecting to login");
   return NextResponse.redirect(
     new URL("/login?error=Invalid+or+expired+link", request.url)
   );

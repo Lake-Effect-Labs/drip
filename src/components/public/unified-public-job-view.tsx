@@ -20,7 +20,6 @@ import {
   ChevronLeft,
   ChevronRight
 } from "lucide-react";
-import { PaintChipAnimator } from "@/components/public/paint-chip-animator";
 
 type JobWithDetails = Job & {
   customer: Customer | null;
@@ -143,9 +142,7 @@ export function UnifiedPublicJobView({ job: initialJob, token }: UnifiedPublicJo
   const progressPercentage = job.progress_percentage || 0;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-stone-100 via-stone-50 to-white relative">
-      <PaintChipAnimator />
-
+    <div className="min-h-screen bg-gradient-to-br from-stone-100 via-stone-50 to-white">
       {/* Header */}
       <header className="border-b bg-card/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 py-4">

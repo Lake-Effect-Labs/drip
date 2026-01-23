@@ -23,6 +23,11 @@ export interface Database {
           contact_email: string | null;
           review_enabled: boolean;
           google_review_link: string | null;
+          stripe_customer_id: string | null;
+          subscription_id: string | null;
+          subscription_status: string | null;
+          trial_ends_at: string | null;
+          subscription_current_period_end: string | null;
           created_at: string;
         };
         Insert: {
@@ -38,6 +43,11 @@ export interface Database {
           contact_email?: string | null;
           review_enabled?: boolean;
           google_review_link?: string | null;
+          stripe_customer_id?: string | null;
+          subscription_id?: string | null;
+          subscription_status?: string | null;
+          trial_ends_at?: string | null;
+          subscription_current_period_end?: string | null;
           created_at?: string;
         };
         Update: {
@@ -53,6 +63,11 @@ export interface Database {
           contact_email?: string | null;
           review_enabled?: boolean;
           google_review_link?: string | null;
+          stripe_customer_id?: string | null;
+          subscription_id?: string | null;
+          subscription_status?: string | null;
+          trial_ends_at?: string | null;
+          subscription_current_period_end?: string | null;
           created_at?: string;
         };
         Relationships: [];
@@ -1038,6 +1053,93 @@ export interface Database {
         };
         Relationships: [];
       };
+      creator_codes: {
+        Row: {
+          id: string;
+          code: string;
+          creator_name: string;
+          creator_email: string;
+          discount_percent: number;
+          commission_percent: number;
+          is_active: boolean;
+          total_referrals: number;
+          total_conversions: number;
+          user_id: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          code: string;
+          creator_name: string;
+          creator_email: string;
+          discount_percent?: number;
+          commission_percent?: number;
+          is_active?: boolean;
+          total_referrals?: number;
+          total_conversions?: number;
+          user_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          code?: string;
+          creator_name?: string;
+          creator_email?: string;
+          discount_percent?: number;
+          commission_percent?: number;
+          is_active?: boolean;
+          total_referrals?: number;
+          total_conversions?: number;
+          user_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      referrals: {
+        Row: {
+          id: string;
+          creator_code_id: string;
+          visitor_id: string;
+          expires_at: string;
+          converted_at: string | null;
+          subscriber_user_id: string | null;
+          subscriber_company_id: string | null;
+          commission_owed: number;
+          commission_paid: boolean;
+          commission_paid_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          creator_code_id: string;
+          visitor_id: string;
+          expires_at?: string;
+          converted_at?: string | null;
+          subscriber_user_id?: string | null;
+          subscriber_company_id?: string | null;
+          commission_owed?: number;
+          commission_paid?: boolean;
+          commission_paid_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          creator_code_id?: string;
+          visitor_id?: string;
+          expires_at?: string;
+          converted_at?: string | null;
+          subscriber_user_id?: string | null;
+          subscriber_company_id?: string | null;
+          commission_owed?: number;
+          commission_paid?: boolean;
+          commission_paid_at?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: {
       [_ in never]: never;
@@ -1099,6 +1201,11 @@ export type JobPaymentLineItem = Tables<"job_payment_line_items">;
 export type JobPaymentRevision = Tables<"job_payment_revisions">;
 export type NudgeDismissal = Tables<"nudge_dismissals">;
 export type CustomerTag = Tables<"customer_tags">;
+export type CreatorCode = Tables<"creator_codes">;
+export type Referral = Tables<"referrals">;
+
+// Subscription status type
+export type SubscriptionStatus = "trialing" | "active" | "past_due" | "canceled" | "incomplete";
 
 // Extended types with relations
 export type JobWithCustomer = Job & {

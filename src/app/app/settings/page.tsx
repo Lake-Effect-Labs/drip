@@ -44,13 +44,6 @@ export default async function SettingsPage() {
     redirect("/app/board");
   }
 
-  // Get estimating config (use admin client)
-  const { data: config } = await adminSupabase
-    .from("estimating_config")
-    .select("*")
-    .eq("company_id", company.id)
-    .maybeSingle();
-
   // Get team members
   const { data: companyUsers } = await adminSupabase
     .from("company_users")
@@ -95,7 +88,6 @@ export default async function SettingsPage() {
       isOwner={isOwner}
       currentUserId={user.id}
       currentUserEmail={user.email || ""}
-      config={config}
       teamMembers={members}
       inviteLinks={inviteLinks || []}
       pickupLocations={pickupLocations || []}

@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { DM_Sans } from "next/font/google";
 import "./globals.css";
 import { ToastProvider } from "@/components/ui/toast";
+import { ReferralProvider } from "@/providers/ReferralProvider";
 
 const dmSans = DM_Sans({
   variable: "--font-dm-sans",
@@ -32,7 +33,9 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${dmSans.variable} font-sans antialiased`}>
-        <ToastProvider>{children}</ToastProvider>
+        <ToastProvider>
+          <ReferralProvider>{children}</ReferralProvider>
+        </ToastProvider>
       </body>
     </html>
   );

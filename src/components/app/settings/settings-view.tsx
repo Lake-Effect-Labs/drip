@@ -7,10 +7,8 @@ import {
   formatDate,
   copyToClipboard,
   generateToken,
-  THEMES,
-  type ThemeId,
 } from "@/lib/utils";
-import type { Company, EstimatingConfig, InviteLink, PickupLocation } from "@/types/database";
+import type { Company, InviteLink, PickupLocation } from "@/types/database";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,26 +23,25 @@ import {
 import { useToast } from "@/components/ui/toast";
 import {
   Building,
-  Palette,
-  Calculator,
   Users,
   Download,
   Copy,
   Trash2,
-  Plus,
   Check,
   LogOut,
   CreditCard,
   Upload,
   Image as ImageIcon,
+  ExternalLink,
+  Loader2,
 } from "lucide-react";
+import { useReferralContext } from "@/providers/ReferralProvider";
 
 interface SettingsViewProps {
   company: Company;
   isOwner: boolean;
   currentUserId: string;
   currentUserEmail: string;
-  config: EstimatingConfig | null;
   teamMembers: {
     id: string;
     email: string;
@@ -60,7 +57,6 @@ export function SettingsView({
   isOwner,
   currentUserId,
   currentUserEmail,
-  config: initialConfig,
   teamMembers: initialMembers,
   inviteLinks: initialLinks,
   pickupLocations: initialLocations,
@@ -70,7 +66,6 @@ export function SettingsView({
   const supabase = createClient();
 
   const [company, setCompany] = useState(initialCompany);
-  const [config, setConfig] = useState(initialConfig);
   const [inviteLinks, setInviteLinks] = useState(initialLinks);
   const [locations, setLocations] = useState(initialLocations);
   const [origin, setOrigin] = useState<string>("");
@@ -84,27 +79,9 @@ export function SettingsView({
 
   // Company form
   const [companyName, setCompanyName] = useState(company.name);
-  const [selectedTheme, setSelectedTheme] = useState<ThemeId>(
-    company.theme_id as ThemeId
-  );
   const [savingCompany, setSavingCompany] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [logoPreview, setLogoPreview] = useState<string | null>((company as any).logo_url || null);
-
-  // Config form - use empty strings, show placeholders with suggestions
-  const [wallsRate, setWallsRate] = useState(
-    config?.walls_rate_per_sqft?.toString() || ""
-  );
-  const [ceilingsRate, setCeilingsRate] = useState(
-    config?.ceilings_rate_per_sqft?.toString() || ""
-  );
-  const [trimRate, setTrimRate] = useState(
-    config?.trim_rate_per_sqft?.toString() || ""
-  );
-  const [laborRate, setLaborRate] = useState(
-    config?.labor_rate_per_hour?.toString() || ""
-  );
-  const [savingConfig, setSavingConfig] = useState(false);
 
   // Location dialog
   const [locationDialogOpen, setLocationDialogOpen] = useState(false);
@@ -123,7 +100,6 @@ export function SettingsView({
         .from("companies")
         .update({
           name: companyName.trim(),
-          theme_id: selectedTheme,
         })
         .eq("id", company.id);
 
@@ -132,11 +108,7 @@ export function SettingsView({
       setCompany((prev) => ({
         ...prev,
         name: companyName.trim(),
-        theme_id: selectedTheme,
       }));
-
-      // Apply theme immediately
-      document.documentElement.setAttribute("data-theme", selectedTheme);
 
       addToast("Company settings saved!", "success");
       router.refresh();
@@ -193,57 +165,6 @@ export function SettingsView({
       setUploadingLogo(false);
       // Reset file input
       e.target.value = "";
-    }
-  }
-
-  async function handleSaveConfig() {
-    setSavingConfig(true);
-    try {
-      // Only save values that are provided (non-empty)
-      const configData: any = {
-        company_id: company.id,
-        updated_at: new Date().toISOString(),
-      };
-
-      if (wallsRate.trim()) {
-        configData.walls_rate_per_sqft = parseFloat(wallsRate);
-      }
-      if (ceilingsRate.trim()) {
-        configData.ceilings_rate_per_sqft = parseFloat(ceilingsRate);
-      }
-      if (trimRate.trim()) {
-        configData.trim_rate_per_sqft = parseFloat(trimRate);
-      }
-      if (laborRate.trim()) {
-        configData.labor_rate_per_hour = parseFloat(laborRate);
-      }
-
-      const { error } = await supabase
-        .from("estimating_config")
-        .upsert(configData, { onConflict: "company_id" });
-
-      if (error) throw error;
-
-      // Fetch updated config to get all values
-      const { data: updatedConfig } = await supabase
-        .from("estimating_config")
-        .select("*")
-        .eq("company_id", company.id)
-        .single();
-
-      if (updatedConfig) {
-        setConfig(updatedConfig);
-        setWallsRate(updatedConfig.walls_rate_per_sqft?.toString() || "");
-        setCeilingsRate(updatedConfig.ceilings_rate_per_sqft?.toString() || "");
-        setTrimRate(updatedConfig.trim_rate_per_sqft?.toString() || "");
-        setLaborRate(updatedConfig.labor_rate_per_hour?.toString() || "");
-      }
-
-      addToast("Estimating rates saved!", "success");
-    } catch {
-      addToast("Failed to save rates", "error");
-    } finally {
-      setSavingConfig(false);
     }
   }
 
@@ -621,6 +542,10 @@ export function SettingsView({
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
 
+  // Billing state
+  const [billingLoading, setBillingLoading] = useState(false);
+  const { referralCode, visitorId, discountPercent, hasReferral } = useReferralContext();
+
   async function handleExportJobs() {
     if (!startDate || !endDate) {
       addToast("Please select both start and end dates", "error");
@@ -718,6 +643,87 @@ export function SettingsView({
     }
   }
 
+  async function handleSubscribe() {
+    setBillingLoading(true);
+    try {
+      const response = await fetch("/api/billing/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          referralCode: referralCode || undefined,
+          visitorId: visitorId || undefined,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to create checkout session");
+      }
+
+      // Redirect to Stripe Checkout
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    } catch (error) {
+      addToast(
+        error instanceof Error ? error.message : "Failed to start checkout",
+        "error"
+      );
+      setBillingLoading(false);
+    }
+  }
+
+  async function handleManageBilling() {
+    setBillingLoading(true);
+    try {
+      const response = await fetch("/api/billing/portal", {
+        method: "POST",
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to open billing portal");
+      }
+
+      // Redirect to Stripe Customer Portal
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    } catch (error) {
+      addToast(
+        error instanceof Error ? error.message : "Failed to open billing portal",
+        "error"
+      );
+      setBillingLoading(false);
+    }
+  }
+
+  // Helper to get subscription status display
+  function getSubscriptionDisplay() {
+    const status = (company as any).subscription_status;
+    const trialEnds = (company as any).trial_ends_at;
+
+    if (status === "active") {
+      return { label: "Active", color: "text-green-600" };
+    } else if (status === "past_due") {
+      return { label: "Past Due", color: "text-red-600" };
+    } else if (status === "canceled") {
+      return { label: "Canceled", color: "text-gray-600" };
+    } else if (status === "trialing" || !status) {
+      const trialEndDate = trialEnds ? new Date(trialEnds) : null;
+      const daysLeft = trialEndDate
+        ? Math.max(0, Math.ceil((trialEndDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+        : 14;
+      return { label: `Free Trial (${daysLeft} days left)`, color: "text-primary" };
+    }
+    return { label: "Free Trial", color: "text-primary" };
+  }
+
+  const subscriptionDisplay = getSubscriptionDisplay();
+  const isSubscribed = (company as any).subscription_status === "active";
+
   return (
     <div className="min-h-screen pb-20 lg:pb-0">
       {/* Header */}
@@ -731,10 +737,6 @@ export function SettingsView({
             <TabsTrigger value="company">
               <Building className="mr-1.5 h-4 w-4" />
               Company
-            </TabsTrigger>
-            <TabsTrigger value="estimating">
-              <Calculator className="mr-1.5 h-4 w-4" />
-              Estimating
             </TabsTrigger>
             <TabsTrigger value="crew">
               <Users className="mr-1.5 h-4 w-4" />
@@ -814,114 +816,8 @@ export function SettingsView({
               )}
             </div>
 
-            <div className="rounded-lg border bg-card p-4 space-y-4">
-              <h3 className="font-semibold flex items-center gap-2">
-                <Palette className="h-4 w-4" />
-                Theme
-              </h3>
-              <p className="text-sm text-muted-foreground">
-                Choose a Sherwin-Williams inspired color theme.
-              </p>
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                {THEMES.map((theme) => (
-                  <button
-                    key={theme.id}
-                    type="button"
-                    onClick={() => setSelectedTheme(theme.id)}
-                    className={`relative rounded-lg border p-3 text-left transition-all ${
-                      selectedTheme === theme.id
-                        ? "border-primary ring-2 ring-primary"
-                        : "hover:border-muted-foreground"
-                    }`}
-                  >
-                    <div
-                      className="h-8 w-full rounded mb-2"
-                      style={{ backgroundColor: theme.color }}
-                    />
-                    <p className="text-xs font-medium truncate">{theme.name}</p>
-                    {selectedTheme === theme.id && (
-                      <Check className="absolute top-2 right-2 h-4 w-4 text-primary" />
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
-
             <Button onClick={handleSaveCompany} loading={savingCompany}>
               Save Company Settings
-            </Button>
-          </TabsContent>
-
-          {/* Estimating Tab */}
-          <TabsContent value="estimating" className="mt-6 space-y-6">
-            <div className="rounded-lg border bg-card p-4 space-y-4">
-              <h3 className="font-semibold">Square Footage Rates</h3>
-              <p className="text-sm text-muted-foreground">
-                Set your default $/sqft rates for auto-pricing estimates.
-              </p>
-              <div className="grid gap-4 sm:grid-cols-3">
-                <div className="space-y-2">
-                  <Label htmlFor="wallsRate">Interior Walls ($/sqft)</Label>
-                  <Input
-                    id="wallsRate"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={wallsRate}
-                    onChange={(e) => setWallsRate(e.target.value)}
-                    placeholder="Suggested: 2.00"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="ceilingsRate">Ceilings ($/sqft)</Label>
-                  <Input
-                    id="ceilingsRate"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={ceilingsRate}
-                    onChange={(e) => setCeilingsRate(e.target.value)}
-                    placeholder="Suggested: 0.50"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="trimRate">Trim & Doors ($/sqft)</Label>
-                  <Input
-                    id="trimRate"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={trimRate}
-                    onChange={(e) => setTrimRate(e.target.value)}
-                    placeholder="Suggested: 0.75"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-lg border bg-card p-4 space-y-4">
-              <h3 className="font-semibold">Labor Rate</h3>
-              <p className="text-sm text-muted-foreground">
-                Set your default hourly rate for labor estimates.
-              </p>
-              <div className="max-w-xs">
-                <div className="space-y-2">
-                  <Label htmlFor="laborRate">Labor Rate ($/hr)</Label>
-                  <Input
-                    id="laborRate"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    value={laborRate}
-                    onChange={(e) => setLaborRate(e.target.value)}
-                    placeholder="Suggested: 50.00"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <Button onClick={handleSaveConfig} loading={savingConfig}>
-              Save Settings
             </Button>
           </TabsContent>
 
@@ -1041,39 +937,60 @@ export function SettingsView({
                   <div className="rounded-lg border bg-muted/50 p-4">
                     <div className="flex items-center justify-between mb-2">
                       <h4 className="font-medium">Current Plan</h4>
-                      <span className="text-sm font-semibold text-primary">Free Trial</span>
+                      <span className={`text-sm font-semibold ${subscriptionDisplay.color}`}>
+                        {subscriptionDisplay.label}
+                      </span>
                     </div>
                     <p className="text-sm text-muted-foreground">
-                      You&apos;re currently on the free trial. Upgrade to unlock all features.
+                      {isSubscribed
+                        ? "You have full access to all features."
+                        : "Upgrade to unlock all features and support development."}
                     </p>
                   </div>
 
-                  <div className="space-y-3">
-                    <h4 className="font-medium">Payment Method</h4>
-                    <div className="rounded-lg border p-4">
-                      <p className="text-sm text-muted-foreground mb-3">
-                        No payment method on file
-                      </p>
-                      <Button variant="outline" disabled>
-                        <CreditCard className="mr-2 h-4 w-4" />
-                        Add Payment Method
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    <h4 className="font-medium">Billing History</h4>
-                    <div className="rounded-lg border p-4">
-                      <p className="text-sm text-muted-foreground text-center py-4">
-                        No billing history available
+                  {/* Referral discount banner */}
+                  {hasReferral && !isSubscribed && discountPercent && (
+                    <div className="rounded-lg border border-green-200 bg-green-50 p-4">
+                      <p className="text-sm text-green-800 font-medium">
+                        🎉 Referral discount applied: {discountPercent}% off your first month!
                       </p>
                     </div>
-                  </div>
+                  )}
 
                   <div className="pt-4 border-t">
-                    <Button variant="outline" disabled className="w-full sm:w-auto">
-                      Upgrade Plan
-                    </Button>
+                    {isSubscribed ? (
+                      <Button
+                        variant="outline"
+                        onClick={handleManageBilling}
+                        disabled={billingLoading}
+                        className="w-full sm:w-auto"
+                      >
+                        {billingLoading ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <ExternalLink className="mr-2 h-4 w-4" />
+                        )}
+                        Manage Billing
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={handleSubscribe}
+                        disabled={billingLoading}
+                        className="w-full sm:w-auto"
+                      >
+                        {billingLoading ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <CreditCard className="mr-2 h-4 w-4" />
+                        )}
+                        Upgrade Now
+                        {hasReferral && discountPercent && (
+                          <span className="ml-2 text-xs bg-white/20 px-2 py-0.5 rounded">
+                            {discountPercent}% off
+                          </span>
+                        )}
+                      </Button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1148,7 +1065,7 @@ export function SettingsView({
               {editingLocation ? "Edit Location" : "Add Pickup Location"}
             </DialogTitle>
             <DialogDescription>
-              Add a Sherwin-Williams store or other pickup point.
+              Add a paint store or other pickup point.
             </DialogDescription>
           </DialogHeader>
 
@@ -1157,7 +1074,7 @@ export function SettingsView({
               <Label htmlFor="locationName">Name *</Label>
               <Input
                 id="locationName"
-                placeholder="e.g., Sherwin-Williams #1234"
+                placeholder="e.g., Paint Store Downtown"
                 value={locationName}
                 onChange={(e) => setLocationName(e.target.value)}
                 required

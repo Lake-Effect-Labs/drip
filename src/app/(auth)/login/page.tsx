@@ -52,28 +52,12 @@ export default function LoginPage() {
         return;
       }
 
-      console.log("🔑 Attempting login...");
-      console.log("Email:", trimmedEmail);
-      console.log("Password length:", cleanPassword.length);
-      console.log("Password first char code:", cleanPassword.charCodeAt(0));
-      console.log("Password last char code:", cleanPassword.charCodeAt(cleanPassword.length - 1));
-
       const { data, error } = await supabase.auth.signInWithPassword({
         email: trimmedEmail,
         password: cleanPassword,
       });
 
       if (error) {
-        // Log the full error for debugging
-        console.error("❌ Login error details:", {
-          message: error.message,
-          status: error.status,
-          name: error.name,
-          email: trimmedEmail,
-          errorCode: (error as any).code,
-          fullError: error,
-        });
-
         // Provide more helpful error messages
         if (error.message.includes("Invalid login credentials") || 
             error.message.includes("invalid") ||
@@ -92,23 +76,17 @@ export default function LoginPage() {
       }
 
       if (!data.user || !data.session) {
-        console.error("❌ No user or session in response");
         addToast("Failed to sign in. Please try again.", "error");
         setLoading(false);
         return;
       }
-
-      console.log("✅ Login successful!");
-      console.log("User:", data.user.email);
-      console.log("User ID:", data.user.id);
 
       // After successful login, just redirect to app
       // The app layout will handle checking for company and redirecting if needed
       // This avoids RLS issues with fresh session
       router.push("/app");
       router.refresh();
-    } catch (err) {
-      console.error("Unexpected login error:", err);
+    } catch {
       addToast("An unexpected error occurred. Please try again.", "error");
       setLoading(false);
     }

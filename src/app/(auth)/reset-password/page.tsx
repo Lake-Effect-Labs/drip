@@ -56,7 +56,6 @@ export default function ResetPasswordPage() {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       
       if (sessionError) {
-        console.error("Session error:", sessionError);
         addToast("Your reset link has expired. Please request a new one.", "error");
         setTimeout(() => router.push("/forgot-password"), 2000);
         setLoading(false);
@@ -74,77 +73,35 @@ export default function ResetPasswordPage() {
       const { data: { session: currentSession }, error: sessionCheckError } = await supabase.auth.getSession();
       
       if (sessionCheckError || !currentSession) {
-        console.error("No valid session found:", sessionCheckError);
         addToast("Your reset session has expired. Please request a new password reset.", "error");
         setLoading(false);
         return;
       }
 
       const userEmail = currentSession.user.email;
-      console.log("🔑 Updating password for user:", userEmail);
-      console.log("Session details:", {
-        email: currentSession.user.email,
-        id: currentSession.user.id,
-        recovery: !!currentSession.user.recovery_sent_at,
-        app_metadata: currentSession.user.app_metadata,
-        user_metadata: currentSession.user.user_metadata,
-      });
-
-      // Verify this is a recovery session (password reset session)
-      // Recovery sessions are created when exchangeCodeForSession is called with a password reset code
-      // The session should allow password updates via updateUser
-      console.log("Session type check - user ID:", currentSession.user.id);
 
       // Update the password using the recovery session
-      // Don't trim - use exactly what the user entered
-      const newPassword = password;
-      console.log("📝 Password length:", newPassword.length);
-
-      if (newPassword.length < 6) {
-        addToast("Password must be at least 6 characters", "error");
-        setLoading(false);
-        return;
-      }
-
-      console.log("🚀 Calling updateUser with password...");
       const { data: updateData, error: updateError } = await supabase.auth.updateUser({
-        password: newPassword,
+        password: password,
       });
 
       if (updateError) {
-        console.error("❌ Password update error:", updateError);
-        console.error("Error name:", updateError.name);
-        console.error("Error message:", updateError.message);
-        console.error("Error status:", (updateError as any).status);
-        console.error("Full error:", JSON.stringify(updateError, null, 2));
         addToast(`Failed to update password: ${updateError.message}. Please try again or request a new reset link.`, "error");
         setLoading(false);
         return;
       }
 
       if (!updateData || !updateData.user) {
-        console.error("❌ Password update returned no user data");
-        console.error("Update data:", updateData);
         addToast("Password update failed - no user data returned. Please try again.", "error");
         setLoading(false);
         return;
       }
 
-      console.log("✅ Password updated successfully!");
-      console.log("Updated user email:", updateData.user.email);
-      console.log("Updated user ID:", updateData.user.id);
-      console.log("Updated at:", updateData.user.updated_at);
-      
       // Wait a moment to ensure password update has fully propagated on the server
       await new Promise(resolve => setTimeout(resolve, 1000));
-      
+
       // Refresh the session to ensure it reflects the password update
-      const { error: refreshError } = await supabase.auth.refreshSession();
-      
-      if (refreshError) {
-        console.error("Session refresh error:", refreshError);
-        // Even if refresh fails, password was updated, so continue
-      }
+      await supabase.auth.refreshSession();
       
       setSuccess(true);
       addToast("Password reset successfully! Redirecting to sign in...", "success");
@@ -166,8 +123,7 @@ export default function ResetPasswordPage() {
         router.push("/login");
         router.refresh();
       }, 1000);
-    } catch (err) {
-      console.error("Unexpected error:", err);
+    } catch {
       addToast("An unexpected error occurred. Please try again.", "error");
       setLoading(false);
     }

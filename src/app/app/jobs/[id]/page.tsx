@@ -100,13 +100,8 @@ export default async function JobPage({
   // Fetch team members (use admin client)
   const members = await getTeamMembers(adminSupabase, companyUser.company_id);
 
-  // Fetch estimating config, payment line items, and pickup locations in parallel
-  const [estimatingConfigResult, paymentLineItemsResult, pickupLocationsResult] = await Promise.all([
-    adminSupabase
-      .from("estimating_config")
-      .select("*")
-      .eq("company_id", companyUser.company_id)
-      .single(),
+  // Fetch payment line items and pickup locations in parallel
+  const [paymentLineItemsResult, pickupLocationsResult] = await Promise.all([
     adminSupabase
       .from("job_payment_line_items")
       .select("id, title, price")
@@ -119,7 +114,6 @@ export default async function JobPage({
       .order("name"),
   ]);
 
-  const estimatingConfig = estimatingConfigResult.data;
   const paymentLineItems = paymentLineItemsResult.data || [];
   const pickupLocations = pickupLocationsResult.data || [];
 
@@ -131,7 +125,6 @@ export default async function JobPage({
       materials={materials || []}
       teamMembers={members}
       companyId={companyUser.company_id}
-      estimatingConfig={estimatingConfig}
       paymentLineItems={paymentLineItems}
       pickupLocations={pickupLocations}
     />

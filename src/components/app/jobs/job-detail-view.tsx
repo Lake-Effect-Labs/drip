@@ -18,7 +18,7 @@ import {
   JOB_STATUS_COLORS,
   type JobStatus,
 } from "@/lib/utils";
-import type { Job, Customer, Estimate, EstimateLineItem, Invoice, JobMaterial, EstimatingConfig } from "@/types/database";
+import type { Job, Customer, Estimate, EstimateLineItem, Invoice, JobMaterial } from "@/types/database";
 import { JobHistoryTimeline } from "./job-history-timeline";
 import { MessageTemplatesDialog } from "./message-templates-dialog";
 import { PhotoGallery } from "./photo-gallery";
@@ -87,7 +87,6 @@ interface JobDetailViewProps {
   jobHistory?: JobHistory[];
   teamMembers: { id: string; email: string; fullName: string }[];
   companyId: string;
-  estimatingConfig?: EstimatingConfig | null;
   paymentLineItems?: Array<{ id: string; title: string; price: number }>;
   pickupLocations?: Array<{ id: string; name: string }>;
 }
@@ -100,7 +99,6 @@ export function JobDetailView({
   jobHistory = [],
   teamMembers,
   companyId,
-  estimatingConfig,
   paymentLineItems: initialPaymentLineItems = [],
   pickupLocations: initialPickupLocations = [],
 }: JobDetailViewProps) {
@@ -1659,7 +1657,6 @@ export function JobDetailView({
                 paymentMethod={job.payment_method || null}
                 publicToken={estimatesList[0]?.public_token}
                 lineItems={paymentLineItems}
-                estimatingConfig={estimatingConfig}
                 estimateStatus={estimatesList[0]?.status || null}
                 estimateDeniedAt={estimatesList[0]?.denied_at || null}
                 estimateDenialReason={estimatesList[0]?.denial_reason || null}

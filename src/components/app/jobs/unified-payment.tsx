@@ -93,7 +93,6 @@ const COMMON_SW_COLORS = [
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/toast";
 import { useRouter } from "next/navigation";
-import type { EstimatingConfig } from "@/types/database";
 
 type PaymentState = "none" | "proposed" | "approved" | "due" | "paid";
 
@@ -138,7 +137,6 @@ interface UnifiedPaymentProps {
     title: string;
     price: number; // in cents
   }>;
-  estimatingConfig?: EstimatingConfig | null;
   estimateStatus?: string | null; // "draft", "sent", "accepted", "denied"
   estimateDeniedAt?: string | null;
   estimateDenialReason?: string | null;
@@ -159,7 +157,6 @@ export function UnifiedPayment({
   paymentMethod,
   publicToken,
   lineItems: initialLineItems,
-  estimatingConfig,
   estimateStatus,
   estimateDeniedAt,
   estimateDenialReason,
@@ -552,28 +549,20 @@ export function UnifiedPayment({
   const updateLineItem = (index: number, field: keyof PaymentLineItem, value: string | LineItemType | boolean) => {
     const updated = [...lineItems];
     (updated[index] as any)[field] = value;
-    // Reset type-specific fields when type changes and apply defaults
+    // Reset type-specific fields when type changes
     if (field === "type") {
       if (value === "area") {
         updated[index].areaType = "walls";
-        updated[index].ratePerSqft = estimatingConfig?.walls_rate_per_sqft?.toString() || "";
+        updated[index].ratePerSqft = "";
         updated[index].sqft = "";
         updated[index].price = "";
       } else if (value === "labor") {
         updated[index].hours = "";
-        updated[index].ratePerHour = estimatingConfig?.labor_rate_per_hour?.toString() || "";
+        updated[index].ratePerHour = "";
         updated[index].price = "";
       } else {
         updated[index].price = "";
       }
-    }
-    // Apply default rate when area type changes
-    if (field === "areaType" && value === "walls") {
-      updated[index].ratePerSqft = estimatingConfig?.walls_rate_per_sqft?.toString() || "";
-    } else if (field === "areaType" && value === "ceilings") {
-      updated[index].ratePerSqft = estimatingConfig?.ceilings_rate_per_sqft?.toString() || "";
-    } else if (field === "areaType" && (value === "trim" || value === "doors")) {
-      updated[index].ratePerSqft = estimatingConfig?.trim_rate_per_sqft?.toString() || "";
     }
     setLineItems(updated);
   };

@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { Paintbrush, ArrowRight, CheckCircle, Calendar, FileText, Package } from "lucide-react";
-import { PaintChipAnimator } from "@/components/public/paint-chip-animator";
 
 export default function HomePage() {
   return (
@@ -23,7 +22,7 @@ export default function HomePage() {
             </Link>
             <Link
               href="/signup"
-              className="themed-button inline-flex items-center gap-2 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-md"
+              className="inline-flex items-center gap-2 bg-stone-800 hover:bg-stone-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-md transition-colors"
             >
               Get Started
               <ArrowRight className="w-4 h-4" />
@@ -50,7 +49,7 @@ export default function HomePage() {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link
               href="/signup"
-              className="themed-button inline-flex items-center gap-2 text-white px-6 py-3 rounded-lg font-medium shadow-lg"
+              className="inline-flex items-center gap-2 bg-stone-800 hover:bg-stone-700 text-white px-6 py-3 rounded-lg font-medium shadow-lg transition-colors"
             >
               Start free trial
               <ArrowRight className="w-4 h-4" />
@@ -165,9 +164,6 @@ export default function HomePage() {
           </p>
         </div>
       </footer>
-
-      {/* Animated Paint Chip */}
-      <PaintChipAnimator />
     </div>
   );
 }
