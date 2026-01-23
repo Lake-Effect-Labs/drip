@@ -3,7 +3,7 @@ import { getStripe } from "@/lib/stripe";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/server";
 
-export async function POST() {
+export async function POST(request: Request) {
   let stripe;
   try {
     stripe = getStripe();
@@ -53,7 +53,9 @@ export async function POST() {
       );
     }
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+    // Build return URL - use request origin as fallback
+    const origin = request.headers.get("origin") || request.headers.get("referer")?.split("/").slice(0, 3).join("/");
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || origin || "https://matte.biz";
 
     // Create billing portal session
     const session = await stripe.billingPortal.sessions.create({
