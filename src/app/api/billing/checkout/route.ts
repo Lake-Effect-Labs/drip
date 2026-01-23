@@ -139,7 +139,7 @@ export async function POST(request: Request) {
         },
       ],
       discounts,
-      success_url: `${appUrl}/app/settings?billing=success`,
+      success_url: `${appUrl}/app/board?billing=success`,
       cancel_url: `${appUrl}/app/settings?billing=canceled`,
       metadata: {
         company_id: company.id,
