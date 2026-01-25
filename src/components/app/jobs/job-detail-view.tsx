@@ -166,7 +166,7 @@ export function JobDetailView({
   // Real-time subscription for estimate updates
   useEffect(() => {
     const channel = supabase
-      .channel(`job-${job.id}-estimates-${Date.now()}`)
+      .channel(`job-${job.id}-estimates`)
       .on(
         'postgres_changes',
         {
@@ -268,7 +268,7 @@ export function JobDetailView({
   // Real-time subscription for job updates (schedule acceptance, payment updates, etc.)
   useEffect(() => {
     const channel = supabase
-      .channel(`job-${job.id}-updates-${Date.now()}`)
+      .channel(`job-${job.id}-updates`)
       .on(
         'postgres_changes',
         {

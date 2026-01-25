@@ -76,7 +76,7 @@ export function UnifiedPublicJobView({ job: initialJob, token }: UnifiedPublicJo
 
     // Subscribe to job updates
     const jobChannel = supabase
-      .channel(`public-job-${job.id}-${Date.now()}`)
+      .channel(`public-job-${job.id}`)
       .on(
         'postgres_changes',
         {
@@ -91,7 +91,7 @@ export function UnifiedPublicJobView({ job: initialJob, token }: UnifiedPublicJo
 
     // Subscribe to estimate updates
     const estimateChannel = job.estimate?.id ? supabase
-      .channel(`public-estimate-${job.estimate.id}-${Date.now()}`)
+      .channel(`public-estimate-${job.estimate.id}`)
       .on(
         'postgres_changes',
         {
@@ -106,7 +106,7 @@ export function UnifiedPublicJobView({ job: initialJob, token }: UnifiedPublicJo
 
     // Subscribe to photo updates
     const photoChannel = supabase
-      .channel(`public-photos-${job.id}-${Date.now()}`)
+      .channel(`public-photos-${job.id}`)
       .on(
         'postgres_changes',
         {
