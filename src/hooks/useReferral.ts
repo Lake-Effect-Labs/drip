@@ -11,7 +11,7 @@ interface ReferralData {
   code: string;
   visitorId: string;
   creatorName?: string;
-  discountPercent?: number;
+  discountFlat?: number;
   expiresAt: number;
 }
 
@@ -93,7 +93,7 @@ export function useReferral() {
               code: validateData.code,
               visitorId,
               creatorName: validateData.creatorName,
-              discountPercent: validateData.discountPercent,
+              discountFlat: validateData.discountFlat,
               expiresAt,
             };
 
@@ -133,7 +133,7 @@ export function useReferral() {
     referralCode: referralData?.code || null,
     visitorId: referralData?.visitorId || getOrCreateVisitorId(),
     creatorName: referralData?.creatorName || null,
-    discountPercent: referralData?.discountPercent || null,
+    discountFlat: referralData?.discountFlat || null,
     hasReferral: !!referralData,
     isLoading,
     clearReferral,

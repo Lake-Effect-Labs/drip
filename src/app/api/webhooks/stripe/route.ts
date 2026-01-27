@@ -177,8 +177,18 @@ export async function POST(request: Request) {
 
       case "invoice.payment_failed": {
         const invoice = event.data.object;
-        // Handle failed payment - you could notify the user or update status
-        console.log("Payment failed for invoice:", (invoice as any).id);
+        console.error("Payment failed for invoice:", (invoice as any).id);
+        // Update company to past_due so the UI can show a warning
+        const failedSubscriptionId = (invoice as any).subscription;
+        if (failedSubscriptionId) {
+          const { error } = await supabase
+            .from("companies")
+            .update({ subscription_status: "past_due" })
+            .eq("subscription_id", failedSubscriptionId);
+          if (error) {
+            console.error("Error updating company for failed payment:", error);
+          }
+        }
         break;
       }
 

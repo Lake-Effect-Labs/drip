@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -26,9 +26,10 @@ import { NudgeBanners } from "./nudge-banners";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, X, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Search, X, ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { createClient } from "@/lib/supabase/client";
+import Link from "next/link";
 
 type LatestEstimate = {
   id: string;
@@ -44,6 +45,8 @@ interface BoardViewProps {
   teamMembers: { id: string; email: string; fullName: string }[];
   currentUserId: string;
   companyId: string;
+  subscriptionStatus: string;
+  isAtTrialLimit: boolean;
 }
 
 type FilterType = "all" | "mine" | "unassigned";
@@ -53,6 +56,8 @@ export function BoardView({
   teamMembers,
   currentUserId,
   companyId,
+  subscriptionStatus,
+  isAtTrialLimit,
 }: BoardViewProps) {
   const [jobs, setJobs] = useState<JobWithCustomer[]>(initialJobs);
   const [activeJob, setActiveJob] = useState<JobWithCustomer | null>(null);
@@ -123,8 +128,8 @@ export function BoardView({
     return rectIntersection(args);
   }, []);
 
-  // Filter and search jobs
-  const filteredJobs = jobs.filter((job) => {
+  // Filter and search jobs (memoized to avoid recomputing on unrelated state changes)
+  const filteredJobs = useMemo(() => jobs.filter((job) => {
     // Apply status filter
     if (filter === "mine") {
       if (job.assigned_user_id !== currentUserId) return false;
@@ -147,21 +152,21 @@ export function BoardView({
         .join(" ")
         .toLowerCase()
         .includes(query);
-      
+
       if (!matchesTitle && !matchesCustomer && !matchesAddress) return false;
     }
 
     return true;
-  });
+  }), [jobs, filter, searchQuery, currentUserId]);
 
-  // Group jobs by status
-  const jobsByStatus = JOB_STATUSES.reduce(
+  // Group jobs by status (memoized)
+  const jobsByStatus = useMemo(() => JOB_STATUSES.reduce(
     (acc, status) => {
       acc[status] = filteredJobs.filter((job) => job.status === status);
       return acc;
     },
     {} as Record<JobStatus, JobWithCustomer[]>
-  );
+  ), [filteredJobs]);
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const job = jobs.find((j) => j.id === event.active.id);
@@ -311,6 +316,24 @@ export function BoardView({
       {/* Nudge Banners */}
       <div className="p-4 pb-0">
         <NudgeBanners companyId={companyId} />
+
+        {/* Trial Limit Banner */}
+        {isAtTrialLimit && (
+          <div className="rounded-lg border border-primary bg-primary/10 p-4 flex items-center justify-between gap-4 mb-4">
+            <div className="flex items-center gap-3">
+              <Sparkles className="h-5 w-5 text-primary" />
+              <div>
+                <p className="font-medium text-primary">You&apos;ve used your free job</p>
+                <p className="text-sm text-muted-foreground">Subscribe to create unlimited jobs and grow your business.</p>
+              </div>
+            </div>
+            <Link href="/app/settings">
+              <Button size="sm">
+                Subscribe Now
+              </Button>
+            </Link>
+          </div>
+        )}
       </div>
       
       {/* Header */}
@@ -332,10 +355,19 @@ export function BoardView({
               <option value="mine">Assigned to me</option>
               <option value="unassigned">Unassigned</option>
             </Select>
-            <Button onClick={() => setNewJobOpen(true)} size="sm" className="sm:size-default">
-              <Plus className="h-4 w-4 sm:mr-2" />
-              <span className="hidden sm:inline">New Job</span>
-            </Button>
+            {isAtTrialLimit ? (
+              <Link href="/app/settings">
+                <Button size="sm" className="sm:size-default">
+                  <Sparkles className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Subscribe</span>
+                </Button>
+              </Link>
+            ) : (
+              <Button onClick={() => setNewJobOpen(true)} size="sm" className="sm:size-default">
+                <Plus className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">New Job</span>
+              </Button>
+            )}
           </div>
         </div>
         {/* Search */}
@@ -436,6 +468,8 @@ export function BoardView({
                         prev.map((j) => (j.id === jobId ? { ...j, status: newStatus } : j))
                       );
                       addToast("Status updated!", "success");
+                    } else {
+                      addToast("Failed to update status", "error");
                     }
                   }}
                   onDuplicate={async (jobId) => {
@@ -463,6 +497,10 @@ export function BoardView({
                       const newJob = await response.json();
                       setJobs((prev) => [newJob, ...prev]);
                       addToast("Job duplicated!", "success");
+                    } else if (response.status === 402) {
+                      addToast("Subscribe to create more jobs", "error");
+                    } else {
+                      addToast("Failed to duplicate job", "error");
                     }
                   }}
                 />

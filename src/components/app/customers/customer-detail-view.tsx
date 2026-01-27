@@ -671,7 +671,7 @@ export function CustomerDetailView({
                       {allPayments.map((payment) => (
                         <Link
                           key={`${payment.type}-${payment.id}`}
-                          href={payment.type === "invoice" ? `/app/invoices/${payment.id}` : `/app/jobs/${payment.id}`}
+                          href={payment.type === "job" ? `/app/jobs/${payment.id}` : "#"}
                           className="block p-4 hover:bg-muted/50 transition-colors"
                         >
                           <div className="flex items-center justify-between">

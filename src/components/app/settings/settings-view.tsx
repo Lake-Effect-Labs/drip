@@ -7,6 +7,8 @@ import {
   formatDate,
   copyToClipboard,
   generateToken,
+  THEMES,
+  type ThemeId,
 } from "@/lib/utils";
 import type { Company, InviteLink, PickupLocation } from "@/types/database";
 import { Button } from "@/components/ui/button";
@@ -34,6 +36,11 @@ import {
   Image as ImageIcon,
   ExternalLink,
   Loader2,
+  Palette,
+  Gift,
+  Link,
+  TrendingUp,
+  Edit3,
 } from "lucide-react";
 import { useReferralContext } from "@/providers/ReferralProvider";
 
@@ -79,6 +86,9 @@ export function SettingsView({
 
   // Company form
   const [companyName, setCompanyName] = useState(company.name);
+  const [selectedTheme, setSelectedTheme] = useState<ThemeId>(
+    (company.theme_id as ThemeId) || "agreeable-gray"
+  );
   const [savingCompany, setSavingCompany] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [logoPreview, setLogoPreview] = useState<string | null>((company as any).logo_url || null);
@@ -100,6 +110,7 @@ export function SettingsView({
         .from("companies")
         .update({
           name: companyName.trim(),
+          theme_id: selectedTheme,
         })
         .eq("id", company.id);
 
@@ -108,6 +119,7 @@ export function SettingsView({
       setCompany((prev) => ({
         ...prev,
         name: companyName.trim(),
+        theme_id: selectedTheme,
       }));
 
       addToast("Company settings saved!", "success");
@@ -367,118 +379,47 @@ export function SettingsView({
     addToast("Location deleted", "success");
   }
 
-  async function handleExportInvoices() {
-    try {
-      const { data: invoices, error } = await supabase
-        .from("invoices")
-        .select("*")
-        .eq("company_id", company.id)
-        .order("created_at", { ascending: false });
-
-      if (error) throw error;
-
-      // Fetch customers and jobs for the invoices
-      const customerIds = [...new Set((invoices || []).map(i => i.customer_id).filter((id): id is string => id !== null))];
-      const jobIds = [...new Set((invoices || []).map(i => i.job_id).filter((id): id is string => id !== null))];
-
-      const { data: customers } = customerIds.length > 0 
-        ? await supabase.from("customers").select("id, name").in("id", customerIds)
-        : { data: [] };
-      
-      const { data: jobs } = jobIds.length > 0
-        ? await supabase.from("jobs").select("id, title").in("id", jobIds)
-        : { data: [] };
-
-      const customerMap = new Map((customers || []).map(c => [c.id, c.name]));
-      const jobMap = new Map((jobs || []).map(j => [j.id, j.title]));
-
-      const csv = [
-        ["Date", "Customer", "Job", "Amount", "Status", "Paid At"].join(","),
-        ...(invoices || []).map((inv) =>
-          [
-            inv.created_at,
-            `"${customerMap.get(inv.customer_id) || ""}"`,
-            `"${jobMap.get(inv.job_id) || ""}"`,
-            (inv.amount_total / 100).toFixed(2),
-            inv.status,
-            inv.paid_at || "",
-          ].join(",")
-        ),
-      ].join("\n");
-
-      const blob = new Blob([csv], { type: "text/csv" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `invoices-${new Date().toISOString().split("T")[0]}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-
-      addToast("Invoices exported!", "success");
-    } catch {
-      addToast("Failed to export", "error");
-    }
-  }
-
   async function handleExportPayments() {
     try {
-      // Get invoices for company first
-      const { data: companyInvoices } = await supabase
-        .from("invoices")
-        .select("id")
-        .eq("company_id", company.id);
+      // Get all paid jobs (these are payments made directly on jobs)
+      const { data: paidJobs, error: jobsError } = await supabase
+        .from("jobs")
+        .select(`
+          id,
+          title,
+          customer_id,
+          payment_amount,
+          payment_paid_at,
+          payment_method
+        `)
+        .eq("company_id", company.id)
+        .eq("payment_state", "paid")
+        .order("payment_paid_at", { ascending: false });
 
-      const invoiceIds = companyInvoices?.map(i => i.id) || [];
-      
-      // Get payments for those invoices
-      const { data: payments, error } = invoiceIds.length > 0
-        ? await supabase
-            .from("invoice_payments")
-            .select("*")
-            .in("invoice_id", invoiceIds)
-            .order("paid_at", { ascending: false })
-        : { data: [] };
+      if (jobsError) throw jobsError;
 
-      if (error) throw error;
-
-      // Get invoice details
-      const { data: invoices } = invoiceIds.length > 0
-        ? await supabase.from("invoices").select("id, customer_id, job_id").in("id", invoiceIds)
-        : { data: [] };
-
-      const customerIds = [...new Set((invoices || []).map(i => i.customer_id).filter((id): id is string => id !== null))];
-      const jobIds = [...new Set((invoices || []).map(i => i.job_id).filter((id): id is string => id !== null))];
+      // Get customer names
+      const customerIds = [...new Set((paidJobs || []).map(j => j.customer_id).filter((id): id is string => id !== null))];
 
       const { data: customers } = customerIds.length > 0
         ? await supabase.from("customers").select("id, name").in("id", customerIds)
         : { data: [] };
-      
-      const { data: jobs } = jobIds.length > 0
-        ? await supabase.from("jobs").select("id, title").in("id", jobIds)
-        : { data: [] };
 
-      const invoiceMap = new Map((invoices || []).map(i => [i.id, i]));
       const customerMap = new Map((customers || []).map(c => [c.id, c.name]));
-      const jobMap = new Map((jobs || []).map(j => [j.id, j.title]));
+
+      const csvRows = (paidJobs || []).map((job) => {
+        return [
+          job.payment_paid_at || "",
+          `"${customerMap.get(job.customer_id || "") || ""}"`,
+          `"${(job.title || "").replace(/"/g, '""')}"`,
+          job.payment_amount ? (job.payment_amount / 100).toFixed(2) : "0.00",
+          job.payment_method || "Unknown",
+        ].join(",");
+      });
 
       const csv = [
         ["Date", "Customer", "Job", "Amount", "Payment Method"].join(","),
-        ...(payments || []).map((payment) => {
-          const invoice = invoiceMap.get(payment.invoice_id);
-          const isManual = payment.stripe_payment_intent_id?.startsWith("manual_");
-          const method = isManual
-            ? payment.stripe_payment_intent_id.split("_")[1]
-            : "Stripe";
-          const customerId = invoice?.customer_id || "";
-          const jobId = invoice?.job_id || "";
-          return [
-            payment.paid_at,
-            `"${customerMap.get(customerId) || ""}"`,
-            `"${jobMap.get(jobId) || ""}"`,
-            (payment.amount / 100).toFixed(2),
-            method,
-          ].join(",");
-        }),
+        ...csvRows,
       ].join("\n");
 
       const blob = new Blob([csv], { type: "text/csv" });
@@ -537,25 +478,96 @@ export function SettingsView({
   }
 
   // Export Jobs state
-  const [exportJobsDialogOpen, setExportJobsDialogOpen] = useState(false);
   const [exportingJobs, setExportingJobs] = useState(false);
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
 
   // Billing state
   const [billingLoading, setBillingLoading] = useState(false);
-  const { referralCode, visitorId, discountPercent, hasReferral } = useReferralContext();
+  const { referralCode, visitorId, hasReferral } = useReferralContext();
 
-  async function handleExportJobs() {
-    if (!startDate || !endDate) {
-      addToast("Please select both start and end dates", "error");
-      return;
+  // Affiliate state
+  const [isAffiliate, setIsAffiliate] = useState(false);
+  const [affiliateLoading, setAffiliateLoading] = useState(true);
+  const [affiliateCode, setAffiliateCode] = useState<{
+    id: string;
+    code: string;
+    discountPercent: number;
+    commissionPercent: number;
+    totalReferrals: number;
+    totalConversions: number;
+    isActive: boolean;
+  } | null>(null);
+  const [editingCode, setEditingCode] = useState(false);
+  const [newCode, setNewCode] = useState("");
+  const [savingCode, setSavingCode] = useState(false);
+
+  // Fetch affiliate status on mount
+  useEffect(() => {
+    async function fetchAffiliateStatus() {
+      try {
+        const response = await fetch("/api/affiliate/me");
+        const data = await response.json();
+
+        if (data.isAffiliate) {
+          setIsAffiliate(true);
+          setAffiliateCode(data.creatorCode);
+          if (data.creatorCode) {
+            setNewCode(data.creatorCode.code);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch affiliate status:", error);
+      } finally {
+        setAffiliateLoading(false);
+      }
     }
 
+    fetchAffiliateStatus();
+  }, []);
+
+  async function handleSaveAffiliateCode() {
+    if (!newCode.trim()) return;
+
+    setSavingCode(true);
+    try {
+      const method = affiliateCode ? "PUT" : "POST";
+      const response = await fetch("/api/affiliate/me", {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: newCode.trim() }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to save code");
+      }
+
+      setAffiliateCode(data.creatorCode);
+      setNewCode(data.creatorCode.code);
+      setEditingCode(false);
+      addToast("Affiliate code saved!", "success");
+    } catch (error) {
+      addToast(
+        error instanceof Error ? error.message : "Failed to save code",
+        "error"
+      );
+    } finally {
+      setSavingCode(false);
+    }
+  }
+
+  function copyAffiliateLink() {
+    if (!affiliateCode) return;
+    const link = `${origin}/signup?ref=${affiliateCode.code}`;
+    copyToClipboard(link);
+    addToast("Affiliate link copied!", "success");
+  }
+
+  async function handleExportJobs() {
     setExportingJobs(true);
 
     try {
-      // Fetch jobs with customer info
+      // Fetch all jobs with customer info
       const { data: jobs, error: jobsError } = await supabase
         .from("jobs")
         .select(`
@@ -563,63 +575,56 @@ export function SettingsView({
           customer:customers(name, phone, email, address1, city, state, zip)
         `)
         .eq("company_id", company.id)
-        .gte("created_at", startDate)
-        .lte("created_at", `${endDate}T23:59:59`)
         .order("created_at", { ascending: false });
 
       if (jobsError) throw jobsError;
 
-      // Fetch invoices for these jobs
-      const { data: invoices, error: invoicesError } = await supabase
-        .from("invoices")
-        .select("*")
-        .eq("company_id", company.id)
-        .gte("created_at", startDate)
-        .lte("created_at", `${endDate}T23:59:59`)
-        .order("created_at", { ascending: false });
-
-      if (invoicesError) throw invoicesError;
-
-      // Create CSV
+      // Create CSV with comprehensive job data
       const csv = [
         [
-          "Date",
+          "Created Date",
           "Job Title",
+          "Job Status",
           "Customer Name",
           "Customer Phone",
           "Customer Email",
-          "Address",
-          "Job Status",
-          "Invoice Amount",
-          "Invoice Status",
-          "Payment Date",
+          "Job Address",
+          "City",
+          "State",
+          "ZIP",
+          "Scheduled Date",
+          "Scheduled Time",
+          "Payment State",
+          "Payment Amount",
+          "Payment Method",
+          "Paid At",
+          "Notes",
+          "Assigned To",
+          "Progress %",
         ].join(","),
         ...(jobs || []).map((job) => {
-          const jobInvoices = (invoices || []).filter((inv) => inv.job_id === job.id);
-          const totalInvoiced = jobInvoices.reduce((sum, inv) => sum + inv.amount_total, 0);
-          const paidInvoices = jobInvoices.filter((inv) => inv.status === "paid");
-          const paymentDate = paidInvoices.length > 0 
-            ? paidInvoices[0].updated_at 
-            : "";
-
           const customer = job.customer as any;
-          const address = customer
-            ? [customer.address1, customer.city, customer.state, customer.zip]
-                .filter(Boolean)
-                .join(", ")
-            : "";
 
           return [
             formatDate(job.created_at),
-            `"${job.title.replace(/"/g, '""')}"`,
-            customer ? `"${customer.name.replace(/"/g, '""')}"` : "",
+            `"${(job.title || "").replace(/"/g, '""')}"`,
+            job.status || "",
+            customer ? `"${(customer.name || "").replace(/"/g, '""')}"` : "",
             customer?.phone || "",
             customer?.email || "",
-            `"${address.replace(/"/g, '""')}"`,
-            job.status,
-            totalInvoiced.toFixed(2),
-            jobInvoices.length > 0 ? jobInvoices[0].status : "none",
-            paymentDate ? formatDate(paymentDate) : "",
+            `"${(job.address1 || "").replace(/"/g, '""')}"`,
+            job.city || "",
+            job.state || "",
+            job.zip || "",
+            job.scheduled_date || "",
+            job.scheduled_time || "",
+            job.payment_state || "",
+            job.payment_amount ? (job.payment_amount / 100).toFixed(2) : "",
+            job.payment_method || "",
+            job.payment_paid_at || "",
+            `"${(job.notes || "").replace(/"/g, '""').replace(/\n/g, " ")}"`,
+            job.assigned_user_id || "",
+            job.progress_percentage?.toString() || "0",
           ].join(",");
         }),
       ].join("\n");
@@ -629,12 +634,11 @@ export function SettingsView({
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `jobs-export-${startDate}-to-${endDate}.csv`;
+      a.download = `jobs-export-${new Date().toISOString().split("T")[0]}.csv`;
       a.click();
       URL.revokeObjectURL(url);
 
-      addToast("Export complete!", "success");
-      setExportJobsDialogOpen(false);
+      addToast("Jobs exported!", "success");
     } catch (error) {
       console.error("Export error:", error);
       addToast("Failed to export data", "error");
@@ -750,6 +754,12 @@ export function SettingsView({
               <Users className="mr-1.5 h-4 w-4" />
               Account
             </TabsTrigger>
+            {isAffiliate && (
+              <TabsTrigger value="affiliate">
+                <Gift className="mr-1.5 h-4 w-4" />
+                Affiliate
+              </TabsTrigger>
+            )}
           </TabsList>
 
           {/* Company Tab */}
@@ -816,6 +826,43 @@ export function SettingsView({
               )}
             </div>
 
+            {/* Color Theme */}
+            <div className="rounded-lg border bg-card p-4 space-y-4">
+              <h3 className="font-semibold flex items-center gap-2">
+                <Palette className="h-4 w-4" />
+                Color Theme
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                Choose a color theme for customer-facing pages.
+              </p>
+
+              <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2">
+                {THEMES.map((theme) => (
+                  <button
+                    key={theme.id}
+                    onClick={() => setSelectedTheme(theme.id)}
+                    className={`relative w-full aspect-square rounded-lg border-2 transition-all ${
+                      selectedTheme === theme.id
+                        ? "border-primary ring-2 ring-primary ring-offset-2"
+                        : "border-muted hover:border-muted-foreground"
+                    }`}
+                    style={{ backgroundColor: theme.color }}
+                    title={theme.name}
+                  >
+                    {selectedTheme === theme.id && (
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <Check className="h-4 w-4 text-white drop-shadow-md" />
+                      </div>
+                    )}
+                  </button>
+                ))}
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                Selected: {THEMES.find(t => t.id === selectedTheme)?.name || "Agreeable Gray"}
+              </p>
+            </div>
+
             <Button onClick={handleSaveCompany} loading={savingCompany}>
               Save Company Settings
             </Button>
@@ -873,28 +920,42 @@ export function SettingsView({
 
           {/* Exports Tab */}
           <TabsContent value="exports" className="mt-6 space-y-6">
-            <div className="rounded-lg border bg-card p-4 space-y-4">
-              <h3 className="font-semibold">Export Data</h3>
-              <p className="text-sm text-muted-foreground">
-                Download your data for accounting or backup purposes.
-              </p>
-              <div className="flex flex-wrap gap-3">
-                <Button variant="outline" onClick={() => setExportJobsDialogOpen(true)}>
-                  <Download className="mr-2 h-4 w-4" />
-                  Export Jobs (CSV)
-                </Button>
-                <Button variant="outline" onClick={handleExportInvoices}>
-                  <Download className="mr-2 h-4 w-4" />
-                  Export Invoices (CSV)
-                </Button>
-                <Button variant="outline" onClick={handleExportPayments}>
-                  <Download className="mr-2 h-4 w-4" />
-                  Export Payments (CSV)
-                </Button>
-                <Button variant="outline" onClick={handleExportCustomers}>
-                  <Download className="mr-2 h-4 w-4" />
-                  Export Customers (CSV)
-                </Button>
+            <div className="rounded-lg border bg-card p-6 space-y-6">
+              <div>
+                <h3 className="font-semibold text-lg">Export Your Data</h3>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Download CSV files for accounting, backup, or analysis.
+                </p>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-3">
+                <button
+                  onClick={handleExportJobs}
+                  disabled={exportingJobs}
+                  className="flex flex-col items-center justify-center p-6 rounded-xl border-2 border-dashed hover:border-primary hover:bg-primary/5 transition-colors group"
+                >
+                  <Download className="h-8 w-8 text-muted-foreground group-hover:text-primary mb-3" />
+                  <span className="font-medium">Jobs</span>
+                  <span className="text-xs text-muted-foreground mt-1">All job data</span>
+                </button>
+
+                <button
+                  onClick={handleExportPayments}
+                  className="flex flex-col items-center justify-center p-6 rounded-xl border-2 border-dashed hover:border-primary hover:bg-primary/5 transition-colors group"
+                >
+                  <Download className="h-8 w-8 text-muted-foreground group-hover:text-primary mb-3" />
+                  <span className="font-medium">Payments</span>
+                  <span className="text-xs text-muted-foreground mt-1">Payment history</span>
+                </button>
+
+                <button
+                  onClick={handleExportCustomers}
+                  className="flex flex-col items-center justify-center p-6 rounded-xl border-2 border-dashed hover:border-primary hover:bg-primary/5 transition-colors group"
+                >
+                  <Download className="h-8 w-8 text-muted-foreground group-hover:text-primary mb-3" />
+                  <span className="font-medium">Customers</span>
+                  <span className="text-xs text-muted-foreground mt-1">Contact info</span>
+                </button>
               </div>
             </div>
           </TabsContent>
@@ -949,10 +1010,10 @@ export function SettingsView({
                   </div>
 
                   {/* Referral discount banner */}
-                  {hasReferral && !isSubscribed && discountPercent && (
+                  {hasReferral && !isSubscribed && (
                     <div className="rounded-lg border border-green-200 bg-green-50 p-4">
                       <p className="text-sm text-green-800 font-medium">
-                        🎉 Referral discount applied: {discountPercent}% off your first month!
+                        Referral discount applied: $5 off your first month!
                       </p>
                     </div>
                   )}
@@ -984,9 +1045,9 @@ export function SettingsView({
                           <CreditCard className="mr-2 h-4 w-4" />
                         )}
                         Upgrade Now
-                        {hasReferral && discountPercent && (
+                        {hasReferral && (
                           <span className="ml-2 text-xs bg-white/20 px-2 py-0.5 rounded">
-                            {discountPercent}% off
+                            $5 off
                           </span>
                         )}
                       </Button>
@@ -996,66 +1057,180 @@ export function SettingsView({
               </div>
             )}
           </TabsContent>
+
+          {/* Affiliate Tab */}
+          {isAffiliate && (
+            <TabsContent value="affiliate" className="mt-6 space-y-6">
+              {affiliateLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <>
+                  {/* Your Affiliate Link */}
+                  <div className="rounded-lg border bg-card p-6 space-y-4">
+                    <div className="flex items-center gap-2">
+                      <Link className="h-5 w-5 text-primary" />
+                      <h3 className="font-semibold text-lg">Your Affiliate Link</h3>
+                    </div>
+
+                    {affiliateCode ? (
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 rounded-lg bg-muted p-3 font-mono text-sm truncate">
+                            {origin}/signup?ref={affiliateCode.code}
+                          </div>
+                          <Button onClick={copyAffiliateLink} variant="outline">
+                            <Copy className="h-4 w-4" />
+                          </Button>
+                        </div>
+
+                        {/* Edit Code */}
+                        <div className="pt-4 border-t">
+                          <div className="flex items-center justify-between mb-2">
+                            <Label>Your Code</Label>
+                            {!editingCode && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setEditingCode(true)}
+                              >
+                                <Edit3 className="h-4 w-4 mr-1" />
+                                Change
+                              </Button>
+                            )}
+                          </div>
+
+                          {editingCode ? (
+                            <div className="flex gap-2">
+                              <Input
+                                value={newCode}
+                                onChange={(e) =>
+                                  setNewCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))
+                                }
+                                placeholder="YOURCODE"
+                                maxLength={20}
+                                className="font-mono uppercase"
+                              />
+                              <Button
+                                onClick={handleSaveAffiliateCode}
+                                disabled={savingCode || !newCode.trim()}
+                              >
+                                {savingCode ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  "Save"
+                                )}
+                              </Button>
+                              <Button
+                                variant="outline"
+                                onClick={() => {
+                                  setEditingCode(false);
+                                  setNewCode(affiliateCode.code);
+                                }}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          ) : (
+                            <p className="font-mono text-lg font-bold text-primary">
+                              {affiliateCode.code}
+                            </p>
+                          )}
+                          <p className="text-xs text-muted-foreground mt-2">
+                            3-20 alphanumeric characters. This appears in your referral link.
+                          </p>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <p className="text-muted-foreground">
+                          Create your unique affiliate code to start sharing.
+                        </p>
+                        <div className="flex gap-2">
+                          <Input
+                            value={newCode}
+                            onChange={(e) =>
+                              setNewCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))
+                            }
+                            placeholder="YOURCODE"
+                            maxLength={20}
+                            className="font-mono uppercase"
+                          />
+                          <Button
+                            onClick={handleSaveAffiliateCode}
+                            disabled={savingCode || !newCode.trim() || newCode.length < 3}
+                          >
+                            {savingCode ? (
+                              <Loader2 className="h-4 w-4 animate-spin" />
+                            ) : (
+                              "Create Code"
+                            )}
+                          </Button>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          3-20 alphanumeric characters (e.g., MYCODE, PAINT2024)
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Stats */}
+                  {affiliateCode && (
+                    <div className="rounded-lg border bg-card p-6 space-y-4">
+                      <div className="flex items-center gap-2">
+                        <TrendingUp className="h-5 w-5 text-primary" />
+                        <h3 className="font-semibold text-lg">Your Stats</h3>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="rounded-lg bg-muted/50 p-4 text-center">
+                          <p className="text-3xl font-bold text-primary">
+                            {affiliateCode.totalReferrals}
+                          </p>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            Link Clicks
+                          </p>
+                        </div>
+                        <div className="rounded-lg bg-muted/50 p-4 text-center">
+                          <p className="text-3xl font-bold text-green-600">
+                            {affiliateCode.totalConversions}
+                          </p>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            Conversions
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="pt-4 border-t">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">Discount for referrals</span>
+                          <span className="font-medium">$5 off first month</span>
+                        </div>
+                        <div className="flex justify-between text-sm mt-2">
+                          <span className="text-muted-foreground">Your payout</span>
+                          <span className="font-medium">$5/month per active subscriber</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* How it works */}
+                  <div className="rounded-lg border bg-muted/30 p-6">
+                    <h4 className="font-medium mb-3">How it works</h4>
+                    <ol className="space-y-2 text-sm text-muted-foreground list-decimal list-inside">
+                      <li>Share your unique link with potential customers</li>
+                      <li>They get $5 off their first month</li>
+                      <li>You earn $5/month for each active subscriber you referred</li>
+                      <li>Referrals are tracked for 30 days after clicking your link</li>
+                    </ol>
+                  </div>
+                </>
+              )}
+            </TabsContent>
+          )}
         </Tabs>
       </div>
-
-      {/* Export Jobs Dialog */}
-      <Dialog open={exportJobsDialogOpen} onOpenChange={setExportJobsDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Export Jobs Data</DialogTitle>
-            <DialogDescription>
-              Export job and invoice data for accounting purposes. Select a date range to export.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 mt-4">
-            <div className="space-y-2">
-              <Label htmlFor="startDate">Start Date</Label>
-              <Input
-                id="startDate"
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="endDate">End Date</Label>
-              <Input
-                id="endDate"
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-              />
-            </div>
-
-            <div className="rounded-lg bg-muted p-3 text-sm">
-              <p className="font-medium mb-1">Export includes:</p>
-              <ul className="list-disc list-inside text-muted-foreground space-y-1">
-                <li>Job details and status</li>
-                <li>Customer information</li>
-                <li>Invoice amounts and payment status</li>
-                <li>Payment dates</li>
-              </ul>
-            </div>
-
-            <div className="flex justify-end gap-3 pt-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setExportJobsDialogOpen(false)}
-              >
-                Cancel
-              </Button>
-              <Button onClick={handleExportJobs} loading={exportingJobs}>
-                <Download className="mr-2 h-4 w-4" />
-                Export CSV
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Location Dialog */}
       <Dialog open={locationDialogOpen} onOpenChange={setLocationDialogOpen}>

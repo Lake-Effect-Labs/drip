@@ -7,7 +7,7 @@ interface ReferralContextType {
   referralCode: string | null;
   visitorId: string;
   creatorName: string | null;
-  discountPercent: number | null;
+  discountFlat: number | null;
   hasReferral: boolean;
   isLoading: boolean;
   clearReferral: () => void;

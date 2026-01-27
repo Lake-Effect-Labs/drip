@@ -91,12 +91,13 @@ export async function getScheduledJobs(
   supabase: SupabaseClient<Database>,
   companyId: string
 ) {
-  // Get scheduled jobs
+  // Get scheduled jobs (exclude archived)
   const { data: jobs } = await supabase
     .from("jobs")
     .select("*")
     .eq("company_id", companyId)
     .not("scheduled_date", "is", null)
+    .neq("status", "archive")
     .order("scheduled_date", { ascending: true });
 
   if (!jobs || jobs.length === 0) {

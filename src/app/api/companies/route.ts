@@ -1,37 +1,29 @@
 import { NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/server";
+import { createAdminClient, createClient } from "@/lib/supabase/server";
 
 export async function POST(request: Request) {
   const supabase = createAdminClient();
 
   try {
-    const body = await request.json();
-    const { company_name, owner_id, owner_email, owner_name } = body;
+    // Authenticate the caller — owner_id must match the session user
+    const authClient = await createClient();
+    const { data: { user } } = await authClient.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-    if (!company_name || !owner_id || !owner_email) {
+    const body = await request.json();
+    const { company_name, owner_name } = body;
+
+    // Derive owner identity from the session, never trust client-supplied owner_id
+    const owner_id = user.id;
+    const owner_email = user.email!;
+
+    if (!company_name) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
       );
-    }
-
-    // Verify user exists first (admin client can check auth.users)
-    try {
-      const { data: authUser, error: authError } = await supabase.auth.admin.getUserById(owner_id);
-      if (authError || !authUser?.user) {
-        if (process.env.NODE_ENV === "development") {
-          console.error("User not found in auth.users:", authError);
-        }
-        return NextResponse.json(
-          { error: "User account not found. If email confirmation is required, please confirm your email first." },
-          { status: 400 }
-        );
-      }
-    } catch (err) {
-      if (process.env.NODE_ENV === "development") {
-        console.error("Error checking user:", err);
-      }
-      // Continue anyway - the function will fail with a clearer error
     }
 
     // Use the database function for atomic creation

@@ -753,18 +753,24 @@ export interface Database {
           email: string;
           full_name: string | null;
           created_at: string;
+          is_affiliate: boolean;
+          is_super_admin: boolean;
         };
         Insert: {
           id: string;
           email: string;
           full_name?: string | null;
           created_at?: string;
+          is_affiliate?: boolean;
+          is_super_admin?: boolean;
         };
         Update: {
           id?: string;
           email?: string;
           full_name?: string | null;
           created_at?: string;
+          is_affiliate?: boolean;
+          is_super_admin?: boolean;
         };
         Relationships: [];
       };

@@ -72,6 +72,8 @@ export default async function AppLayout({
         .eq("id", user.id)
         .maybeSingle();
 
+      const isSuperAdmin = profile?.is_super_admin ?? false;
+
       return (
         <AppShell
           user={{
@@ -85,6 +87,7 @@ export default async function AppLayout({
             themeId: company.theme_id,
           }}
           isOwner={isOwner}
+          isSuperAdmin={isSuperAdmin}
         >
           {children}
         </AppShell>
@@ -116,6 +119,8 @@ export default async function AppLayout({
     .eq("id", user.id)
     .maybeSingle();
 
+  const isSuperAdmin = profile?.is_super_admin ?? false;
+
   return (
     <AppShell
       user={{
@@ -129,6 +134,7 @@ export default async function AppLayout({
         themeId: company.theme_id,
       }}
       isOwner={isOwner}
+      isSuperAdmin={isSuperAdmin}
     >
       {children}
     </AppShell>

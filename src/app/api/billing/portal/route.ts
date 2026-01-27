@@ -26,12 +26,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get company for this user
+    // Get company for this user (use limit(1) to avoid crash if user is in multiple companies)
     const { data: companyUser } = await adminSupabase
       .from("company_users")
       .select("company_id")
       .eq("user_id", user.id)
-      .single();
+      .limit(1)
+      .maybeSingle();
 
     if (!companyUser) {
       return NextResponse.json(

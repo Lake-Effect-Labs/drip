@@ -22,7 +22,7 @@ export default function NewJobPage() {
     async function loadData() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        router.push("/app/login");
+        router.push("/login");
         return;
       }
 

@@ -2,6 +2,9 @@ import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { getJobsWithCustomers, getTeamMembers } from "@/lib/supabase/queries";
 import { BoardView } from "@/components/app/board/board-view";
 
+// Ensure this page is always dynamically rendered with fresh data
+export const dynamic = 'force-dynamic';
+
 export default async function BoardPage() {
   const supabase = await createClient();
   const adminSupabase = createAdminClient();
@@ -21,11 +24,22 @@ export default async function BoardPage() {
 
   if (!companyUser) return null;
 
-  // Fetch jobs with customers (use admin client)
-  const jobs = await getJobsWithCustomers(adminSupabase, companyUser.company_id);
+  // Fetch company, jobs, and team members in parallel
+  const [companyResult, jobs, members] = await Promise.all([
+    adminSupabase
+      .from("companies")
+      .select("subscription_status")
+      .eq("id", companyUser.company_id)
+      .single(),
+    getJobsWithCustomers(adminSupabase, companyUser.company_id),
+    getTeamMembers(adminSupabase, companyUser.company_id),
+  ]);
 
-  // Fetch team members (use admin client)
-  const members = await getTeamMembers(adminSupabase, companyUser.company_id);
+  const company = companyResult.data;
+
+  // Determine if user is at trial limit (trialing/canceled + 1 or more jobs)
+  const isTrialing = company?.subscription_status === "trialing" || company?.subscription_status === "canceled";
+  const isAtTrialLimit = isTrialing && jobs.length >= 1;
 
   return (
     <div className="h-full">
@@ -34,6 +48,8 @@ export default async function BoardPage() {
         teamMembers={members}
         currentUserId={user.id}
         companyId={companyUser.company_id}
+        subscriptionStatus={company?.subscription_status || "trialing"}
+        isAtTrialLimit={isAtTrialLimit}
       />
     </div>
   );

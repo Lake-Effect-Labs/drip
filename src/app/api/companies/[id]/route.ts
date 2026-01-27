@@ -37,10 +37,20 @@ export async function PATCH(
       );
     }
 
+    // Whitelist allowed fields to prevent mass assignment of sensitive fields
+    // like owner_user_id, subscription_status, stripe_customer_id, etc.
+    const allowedFields = ['name', 'logo_url', 'phone', 'email', 'address1', 'address2', 'city', 'state', 'zip', 'website', 'theme_id'];
+    const sanitizedBody: Record<string, unknown> = {};
+    for (const key of allowedFields) {
+      if (key in body) {
+        sanitizedBody[key] = body[key];
+      }
+    }
+
     // Update company (using admin client to bypass RLS)
     const { data: updatedCompany, error: updateError } = await adminSupabase
       .from("companies")
-      .update(body)
+      .update(sanitizedBody)
       .eq("id", id)
       .select()
       .single();

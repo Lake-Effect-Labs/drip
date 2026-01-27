@@ -51,70 +51,52 @@ export function NudgeBanners({ companyId }: NudgeBannersProps) {
       );
       setDismissedTypes(dismissed);
 
-      // Check for accepted estimates without invoices
-      const { data: acceptedNoInvoice } = await supabase
-        .from("estimates")
-        .select("id, job_id")
-        .eq("company_id", companyId)
-        .eq("status", "accepted")
-        .is("job_id", false) // Has a job
-        .limit(10);
+      // Parallelize all nudge queries to avoid sequential round trips
+      const fourteenDaysAgo = new Date();
+      fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
 
-      // Filter out jobs that already have invoices
+      const [acceptedEstimatesResult, companyInvoicesResult, stuckJobsResult] = await Promise.all([
+        // Accepted estimates with a job_id (fix: .not() instead of .is(false))
+        supabase
+          .from("estimates")
+          .select("id, job_id")
+          .eq("company_id", companyId)
+          .eq("status", "accepted")
+          .not("job_id", "is", null)
+          .limit(50),
+        // All invoices for this company (for set-based lookup instead of N+1)
+        supabase
+          .from("invoices")
+          .select("job_id")
+          .eq("company_id", companyId)
+          .limit(1000),
+        // Stuck jobs (in_progress for 14+ days)
+        supabase
+          .from("jobs")
+          .select("id", { count: "exact" })
+          .eq("company_id", companyId)
+          .eq("status", "in_progress")
+          .lt("updated_at", fourteenDaysAgo.toISOString())
+          .limit(10),
+      ]);
+
+      // Count accepted estimates whose jobs have no invoice (set lookup, no N+1)
+      const jobIdsWithInvoices = new Set(
+        (companyInvoicesResult.data || []).map((inv) => inv.job_id)
+      );
       let acceptedCount = 0;
-      if (acceptedNoInvoice) {
-        for (const estimate of acceptedNoInvoice) {
-          if (estimate.job_id) {
-            const { data: invoices } = await supabase
-              .from("invoices")
-              .select("id")
-              .eq("job_id", estimate.job_id)
-              .limit(1);
-            if (!invoices || invoices.length === 0) {
-              acceptedCount++;
-            }
+      if (acceptedEstimatesResult.data) {
+        for (const estimate of acceptedEstimatesResult.data) {
+          if (estimate.job_id && !jobIdsWithInvoices.has(estimate.job_id)) {
+            acceptedCount++;
           }
         }
       }
 
-      // Check for overdue invoices (30+ days, unpaid)
-      const thirtyDaysAgo = new Date();
-      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-      const { data: overdueInvoices, count: overdueCount } = await supabase
-        .from("invoices")
-        .select("id", { count: "exact" })
-        .eq("company_id", companyId)
-        .neq("status", "paid")
-        .lt("created_at", thirtyDaysAgo.toISOString())
-        .limit(10);
-
-      // Check for stuck jobs (in_progress for 14+ days)
-      const fourteenDaysAgo = new Date();
-      fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
-
-      const { data: stuckJobs, count: stuckCount } = await supabase
-        .from("jobs")
-        .select("id", { count: "exact" })
-        .eq("company_id", companyId)
-        .eq("status", "in_progress")
-        .lt("updated_at", fourteenDaysAgo.toISOString())
-        .limit(10);
+      const stuckCount = stuckJobsResult.count || 0;
 
       // Build nudges array
       const activeNudges: Nudge[] = [];
-
-      if ((overdueCount || 0) > 0 && !dismissed.has("overdue_invoices")) {
-        activeNudges.push({
-          type: "overdue_invoices",
-          priority: 1,
-          count: overdueCount || 0,
-          message: `${overdueCount} invoice${overdueCount !== 1 ? 's are' : ' is'} overdue (30+ days unpaid).`,
-          action: "/app/board?filter=overdue",
-          icon: "⚠️",
-          variant: "destructive",
-        });
-      }
 
       if (acceptedCount > 0 && !dismissed.has("accepted_no_invoice")) {
         activeNudges.push({

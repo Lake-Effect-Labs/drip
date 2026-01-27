@@ -9,25 +9,17 @@ export async function POST(
   const adminSupabase = createAdminClient();
 
   try {
-    const body = await request.json();
-    const { user_id, email, full_name } = body;
-
-    if (!user_id || !email) {
-      return NextResponse.json(
-        { error: "Missing required fields" },
-        { status: 400 }
-      );
+    // Authenticate the caller — use session user, not client-supplied user_id
+    const authClient = await createClient();
+    const { data: { user } } = await authClient.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Verify the user exists in auth
-    const { data: authUser, error: authError } = await adminSupabase.auth.admin.getUserById(user_id);
-    
-    if (authError || !authUser) {
-      return NextResponse.json(
-        { error: "Invalid user" },
-        { status: 400 }
-      );
-    }
+    const user_id = user.id;
+    const email = user.email!;
+    const body = await request.json().catch(() => ({}));
+    const { full_name } = body;
 
     // Get invite
     const { data: invite, error: inviteError } = await adminSupabase

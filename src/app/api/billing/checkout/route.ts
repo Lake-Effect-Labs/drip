@@ -35,12 +35,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // Get company for this user
+    // Get company for this user (use limit(1) to avoid crash if user is in multiple companies)
     const { data: companyUser } = await adminSupabase
       .from("company_users")
       .select("company_id")
       .eq("user_id", user.id)
-      .single();
+      .limit(1)
+      .maybeSingle();
 
     if (!companyUser) {
       return NextResponse.json(
@@ -71,8 +72,8 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
     const { referralCode, visitorId } = body;
 
-    // Look up referral discount if code provided
-    let discountPercent = 0;
+    // Look up referral code if provided
+    let hasReferralDiscount = false;
     let creatorCodeId: string | null = null;
 
     if (referralCode) {
@@ -84,7 +85,7 @@ export async function POST(request: Request) {
         .single();
 
       if (creatorCode) {
-        discountPercent = creatorCode.discount_percent;
+        hasReferralDiscount = true;
         creatorCodeId = creatorCode.id;
       }
     }
@@ -109,11 +110,12 @@ export async function POST(request: Request) {
         .eq("id", company.id);
     }
 
-    // Create coupon if there's a referral discount
+    // Create coupon if there's a referral discount ($5 off first month)
     let discounts: { coupon: string }[] = [];
-    if (discountPercent > 0) {
+    if (hasReferralDiscount) {
       const coupon = await stripe.coupons.create({
-        percent_off: discountPercent,
+        amount_off: 500, // $5.00 in cents
+        currency: "usd",
         duration: "once",
         metadata: {
           creator_code_id: creatorCodeId || "",

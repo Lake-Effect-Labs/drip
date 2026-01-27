@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/server";
 import { createClient } from "@/lib/supabase/server";
+import { generateToken } from "@/lib/utils";
 
 // Save estimate/payment (uses admin client to bypass RLS)
 export async function POST(
@@ -94,16 +95,6 @@ export async function POST(
       }
     }
 
-    // Generate a new token for the estimate
-    const generateToken = (length: number) => {
-      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-      let result = '';
-      for (let i = 0; i < length; i++) {
-        result += chars.charAt(Math.floor(Math.random() * chars.length));
-      }
-      return result;
-    };
-
     // Check for existing estimate
     const { data: existingEstimates } = await adminSupabase
       .from("estimates")
@@ -136,6 +127,7 @@ export async function POST(
 
         if (error) {
           console.error("Error creating new estimate revision:", error);
+          return NextResponse.json({ error: "Failed to create estimate revision" }, { status: 500 });
         } else {
           estimateData = data;
           estimateId = data.id;
@@ -168,6 +160,7 @@ export async function POST(
 
         if (error) {
           console.error("Error updating estimate:", error);
+          return NextResponse.json({ error: "Failed to update estimate" }, { status: 500 });
         } else {
           estimateData = data;
           estimateId = existingEstimate.id;
@@ -207,6 +200,7 @@ export async function POST(
 
       if (error) {
         console.error("Error creating estimate:", error);
+        return NextResponse.json({ error: "Failed to create estimate" }, { status: 500 });
       } else {
         estimateData = data;
         estimateId = data.id;
@@ -234,6 +228,7 @@ export async function POST(
 
       if (estimateItemsError) {
         console.error("Estimate line items insert error:", estimateItemsError);
+        return NextResponse.json({ error: "Failed to save estimate line items" }, { status: 500 });
       }
     }
 

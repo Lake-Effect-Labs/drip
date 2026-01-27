@@ -221,6 +221,11 @@ export function NewJobDialog({
 
       if (!jobResponse.ok) {
         const errorData = await jobResponse.json();
+        if (jobResponse.status === 402) {
+          addToast("Subscribe to create more jobs. Go to Settings to upgrade.", "error");
+          onOpenChange(false);
+          return;
+        }
         throw new Error(errorData.error || "Failed to create job");
       }
 

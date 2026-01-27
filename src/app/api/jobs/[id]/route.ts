@@ -48,11 +48,26 @@ export async function PATCH(
       );
     }
 
+    // Whitelist allowed fields to prevent mass assignment of sensitive fields
+    // like company_id, unified_job_token, etc.
+    const allowedFields = [
+      'title', 'address1', 'address2', 'city', 'state', 'zip', 'notes',
+      'status', 'assigned_user_id', 'customer_id', 'scheduled_date',
+      'scheduled_time', 'payment_state', 'payment_amount', 'payment_method',
+      'payment_paid_at', 'progress_percentage', 'sort_order',
+    ];
+    const sanitizedBody: Record<string, unknown> = {};
+    for (const key of allowedFields) {
+      if (key in body) {
+        sanitizedBody[key] = body[key];
+      }
+    }
+
     // Update job (using admin client to bypass RLS)
     const { data: updatedJob, error: updateError } = await adminSupabase
       .from("jobs")
       .update({
-        ...body,
+        ...sanitizedBody,
         updated_at: new Date().toISOString(),
       })
       .eq("id", id)

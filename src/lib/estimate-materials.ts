@@ -190,3 +190,95 @@ export function groupMaterialsByProduct(materials: EstimateMaterial[]) {
     totalCost: items.reduce((sum, m) => sum + (m.line_total || 0), 0),
   }));
 }
+
+// Marker used to identify job materials that were auto-generated from an estimate
+const AUTO_MATERIAL_MARKER = "[From Estimate]";
+
+/**
+ * Syncs estimate materials to job materials checklist.
+ * Auto-generated job materials are identified by having "[From Estimate]" in their notes.
+ * When called, it removes old auto-generated materials and creates new ones from the estimate.
+ */
+export async function syncEstimateMaterialsToJob(estimateId: string, jobId: string): Promise<void> {
+  const supabase = createAdminClient();
+
+  // Fetch estimate materials
+  const { data: estimateMaterials, error: fetchError } = await supabase
+    .from("estimate_materials")
+    .select("*")
+    .eq("estimate_id", estimateId);
+
+  if (fetchError) {
+    throw new Error(`Failed to fetch estimate materials: ${fetchError.message}`);
+  }
+
+  // Delete existing auto-generated job materials (those with the marker in notes)
+  const { error: deleteError } = await supabase
+    .from("job_materials")
+    .delete()
+    .eq("job_id", jobId)
+    .like("notes", `%${AUTO_MATERIAL_MARKER}%`);
+
+  if (deleteError) {
+    throw new Error(`Failed to delete old auto-generated job materials: ${deleteError.message}`);
+  }
+
+  // If no estimate materials, we're done
+  if (!estimateMaterials || estimateMaterials.length === 0) {
+    return;
+  }
+
+  // Build job materials from estimate materials
+  const jobMaterialsToInsert = estimateMaterials.map((em) => {
+    // Build a descriptive name for the job material
+    const nameParts: string[] = [];
+
+    if (em.paint_product) {
+      nameParts.push(em.paint_product);
+    }
+
+    if (em.color_name || em.color_code) {
+      const colorPart = [em.color_name, em.color_code].filter(Boolean).join(" ");
+      nameParts.push(colorPart);
+    }
+
+    if (em.sheen) {
+      nameParts.push(em.sheen);
+    }
+
+    // If we have specific parts, use them; otherwise fall back to the material name
+    const name = nameParts.length > 0
+      ? nameParts.join(" - ")
+      : em.name;
+
+    // Build notes with area description and the marker
+    const notesParts: string[] = [];
+    if (em.area_description) {
+      notesParts.push(`For: ${em.area_description}`);
+    }
+    if (em.notes) {
+      notesParts.push(em.notes);
+    }
+    notesParts.push(AUTO_MATERIAL_MARKER);
+
+    return {
+      job_id: jobId,
+      name,
+      checked: false,
+      vendor_sku: em.vendor_sku,
+      notes: notesParts.join(" | "),
+      quantity_decimal: em.quantity_gallons,
+      unit: em.quantity_gallons ? "gallons" : null,
+      cost_per_unit: em.cost_per_gallon,
+    };
+  });
+
+  // Insert new job materials
+  const { error: insertError } = await supabase
+    .from("job_materials")
+    .insert(jobMaterialsToInsert);
+
+  if (insertError) {
+    throw new Error(`Failed to insert job materials: ${insertError.message}`);
+  }
+}

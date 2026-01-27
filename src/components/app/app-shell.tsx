@@ -12,6 +12,7 @@ import {
   ChevronRight,
   UserCircle,
   Calendar,
+  Shield,
 } from "lucide-react";
 
 interface AppShellProps {
@@ -27,19 +28,25 @@ interface AppShellProps {
     themeId: string;
   };
   isOwner: boolean;
+  isSuperAdmin?: boolean;
 }
 
 // All nav items
 const allNavItems = [
-  { href: "/app/board", label: "Board", icon: LayoutGrid, ownerOnly: false },
-  { href: "/app/schedule", label: "Schedule", icon: Calendar, ownerOnly: false },
-  { href: "/app/customers", label: "Customers", icon: UserCircle, ownerOnly: false },
-  { href: "/app/settings", label: "Settings", icon: Settings, ownerOnly: true },
+  { href: "/app/board", label: "Board", icon: LayoutGrid, ownerOnly: false, adminOnly: false },
+  { href: "/app/schedule", label: "Schedule", icon: Calendar, ownerOnly: false, adminOnly: false },
+  { href: "/app/customers", label: "Customers", icon: UserCircle, ownerOnly: false, adminOnly: false },
+  { href: "/app/settings", label: "Settings", icon: Settings, ownerOnly: true, adminOnly: false },
+  { href: "/app/admin", label: "Admin", icon: Shield, ownerOnly: false, adminOnly: true },
 ];
 
-export function AppShell({ children, user, company, isOwner }: AppShellProps) {
-  // Filter nav items based on ownership
-  const navItems = allNavItems.filter(item => !item.ownerOnly || isOwner);
+export function AppShell({ children, user, company, isOwner, isSuperAdmin = false }: AppShellProps) {
+  // Filter nav items based on ownership and admin status
+  const navItems = allNavItems.filter(item => {
+    if (item.adminOnly) return isSuperAdmin;
+    if (item.ownerOnly) return isOwner;
+    return true;
+  });
   const pathname = usePathname();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
