@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/server";
 import { createClient } from "@/lib/supabase/server";
 import { generateToken } from "@/lib/utils";
+import { recalculateEstimateTotals } from "@/lib/estimate-helpers";
 
 // Save estimate/payment (uses admin client to bypass RLS)
 export async function POST(
@@ -230,6 +231,9 @@ export async function POST(
         console.error("Estimate line items insert error:", estimateItemsError);
         return NextResponse.json({ error: "Failed to save estimate line items" }, { status: 500 });
       }
+
+      // Recalculate estimate totals after line items change
+      await recalculateEstimateTotals(adminSupabase, estimateId);
     }
 
     return NextResponse.json({

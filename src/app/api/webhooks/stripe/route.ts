@@ -78,7 +78,7 @@ export async function POST(request: Request) {
             // Get the creator code to calculate commission
             const { data: creatorCode } = await supabase
               .from("creator_codes")
-              .select("commission_percent")
+              .select("commission_percent, total_conversions")
               .eq("id", creatorCodeId)
               .single();
 
@@ -106,7 +106,14 @@ export async function POST(request: Request) {
                 console.error("Error updating referral:", referralError);
               }
 
-              // Note: total_conversions is auto-incremented by database trigger
+              // Increment total_conversions on the creator code (replaces DB trigger)
+              await supabase
+                .from("creator_codes")
+                .update({
+                  total_conversions: (creatorCode as any).total_conversions + 1,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq("id", creatorCodeId);
             }
           }
         }

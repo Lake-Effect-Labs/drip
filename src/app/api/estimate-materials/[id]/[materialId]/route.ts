@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { recalculateEstimateTotals } from "@/lib/estimate-helpers";
 
 /**
  * PATCH /api/estimate-materials/[id]/[materialId]
@@ -33,6 +34,20 @@ export async function PATCH(
       );
     }
 
+    // Prevent modifications to accepted or denied estimates
+    if (estimate.status === "accepted") {
+      return NextResponse.json(
+        { error: "Cannot modify an accepted estimate. Create a new estimate instead." },
+        { status: 403 }
+      );
+    }
+    if (estimate.status === "denied") {
+      return NextResponse.json(
+        { error: "Cannot modify a denied estimate. Revert it to draft first." },
+        { status: 403 }
+      );
+    }
+
     // Verify the material belongs to this estimate
     const { data: existingMaterial, error: materialError } = await supabase
       .from("estimate_materials")
@@ -57,13 +72,13 @@ export async function PATCH(
     const updateData: any = {
       ...body,
       line_total: lineTotal,
+      updated_at: new Date().toISOString(),
     };
 
     // Remove fields that shouldn't be updated directly
     delete updateData.id;
     delete updateData.estimate_id;
     delete updateData.created_at;
-    delete updateData.updated_at;
 
     const { data: material, error: updateError } = await supabase
       .from("estimate_materials")
@@ -75,6 +90,9 @@ export async function PATCH(
     if (updateError) {
       throw updateError;
     }
+
+    // Recalculate estimate totals
+    await recalculateEstimateTotals(supabase, estimateId);
 
     return NextResponse.json({ material });
   } catch (error) {
@@ -117,6 +135,20 @@ export async function DELETE(
       );
     }
 
+    // Prevent modifications to accepted or denied estimates
+    if (estimate.status === "accepted") {
+      return NextResponse.json(
+        { error: "Cannot modify an accepted estimate. Create a new estimate instead." },
+        { status: 403 }
+      );
+    }
+    if (estimate.status === "denied") {
+      return NextResponse.json(
+        { error: "Cannot modify a denied estimate. Revert it to draft first." },
+        { status: 403 }
+      );
+    }
+
     // Delete the material
     const { error: deleteError } = await supabase
       .from("estimate_materials")
@@ -127,6 +159,9 @@ export async function DELETE(
     if (deleteError) {
       throw deleteError;
     }
+
+    // Recalculate estimate totals
+    await recalculateEstimateTotals(supabase, estimateId);
 
     return NextResponse.json({ success: true });
   } catch (error) {

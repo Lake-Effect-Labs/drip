@@ -57,7 +57,7 @@ export async function POST(request: Request) {
     // Look up the creator code
     const { data: creatorCode } = await supabase
       .from("creator_codes")
-      .select("id")
+      .select("id, total_referrals")
       .eq("code", code.toUpperCase())
       .eq("is_active", true)
       .single();
@@ -97,7 +97,14 @@ export async function POST(request: Request) {
       );
     }
 
-    // Note: total_referrals is auto-incremented by the database trigger
+    // Increment total_referrals on the creator code (replaces DB trigger)
+    await supabase
+      .from("creator_codes")
+      .update({
+        total_referrals: (creatorCode as any).total_referrals + 1,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", creatorCode.id);
 
     return NextResponse.json({ success: true });
   } catch (error) {

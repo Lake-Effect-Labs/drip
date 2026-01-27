@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { InsertTables } from "@/types/database";
+import { recalculateEstimateTotals } from "@/lib/estimate-helpers";
 
 /**
  * GET /api/estimate-materials/[id]
@@ -101,6 +102,20 @@ export async function POST(
       );
     }
 
+    // Prevent modifications to accepted or denied estimates
+    if (estimate.status === "accepted") {
+      return NextResponse.json(
+        { error: "Cannot modify an accepted estimate. Create a new estimate instead." },
+        { status: 403 }
+      );
+    }
+    if (estimate.status === "denied") {
+      return NextResponse.json(
+        { error: "Cannot modify a denied estimate. Revert it to draft first." },
+        { status: 403 }
+      );
+    }
+
     // Calculate line total from quantity and cost
     const quantityGallons = body.quantity_gallons || 0;
     const costPerGallon = body.cost_per_gallon || 0;
@@ -134,6 +149,9 @@ export async function POST(
     if (insertError) {
       throw insertError;
     }
+
+    // Recalculate estimate totals
+    await recalculateEstimateTotals(supabase, estimateId);
 
     return NextResponse.json({ material }, { status: 201 });
   } catch (error) {

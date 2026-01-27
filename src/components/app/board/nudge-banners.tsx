@@ -1,10 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
-import { X, AlertTriangle, Lightbulb, ClipboardList } from "lucide-react";
+import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Nudge {
@@ -12,7 +11,6 @@ interface Nudge {
   priority: number;
   count: number;
   message: string;
-  action: string;
   icon: string;
   variant: "destructive" | "warning" | "secondary";
 }
@@ -22,7 +20,6 @@ interface NudgeBannersProps {
 }
 
 export function NudgeBanners({ companyId }: NudgeBannersProps) {
-  const router = useRouter();
   const supabase = createClient();
   const [nudges, setNudges] = useState<Nudge[]>([]);
   const [loading, setLoading] = useState(true);
@@ -104,7 +101,6 @@ export function NudgeBanners({ companyId }: NudgeBannersProps) {
           priority: 2,
           count: acceptedCount,
           message: `${acceptedCount} job${acceptedCount !== 1 ? 's have' : ' has'} accepted estimates but no invoice yet.`,
-          action: "/app/board?filter=quoted",
           icon: "💡",
           variant: "warning",
         });
@@ -116,7 +112,6 @@ export function NudgeBanners({ companyId }: NudgeBannersProps) {
           priority: 3,
           count: stuckCount || 0,
           message: `${stuckCount} job${stuckCount !== 1 ? 's have' : ' has'} been "In Progress" for 14+ days.`,
-          action: "/app/board?filter=in_progress",
           icon: "📋",
           variant: "secondary",
         });
@@ -177,20 +172,12 @@ export function NudgeBanners({ companyId }: NudgeBannersProps) {
             <span className="text-xl">{nudge.icon}</span>
             <div className="flex-1">
               <p className={cn(
-                "font-medium mb-1",
+                "font-medium",
                 nudge.variant === "destructive" && "text-destructive",
                 nudge.variant === "warning" && "text-warning"
               )}>
                 {nudge.message}
               </p>
-              <Button
-                variant="link"
-                size="sm"
-                className="p-0 h-auto text-sm"
-                onClick={() => router.push(nudge.action)}
-              >
-                View {nudge.count} {nudge.type.includes('invoice') ? 'invoices' : 'jobs'} →
-              </Button>
             </div>
           </div>
           <div className="flex gap-2 shrink-0">

@@ -1,74 +1,79 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/toast";
 import {
-  Building,
-  Users,
-  Gift,
   Search,
   Loader2,
-  UserPlus,
-  UserMinus,
-  Briefcase,
+  Gift,
+  ChevronDown,
+  ChevronRight,
+  Edit3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+interface ReferredSubscriber {
+  companyName: string;
+  ownerEmail: string;
+  subscriptionStatus: string;
+  monthsPaying: number;
+  convertedAt: string;
+}
 
 interface CompanyData {
   id: string;
   name: string;
+  ownerUserId: string;
   ownerEmail: string;
   ownerName: string;
   subscriptionStatus: string;
   jobCount: number;
   crewCount: number;
   createdAt: string;
-}
-
-interface AffiliateData {
-  id: string;
-  email: string;
-  fullName: string | null;
-  creatorCode: {
-    id: string;
+  monthsPaying: number;
+  isAffiliate: boolean;
+  affiliate: {
     code: string;
     totalReferrals: number;
     totalConversions: number;
-    isActive: boolean;
+    activeSubscriberCount: number;
+    referredSubscribers: ReferredSubscriber[];
   } | null;
-  activeSubscriberCount: number;
 }
 
 interface AdminViewProps {
   companies: CompanyData[];
-  affiliates: AffiliateData[];
 }
 
-export function AdminView({ companies, affiliates: initialAffiliates }: AdminViewProps) {
+const PAYOUT_PER_SUBSCRIBER = 5;
+
+export function AdminView({ companies }: AdminViewProps) {
   const router = useRouter();
   const { addToast } = useToast();
-  const [companySearch, setCompanySearch] = useState("");
-  const [affiliateSearch, setAffiliateSearch] = useState("");
-  const [toggleEmail, setToggleEmail] = useState("");
-  const [toggling, setToggling] = useState(false);
-  const [affiliates, setAffiliates] = useState(initialAffiliates);
+  const [search, setSearch] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [editingCodeFor, setEditingCodeFor] = useState<string | null>(null);
+  const [editCodeValue, setEditCodeValue] = useState("");
+  const [savingCode, setSavingCode] = useState(false);
 
-  const filteredCompanies = companies.filter(
+  const filtered = companies.filter(
     (c) =>
-      c.name.toLowerCase().includes(companySearch.toLowerCase()) ||
-      c.ownerEmail.toLowerCase().includes(companySearch.toLowerCase())
+      c.name.toLowerCase().includes(search.toLowerCase()) ||
+      c.ownerEmail.toLowerCase().includes(search.toLowerCase()) ||
+      c.ownerName.toLowerCase().includes(search.toLowerCase())
   );
 
-  const filteredAffiliates = affiliates.filter(
-    (a) =>
-      a.email.toLowerCase().includes(affiliateSearch.toLowerCase()) ||
-      (a.fullName || "").toLowerCase().includes(affiliateSearch.toLowerCase()) ||
-      (a.creatorCode?.code || "").toLowerCase().includes(affiliateSearch.toLowerCase())
-  );
+  const activeCount = companies.filter((c) => c.subscriptionStatus === "active").length;
+  const trialCount = companies.filter((c) => c.subscriptionStatus !== "active" && c.subscriptionStatus !== "canceled").length;
+  const totalJobs = companies.reduce((sum, c) => sum + c.jobCount, 0);
+  const affiliateCount = companies.filter((c) => c.isAffiliate).length;
+  const totalPayout = companies
+    .filter((c) => c.affiliate)
+    .reduce((sum, c) => sum + (c.affiliate?.activeSubscriberCount || 0) * PAYOUT_PER_SUBSCRIBER, 0);
 
   function getStatusBadge(status: string) {
     switch (status) {
@@ -83,16 +88,13 @@ export function AdminView({ companies, affiliates: initialAffiliates }: AdminVie
     }
   }
 
-  async function handleToggleAffiliate(e: React.FormEvent) {
-    e.preventDefault();
-    if (!toggleEmail.trim()) return;
-
-    setToggling(true);
+  async function handlePromoteAffiliate(ownerEmail: string, companyId: string) {
+    setTogglingId(companyId);
     try {
       const response = await fetch("/api/admin/toggle-affiliate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: toggleEmail.trim() }),
+        body: JSON.stringify({ email: ownerEmail }),
       });
 
       const data = await response.json();
@@ -103,11 +105,10 @@ export function AdminView({ companies, affiliates: initialAffiliates }: AdminVie
 
       addToast(
         data.isAffiliate
-          ? `${toggleEmail} is now an affiliate`
-          : `${toggleEmail} is no longer an affiliate`,
+          ? `${ownerEmail} is now an affiliate`
+          : `${ownerEmail} is no longer an affiliate`,
         "success"
       );
-      setToggleEmail("");
       router.refresh();
     } catch (error) {
       addToast(
@@ -115,31 +116,48 @@ export function AdminView({ companies, affiliates: initialAffiliates }: AdminVie
         "error"
       );
     } finally {
-      setToggling(false);
+      setTogglingId(null);
     }
   }
 
-  // Summary stats
-  const activeCount = companies.filter((c) => c.subscriptionStatus === "active").length;
-  const trialCount = companies.filter((c) => c.subscriptionStatus !== "active" && c.subscriptionStatus !== "canceled").length;
-  const totalJobs = companies.reduce((sum, c) => sum + c.jobCount, 0);
-
-  // Payout calculation: $5 per active subscriber per affiliate
-  const PAYOUT_PER_SUBSCRIBER = 5;
+  async function handleSaveCode(userId: string) {
+    if (!editCodeValue.trim()) return;
+    setSavingCode(true);
+    try {
+      const response = await fetch("/api/admin/update-affiliate-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, newCode: editCodeValue.trim() }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to update code");
+      }
+      addToast(`Code updated to ${data.code}`, "success");
+      setEditingCodeFor(null);
+      router.refresh();
+    } catch (error) {
+      addToast(
+        error instanceof Error ? error.message : "Failed to update code",
+        "error"
+      );
+    } finally {
+      setSavingCode(false);
+    }
+  }
 
   return (
     <div className="min-h-screen pb-20 lg:pb-0">
-      {/* Header */}
       <div className="border-b bg-card p-4">
         <h1 className="text-2xl font-bold">Admin Dashboard</h1>
       </div>
 
       <div className="max-w-5xl mx-auto p-4">
         {/* Summary Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-6">
           <div className="rounded-lg border bg-card p-4 text-center">
             <p className="text-3xl font-bold text-primary">{companies.length}</p>
-            <p className="text-sm text-muted-foreground">Total Companies</p>
+            <p className="text-sm text-muted-foreground">Companies</p>
           </div>
           <div className="rounded-lg border bg-card p-4 text-center">
             <p className="text-3xl font-bold text-green-600">{activeCount}</p>
@@ -153,48 +171,65 @@ export function AdminView({ companies, affiliates: initialAffiliates }: AdminVie
             <p className="text-3xl font-bold">{totalJobs}</p>
             <p className="text-sm text-muted-foreground">Total Jobs</p>
           </div>
+          <div className="rounded-lg border bg-card p-4 text-center">
+            <p className="text-3xl font-bold text-green-600">${totalPayout}</p>
+            <p className="text-sm text-muted-foreground">Payouts/mo</p>
+          </div>
         </div>
 
-        <Tabs defaultValue="customers" className="w-full">
-          <TabsList>
-            <TabsTrigger value="customers">
-              <Building className="mr-1.5 h-4 w-4" />
-              Customers
-            </TabsTrigger>
-            <TabsTrigger value="affiliates">
-              <Gift className="mr-1.5 h-4 w-4" />
-              Affiliates
-            </TabsTrigger>
-          </TabsList>
+        {/* Search */}
+        <div className="flex items-center gap-2 mb-4">
+          <Search className="h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search by company name or email..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="max-w-sm"
+          />
+        </div>
 
-          {/* Customers Tab */}
-          <TabsContent value="customers" className="mt-6 space-y-4">
-            <div className="flex items-center gap-2">
-              <Search className="h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search by company name or email..."
-                value={companySearch}
-                onChange={(e) => setCompanySearch(e.target.value)}
-                className="max-w-sm"
-              />
-            </div>
+        {/* Unified Table */}
+        <div className="rounded-lg border overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 border-b">
+                <tr>
+                  <th className="text-left p-3 font-medium w-8"></th>
+                  <th className="text-left p-3 font-medium">Company</th>
+                  <th className="text-left p-3 font-medium">Owner</th>
+                  <th className="text-center p-3 font-medium">Status</th>
+                  <th className="text-center p-3 font-medium">Jobs</th>
+                  <th className="text-center p-3 font-medium">Crew</th>
+                  <th className="text-left p-3 font-medium">Signed Up</th>
+                  <th className="text-right p-3 font-medium">Affiliate</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {filtered.map((company) => {
+                  const isExpanded = expandedId === company.id;
+                  const hasAffiliateData = company.isAffiliate && company.affiliate;
 
-            <div className="rounded-lg border overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/50 border-b">
-                    <tr>
-                      <th className="text-left p-3 font-medium">Company</th>
-                      <th className="text-left p-3 font-medium">Owner</th>
-                      <th className="text-center p-3 font-medium">Status</th>
-                      <th className="text-center p-3 font-medium">Jobs</th>
-                      <th className="text-center p-3 font-medium">Crew</th>
-                      <th className="text-left p-3 font-medium">Signed Up</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {filteredCompanies.map((company) => (
-                      <tr key={company.id} className="hover:bg-muted/30">
+                  return (
+                    <Fragment key={company.id}>
+                      <tr
+                        className={cn(
+                          "hover:bg-muted/30",
+                          hasAffiliateData && "cursor-pointer",
+                          isExpanded && "bg-muted/20"
+                        )}
+                        onClick={() => {
+                          if (hasAffiliateData) {
+                            setExpandedId(isExpanded ? null : company.id);
+                          }
+                        }}
+                      >
+                        <td className="p-3 text-muted-foreground">
+                          {hasAffiliateData && (
+                            isExpanded
+                              ? <ChevronDown className="h-4 w-4" />
+                              : <ChevronRight className="h-4 w-4" />
+                          )}
+                        </td>
                         <td className="p-3 font-medium">{company.name}</td>
                         <td className="p-3">
                           <div className="text-sm">{company.ownerName}</div>
@@ -206,121 +241,186 @@ export function AdminView({ companies, affiliates: initialAffiliates }: AdminVie
                         <td className="p-3 text-muted-foreground text-xs">
                           {new Date(company.createdAt).toLocaleDateString()}
                         </td>
-                      </tr>
-                    ))}
-                    {filteredCompanies.length === 0 && (
-                      <tr>
-                        <td colSpan={6} className="p-8 text-center text-muted-foreground">
-                          No companies found
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </TabsContent>
-
-          {/* Affiliates Tab */}
-          <TabsContent value="affiliates" className="mt-6 space-y-6">
-            {/* Toggle Affiliate */}
-            <div className="rounded-lg border bg-card p-4 space-y-3">
-              <h3 className="font-semibold">Toggle Affiliate Status</h3>
-              <p className="text-sm text-muted-foreground">
-                Enter a user&apos;s email to make them an affiliate or remove affiliate status.
-              </p>
-              <form onSubmit={handleToggleAffiliate} className="flex gap-2">
-                <Input
-                  placeholder="user@example.com"
-                  value={toggleEmail}
-                  onChange={(e) => setToggleEmail(e.target.value)}
-                  type="email"
-                  className="max-w-sm"
-                />
-                <Button type="submit" disabled={toggling || !toggleEmail.trim()}>
-                  {toggling ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    "Toggle Affiliate"
-                  )}
-                </Button>
-              </form>
-            </div>
-
-            {/* Affiliate List */}
-            <div className="flex items-center gap-2">
-              <Search className="h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search affiliates..."
-                value={affiliateSearch}
-                onChange={(e) => setAffiliateSearch(e.target.value)}
-                className="max-w-sm"
-              />
-            </div>
-
-            <div className="rounded-lg border overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/50 border-b">
-                    <tr>
-                      <th className="text-left p-3 font-medium">Affiliate</th>
-                      <th className="text-left p-3 font-medium">Code</th>
-                      <th className="text-center p-3 font-medium">Clicks</th>
-                      <th className="text-center p-3 font-medium">Conversions</th>
-                      <th className="text-center p-3 font-medium">Active Subs</th>
-                      <th className="text-right p-3 font-medium">Payout</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y">
-                    {filteredAffiliates.map((affiliate) => (
-                      <tr key={affiliate.id} className="hover:bg-muted/30">
-                        <td className="p-3">
-                          <div className="font-medium">{affiliate.fullName || affiliate.email}</div>
-                          <div className="text-xs text-muted-foreground">{affiliate.email}</div>
-                        </td>
-                        <td className="p-3">
-                          {affiliate.creatorCode ? (
-                            <span className="font-mono text-xs bg-muted px-2 py-1 rounded">
-                              {affiliate.creatorCode.code}
+                        <td className="p-3 text-right">
+                          {company.isAffiliate ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-medium text-purple-800">
+                              <Gift className="h-3 w-3" />
+                              {company.affiliate?.code || "Affiliate"}
                             </span>
                           ) : (
-                            <span className="text-muted-foreground text-xs">No code yet</span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="text-xs"
+                              disabled={togglingId === company.id}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handlePromoteAffiliate(company.ownerEmail, company.id);
+                              }}
+                            >
+                              {togglingId === company.id ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                "Promote"
+                              )}
+                            </Button>
                           )}
                         </td>
-                        <td className="p-3 text-center">{affiliate.creatorCode?.totalReferrals || 0}</td>
-                        <td className="p-3 text-center">{affiliate.creatorCode?.totalConversions || 0}</td>
-                        <td className="p-3 text-center font-medium">{affiliate.activeSubscriberCount}</td>
-                        <td className="p-3 text-right font-medium text-green-600">
-                          ${(affiliate.activeSubscriberCount * PAYOUT_PER_SUBSCRIBER).toFixed(2)}
-                        </td>
                       </tr>
-                    ))}
-                    {filteredAffiliates.length === 0 && (
-                      <tr>
-                        <td colSpan={6} className="p-8 text-center text-muted-foreground">
-                          No affiliates yet
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
 
-            {/* Payout Summary */}
-            {filteredAffiliates.length > 0 && (
-              <div className="rounded-lg border bg-muted/30 p-4">
-                <h4 className="font-medium mb-2">Monthly Payout Summary</h4>
-                <p className="text-sm text-muted-foreground mb-3">
-                  $5/month per active subscriber referred by each affiliate.
-                </p>
-                <div className="text-2xl font-bold text-green-600">
-                  Total: ${filteredAffiliates.reduce((sum, a) => sum + a.activeSubscriberCount * PAYOUT_PER_SUBSCRIBER, 0).toFixed(2)}/month
-                </div>
-              </div>
-            )}
-          </TabsContent>
-        </Tabs>
+                      {/* Expanded affiliate detail */}
+                      {isExpanded && hasAffiliateData && company.affiliate && (
+                        <tr>
+                          <td colSpan={8} className="bg-muted/10 p-0">
+                            <div className="p-4 pl-12 space-y-4">
+                              {/* Affiliate stats row */}
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                <div className="rounded-lg border bg-card p-3 text-center">
+                                  <p className="text-2xl font-bold">{company.affiliate.totalReferrals}</p>
+                                  <p className="text-xs text-muted-foreground">Link Clicks</p>
+                                </div>
+                                <div className="rounded-lg border bg-card p-3 text-center">
+                                  <p className="text-2xl font-bold">{company.affiliate.totalConversions}</p>
+                                  <p className="text-xs text-muted-foreground">Conversions</p>
+                                </div>
+                                <div className="rounded-lg border bg-card p-3 text-center">
+                                  <p className="text-2xl font-bold">{company.affiliate.activeSubscriberCount}</p>
+                                  <p className="text-xs text-muted-foreground">Active Subs</p>
+                                </div>
+                                <div className="rounded-lg border bg-card p-3 text-center">
+                                  <p className="text-2xl font-bold text-green-600">
+                                    ${(company.affiliate.activeSubscriberCount * PAYOUT_PER_SUBSCRIBER).toFixed(2)}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">Payout/mo</p>
+                                </div>
+                              </div>
+
+                              {/* Affiliate code edit */}
+                              <div className="flex items-center gap-3">
+                                <span className="text-sm text-muted-foreground">Code:</span>
+                                {editingCodeFor === company.ownerUserId ? (
+                                  <div className="flex items-center gap-2">
+                                    <Input
+                                      value={editCodeValue}
+                                      onChange={(e) =>
+                                        setEditCodeValue(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))
+                                      }
+                                      placeholder="NEWCODE"
+                                      maxLength={20}
+                                      className="font-mono uppercase w-40 h-8 text-sm"
+                                      onClick={(e) => e.stopPropagation()}
+                                    />
+                                    <Button
+                                      size="sm"
+                                      className="h-8 text-xs"
+                                      disabled={savingCode || editCodeValue.length < 3}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleSaveCode(company.ownerUserId);
+                                      }}
+                                    >
+                                      {savingCode ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save"}
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-8 text-xs"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setEditingCodeFor(null);
+                                      }}
+                                    >
+                                      Cancel
+                                    </Button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-mono font-bold text-primary">{company.affiliate.code}</span>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 text-xs"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setEditCodeValue(company.affiliate!.code);
+                                        setEditingCodeFor(company.ownerUserId);
+                                      }}
+                                    >
+                                      <Edit3 className="h-3 w-3 mr-1" />
+                                      Change
+                                    </Button>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Referred subscribers list */}
+                              {company.affiliate.referredSubscribers.length > 0 ? (
+                                <div>
+                                  <h4 className="text-sm font-medium mb-2">Referred Customers</h4>
+                                  <div className="rounded-lg border overflow-hidden">
+                                    <table className="w-full text-xs">
+                                      <thead className="bg-muted/50 border-b">
+                                        <tr>
+                                          <th className="text-left p-2 font-medium">Customer</th>
+                                          <th className="text-left p-2 font-medium">Email</th>
+                                          <th className="text-center p-2 font-medium">Status</th>
+                                          <th className="text-center p-2 font-medium">Months Paying</th>
+                                          <th className="text-left p-2 font-medium">Converted</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y">
+                                        {company.affiliate.referredSubscribers.map((sub, i) => (
+                                          <tr key={i} className="hover:bg-muted/30">
+                                            <td className="p-2">{sub.companyName}</td>
+                                            <td className="p-2 text-muted-foreground">{sub.ownerEmail}</td>
+                                            <td className="p-2 text-center">{getStatusBadge(sub.subscriptionStatus)}</td>
+                                            <td className="p-2 text-center font-medium">
+                                              {sub.monthsPaying > 0 ? `${sub.monthsPaying} mo` : "-"}
+                                            </td>
+                                            <td className="p-2 text-muted-foreground">
+                                              {new Date(sub.convertedAt).toLocaleDateString()}
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+                              ) : (
+                                <p className="text-sm text-muted-foreground">No referred customers yet.</p>
+                              )}
+
+                              {/* Remove affiliate button */}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-xs text-destructive"
+                                disabled={togglingId === company.id}
+                                onClick={() => handlePromoteAffiliate(company.ownerEmail, company.id)}
+                              >
+                                {togglingId === company.id ? (
+                                  <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                                ) : null}
+                                Remove Affiliate Status
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+                {filtered.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="p-8 text-center text-muted-foreground">
+                      No companies found
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
   );

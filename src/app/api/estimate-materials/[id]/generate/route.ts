@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { regenerateEstimateMaterials, syncEstimateMaterialsToJob } from "@/lib/estimate-materials";
+import { recalculateEstimateTotals } from "@/lib/estimate-helpers";
 
 /**
  * POST /api/estimate-materials/[id]/generate
@@ -36,6 +37,10 @@ export async function POST(
 
     // Regenerate materials (allowed for any status - painter can update their records anytime)
     const materials = await regenerateEstimateMaterials(estimateId);
+
+    // Recalculate estimate totals after regeneration
+    const adminSupabase = createAdminClient();
+    await recalculateEstimateTotals(adminSupabase, estimateId);
 
     // Sync estimate materials to job materials checklist
     if (estimate.job_id) {
