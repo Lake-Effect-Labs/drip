@@ -54,6 +54,53 @@ export async function POST(request: Request) {
       );
     }
 
+    // Seed default message templates for new company
+    const defaultTemplates = [
+      {
+        company_id: companyId,
+        name: "Job Scheduled",
+        type: "sms",
+        subject: null,
+        body: "Hey {{customer_name}} — just a reminder that we're scheduled for {{job_date}} at {{job_time}} at {{job_address}}. Reply here if anything changes. See you then!",
+        variables: ["customer_name", "job_date", "job_time", "job_address"],
+      },
+      {
+        company_id: companyId,
+        name: "Payment Reminder",
+        type: "sms",
+        subject: null,
+        body: "Hey {{customer_name}} — thanks again for letting us work on your project! Here's your invoice for {{amount}}: {{invoice_link}}. Let us know if you have any questions!",
+        variables: ["customer_name", "amount", "invoice_link"],
+      },
+      {
+        company_id: companyId,
+        name: "Job Complete",
+        type: "sms",
+        subject: null,
+        body: "Hey {{customer_name}} — we've finished the work at {{job_address}}! Let us know if you need anything else.",
+        variables: ["customer_name", "job_address"],
+      },
+      {
+        company_id: companyId,
+        name: "Estimate Follow-up",
+        type: "sms",
+        subject: null,
+        body: "Hey {{customer_name}} — just checking in on the estimate we sent over. Any questions? Happy to go over the details whenever works for you.",
+        variables: ["customer_name"],
+      },
+      {
+        company_id: companyId,
+        name: "Thank You",
+        type: "sms",
+        subject: null,
+        body: "Hey {{customer_name}} — thanks so much for choosing us! If you're happy with the work, we'd really appreciate a review. Have a great one!",
+        variables: ["customer_name"],
+      },
+    ];
+
+    // Insert templates (ignore errors - templates are nice-to-have, not critical)
+    await supabase.from("message_templates" as any).insert(defaultTemplates);
+
     return NextResponse.json({ company_id: companyId });
   } catch (error) {
     if (process.env.NODE_ENV === "development") {
