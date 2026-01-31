@@ -397,7 +397,6 @@ export function JobDetailView({
   const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
   const [, setShowTemplateDialog] = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [scheduleToken, setScheduleToken] = useState<string | null>((job as Record<string, unknown>).schedule_token as string | null);
   const [, setLoadingScheduleToken] = useState(false);
   const [, setTemplateDialogMode] = useState<"save" | "manage">("save");
