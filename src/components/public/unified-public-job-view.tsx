@@ -40,9 +40,10 @@ interface UnifiedPublicJobViewProps {
   token: string;
 }
 
-export function UnifiedPublicJobView({ job: initialJob, token }: UnifiedPublicJobViewProps) {
+// Token is available through props for potential future use (e.g., real-time updates)
+export function UnifiedPublicJobView({ job: initialJob }: UnifiedPublicJobViewProps) {
   const searchParams = useSearchParams();
-  const [job, setJob] = useState(initialJob);
+  const [job] = useState(initialJob);
 
   // Determine initial tab from URL query param
   const getInitialTab = () => {

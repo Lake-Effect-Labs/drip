@@ -22,7 +22,7 @@ import {
   getDay,
 } from "date-fns";
 import { createClient } from "@/lib/supabase/client";
-import { cn, formatTime, formatDate, JOB_STATUS_COLORS, JOB_STATUS_LABELS, type JobStatus } from "@/lib/utils";
+import { cn, formatTime, JOB_STATUS_COLORS, JOB_STATUS_LABELS, type JobStatus } from "@/lib/utils";
 import type { Job, Customer } from "@/types/database";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
@@ -46,15 +46,15 @@ export function ScheduleView({
   teamMembers,
   currentUserId,
 }: ScheduleViewProps) {
-  const [jobs, setJobs] = useState<JobWithCustomer[]>(initialJobs);
+  const [jobs] = useState<JobWithCustomer[]>(initialJobs);
   const [currentDate, setCurrentDate] = useState(new Date());
   const [view, setView] = useState<ViewType>("day");
   const [filter, setFilter] = useState<FilterType>("all");
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const { addToast } = useToast();
-  const supabase = createClient();
+  useToast();
+  createClient();
 
   // Check scroll position
   const checkScroll = useCallback(() => {
@@ -186,7 +186,7 @@ export function ScheduleView({
     });
 
     // Sort jobs within each day by scheduled_time
-    map.forEach((jobs, dateKey) => {
+    map.forEach((jobs, _dateKey) => {
       jobs.sort((a, b) => {
         const timeA = a.scheduled_time || "23:59";
         const timeB = b.scheduled_time || "23:59";

@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/components/ui/toast";
+import { useReferralContext } from "@/providers/ReferralProvider";
+import { Gift } from "lucide-react";
 
 export default function SignupPage() {
   const [email, setEmail] = useState("");
@@ -19,6 +21,7 @@ export default function SignupPage() {
   const router = useRouter();
   const { addToast } = useToast();
   const supabase = createClient();
+  const { hasReferral, creatorName, discountFlat, isLoading: referralLoading } = useReferralContext();
 
   // Check if user already has a company and redirect them
   useEffect(() => {
@@ -162,6 +165,24 @@ export default function SignupPage() {
         <CardTitle className="text-2xl">Create your account</CardTitle>
         <CardDescription>Start your free trial of Matte</CardDescription>
       </CardHeader>
+      {/* Referral discount banner */}
+      {!referralLoading && hasReferral && (
+        <div className="mx-6 mb-4 rounded-lg bg-green-50 border border-green-200 p-4">
+          <div className="flex items-center gap-3">
+            <div className="flex-shrink-0">
+              <Gift className="h-6 w-6 text-green-600" />
+            </div>
+            <div>
+              <p className="font-medium text-green-800">
+                {creatorName ? `Referred by ${creatorName}!` : "Referral discount applied!"}
+              </p>
+              <p className="text-sm text-green-700">
+                You&apos;ll get ${discountFlat || 5} off your first month when you subscribe.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">

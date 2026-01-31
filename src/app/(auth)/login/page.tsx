@@ -25,8 +25,11 @@ export default function LoginPage() {
     if (typeof window !== "undefined") {
       const resetEmail = sessionStorage.getItem("resetEmail");
       if (resetEmail) {
-        setEmail(resetEmail);
-        sessionStorage.removeItem("resetEmail");
+        // Use a microtask to avoid synchronous setState in effect
+        queueMicrotask(() => {
+          setEmail(resetEmail);
+          sessionStorage.removeItem("resetEmail");
+        });
       }
     }
   }, []);

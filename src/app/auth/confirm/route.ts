@@ -13,7 +13,8 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
   const rawNext = searchParams.get("next") ?? "/app";
-  const type = searchParams.get("type");
+  // Type param is available for future use (e.g., 'recovery', 'signup')
+  const _type = searchParams.get("type");
 
   // Validate redirect path - default to /app if not allowed
   const next = isAllowedRedirect(rawNext) ? rawNext : "/app";

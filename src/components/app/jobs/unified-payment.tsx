@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Trash2, ExternalLink, Copy, Edit2, Check, DollarSign, Clock, Ruler, Users, Share2, MessageSquare, Pencil, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Trash2, Copy, Check, Share2, Pencil, ChevronDown, ChevronUp } from "lucide-react";
 import { formatCurrency, formatDate, copyToClipboard, generateToken, PAINT_SHEENS } from "@/lib/utils";
 
 // Product Lines by Brand
@@ -984,7 +984,7 @@ export function UnifiedPayment({
                   </div>
                 )}
                 <p className="text-xs text-muted-foreground mt-2">
-                  Review the customer's feedback and use the "Edit Estimate" button below to revise the estimate.
+                  Review the customer&apos;s feedback and use the &quot;Edit Estimate&quot; button below to revise the estimate.
                 </p>
               </div>
             </div>

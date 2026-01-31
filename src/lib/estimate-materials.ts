@@ -1,8 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/server";
-import { EstimateLineItem, EstimateMaterial, InsertTables } from "@/types/database";
-
-// Default cost per gallon if not found in inventory
-const DEFAULT_COST_PER_GALLON = 45.0;
+import { EstimateMaterial, InsertTables } from "@/types/database";
 
 /**
  * Auto-generates estimate materials from line items

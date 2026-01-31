@@ -10,23 +10,18 @@ import {
   eachDayOfInterval,
   format,
   isSameMonth,
-  isSameDay,
   addMonths,
   subMonths,
   isToday,
   parseISO,
-  isAfter,
-  isBefore,
-  isWithinInterval,
 } from "date-fns";
 import { createClient } from "@/lib/supabase/client";
 import { cn, formatTime, JOB_STATUS_COLORS, type JobStatus } from "@/lib/utils";
 import type { Job, Customer } from "@/types/database";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/toast";
-import { ChevronLeft, ChevronRight, Calendar } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 type JobWithCustomer = Job & { customer: Customer | null };
 
@@ -40,7 +35,6 @@ type FilterType = "all" | "mine" | "unassigned";
 
 export function CalendarView({
   initialJobs,
-  teamMembers,
   currentUserId,
 }: CalendarViewProps) {
   const [jobs, setJobs] = useState<JobWithCustomer[]>(initialJobs);

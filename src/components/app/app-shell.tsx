@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { cn, getInitials } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import {
   Paintbrush,
   LayoutGrid,
@@ -40,7 +40,7 @@ const allNavItems = [
   { href: "/app/admin", label: "Admin", icon: Shield, ownerOnly: false, adminOnly: true },
 ];
 
-export function AppShell({ children, user, company, isOwner, isSuperAdmin = false }: AppShellProps) {
+export function AppShell({ children, company, isOwner, isSuperAdmin = false }: AppShellProps) {
   // Filter nav items based on ownership and admin status
   const navItems = allNavItems.filter(item => {
     if (item.adminOnly) return isSuperAdmin;

@@ -70,7 +70,7 @@ export function AdminView({ companies }: AdminViewProps) {
   const activeCount = companies.filter((c) => c.subscriptionStatus === "active").length;
   const trialCount = companies.filter((c) => c.subscriptionStatus !== "active" && c.subscriptionStatus !== "canceled").length;
   const totalJobs = companies.reduce((sum, c) => sum + c.jobCount, 0);
-  const affiliateCount = companies.filter((c) => c.isAffiliate).length;
+  const _affiliateCount = companies.filter((c) => c.isAffiliate).length;
   const totalPayout = companies
     .filter((c) => c.affiliate)
     .reduce((sum, c) => sum + (c.affiliate?.activeSubscriberCount || 0) * PAYOUT_PER_SUBSCRIBER, 0);

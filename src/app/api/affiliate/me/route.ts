@@ -35,15 +35,40 @@ export async function GET() {
 
     // Get referral stats if they have a code
     let recentReferrals: { converted_at: string | null; created_at: string }[] = [];
+    let activeSubscriberCount = 0;
+    let pendingPayout = 0;
+    
     if (creatorCode) {
       const { data: referrals } = await adminSupabase
         .from("referrals")
-        .select("converted_at, created_at")
+        .select("converted_at, created_at, subscriber_company_id, commission_owed")
         .eq("creator_code_id", creatorCode.id)
         .order("created_at", { ascending: false })
         .limit(10);
 
       recentReferrals = referrals || [];
+      
+      // Count active subscribers (referrals that converted and have active subscriptions)
+      if (referrals && referrals.length > 0) {
+        const convertedCompanyIds = referrals
+          .filter((r): r is typeof r & { subscriber_company_id: string } => r.subscriber_company_id !== null)
+          .map(r => r.subscriber_company_id);
+        
+        if (convertedCompanyIds.length > 0) {
+          const { data: activeCompanies } = await adminSupabase
+            .from("companies")
+            .select("id")
+            .in("id", convertedCompanyIds)
+            .eq("subscription_status", "active");
+          
+          activeSubscriberCount = activeCompanies?.length || 0;
+        }
+        
+        // Calculate pending payout from commission_owed
+        pendingPayout = referrals
+          .filter(r => r.commission_owed)
+          .reduce((sum, r) => sum + (r.commission_owed || 0), 0);
+      }
     }
 
     return NextResponse.json({
@@ -60,6 +85,8 @@ export async function GET() {
             commissionPercent: creatorCode.commission_percent,
             totalReferrals: creatorCode.total_referrals,
             totalConversions: creatorCode.total_conversions,
+            activeSubscriberCount,
+            pendingPayout,
             isActive: creatorCode.is_active,
             createdAt: creatorCode.created_at,
           }

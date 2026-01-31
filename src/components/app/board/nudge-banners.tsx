@@ -23,10 +23,11 @@ export function NudgeBanners({ companyId }: NudgeBannersProps) {
   const supabase = createClient();
   const [nudges, setNudges] = useState<Nudge[]>([]);
   const [loading, setLoading] = useState(true);
-  const [dismissedTypes, setDismissedTypes] = useState<Set<string>>(new Set());
+  const [, setDismissedTypes] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     loadNudges();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [companyId]);
 
   async function loadNudges() {

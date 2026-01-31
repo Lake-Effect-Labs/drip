@@ -17,7 +17,7 @@ interface BoardColumnProps {
   onDuplicate?: (jobId: string) => void;
 }
 
-export function BoardColumn({ id, title, jobs, count, onStatusChange, onDuplicate }: BoardColumnProps) {
+export function BoardColumn({ id, title, jobs, count }: BoardColumnProps) {
   const { setNodeRef, isOver } = useDroppable({
     id,
   });

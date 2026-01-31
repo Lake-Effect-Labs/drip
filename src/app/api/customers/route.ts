@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/server";
 import { createClient } from "@/lib/supabase/server";
 
 // Get customers for the authenticated user's company
-export async function GET(request: Request) {
+export async function GET(_request: Request) {
   const supabase = await createClient();
   const adminSupabase = createAdminClient();
 

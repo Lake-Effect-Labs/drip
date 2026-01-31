@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { createClient } from "@/lib/supabase/client";
 import {
   Dialog,
   DialogContent,
@@ -62,34 +61,8 @@ export function NewJobDialog({
   const [assignedUserId, setAssignedUserId] = useState("");
   const [showCustomerSearch, setShowCustomerSearch] = useState(false);
   const { addToast} = useToast();
-  const supabase = createClient();
 
-  useEffect(() => {
-    if (open) {
-      loadCustomers();
-    }
-  }, [open]);
-
-  // Handle initialCustomerId when it changes or when customers are loaded
-  useEffect(() => {
-    if (initialCustomerId && customers.length > 0 && !selectedCustomerId) {
-      const customer = customers.find((c) => c.id === initialCustomerId);
-      if (customer) {
-        setSelectedCustomerId(customer.id);
-        setCustomerName(customer.name);
-        setCustomerPhone(customer.phone || "");
-        setCustomerEmail(customer.email || "");
-        setAddress1(customer.address1 || "");
-        setAddress2(customer.address2 || "");
-        setCity(customer.city || "");
-        setState(customer.state || "");
-        setZip(customer.zip || "");
-        setCustomerSearchQuery(customer.name);
-      }
-    }
-  }, [initialCustomerId, customers, selectedCustomerId]);
-
-  async function loadCustomers() {
+  const loadCustomers = async () => {
     try {
       const response = await fetch("/api/customers");
       if (!response.ok) throw new Error("Failed to load customers");
@@ -117,7 +90,33 @@ export function NewJobDialog({
     } catch (error) {
       console.error("Error loading customers:", error);
     }
-  }
+  };
+
+  useEffect(() => {
+    if (open) {
+      loadCustomers();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initialCustomerId]);
+
+  // Handle initialCustomerId when it changes or when customers are loaded
+  useEffect(() => {
+    if (initialCustomerId && customers.length > 0 && !selectedCustomerId) {
+      const customer = customers.find((c) => c.id === initialCustomerId);
+      if (customer) {
+        setSelectedCustomerId(customer.id);
+        setCustomerName(customer.name);
+        setCustomerPhone(customer.phone || "");
+        setCustomerEmail(customer.email || "");
+        setAddress1(customer.address1 || "");
+        setAddress2(customer.address2 || "");
+        setCity(customer.city || "");
+        setState(customer.state || "");
+        setZip(customer.zip || "");
+        setCustomerSearchQuery(customer.name);
+      }
+    }
+  }, [initialCustomerId, customers, selectedCustomerId]);
 
   function handleCustomerSelect(customerId: string) {
     const customer = customers.find((c) => c.id === customerId);

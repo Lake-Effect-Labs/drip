@@ -8,13 +8,13 @@ import {
   pointerWithin,
   rectIntersection,
   KeyboardSensor,
-  PointerSensor,
   TouchSensor,
   MouseSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
   type DragStartEvent,
+  type CollisionDetection,
 } from "@dnd-kit/core";
 import { sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { JOB_STATUSES, JOB_STATUS_LABELS, type JobStatus } from "@/lib/utils";
@@ -56,7 +56,6 @@ export function BoardView({
   teamMembers,
   currentUserId,
   companyId,
-  subscriptionStatus,
   isAtTrialLimit,
 }: BoardViewProps) {
   const [jobs, setJobs] = useState<JobWithCustomer[]>(initialJobs);
@@ -111,7 +110,7 @@ export function BoardView({
   );
 
   // Custom collision detection optimized for both horizontal and vertical layouts
-  const collisionDetectionStrategy = useCallback((args: any) => {
+  const collisionDetectionStrategy: CollisionDetection = useCallback((args) => {
     // First, try pointer-within for intuitive column detection
     const pointerCollisions = pointerWithin(args);
     if (pointerCollisions.length > 0) {

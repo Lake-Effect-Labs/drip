@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import {
@@ -12,13 +11,12 @@ import {
   copyToClipboard,
   generateToken,
   generateSMSLink,
-  COMMON_MATERIALS,
   JOB_STATUSES,
   JOB_STATUS_LABELS,
   JOB_STATUS_COLORS,
   type JobStatus,
 } from "@/lib/utils";
-import type { Job, Customer, Estimate, EstimateLineItem, Invoice, JobMaterial } from "@/types/database";
+import type { Job, Customer, Estimate, EstimateLineItem, Invoice, JobMaterial, EstimateMaterial } from "@/types/database";
 import { JobHistoryTimeline } from "./job-history-timeline";
 import { MessageTemplatesDialog } from "./message-templates-dialog";
 import { PhotoGallery } from "./photo-gallery";
@@ -46,20 +44,14 @@ import {
   Phone,
   Mail,
   User,
-  FileText,
-  Receipt,
   Package,
   Copy,
   Plus,
   Trash2,
-  ExternalLink,
   X,
-  XCircle,
   Pencil,
   Share2,
-  Archive,
   Save,
-  CheckCircle,
   ChevronRight,
   Smartphone,
 } from "lucide-react";
@@ -67,7 +59,7 @@ import {
 type JobWithCustomer = Job & { customer: Customer | null };
 type EstimateWithLineItems = Estimate & { 
   line_items: EstimateLineItem[];
-  materials?: any[];
+  materials?: EstimateMaterial[];
 };
 
 interface JobHistory {
@@ -124,8 +116,8 @@ export function JobDetailView({
   const [progressValue, setProgressValue] = useState(initialJob.progress_percentage || 0);
   const [estimatesList, setEstimatesList] = useState(estimates);
   const [invoicesList, setInvoicesList] = useState(invoices);
-  const [pickupLocations, setPickupLocations] = useState<Array<{ id: string; name: string }>>(initialPickupLocations);
-  const [selectedPickupLocation, setSelectedPickupLocation] = useState<string | null>(job.pickup_location_id || null);
+  const [, setPickupLocations] = useState<Array<{ id: string; name: string }>>(initialPickupLocations);
+  const [, setSelectedPickupLocation] = useState<string | null>(job.pickup_location_id || null);
   const [timeEntries, setTimeEntries] = useState<Array<{
     id: string;
     user_id: string;
@@ -134,10 +126,10 @@ export function JobDetailView({
     duration_seconds: number | null;
     user?: { full_name: string };
   }>>([]);
-  const [loadingTimeEntries, setLoadingTimeEntries] = useState(false);
-  const [addingTimeEntry, setAddingTimeEntry] = useState(false);
-  const [editingTimeEntry, setEditingTimeEntry] = useState<string | null>(null);
-  const [showAddTimeDialog, setShowAddTimeDialog] = useState(false);
+  const [, setLoadingTimeEntries] = useState(false);
+  const [, setAddingTimeEntry] = useState(false);
+  const [, setEditingTimeEntry] = useState<string | null>(null);
+  const [, setShowAddTimeDialog] = useState(false);
   const [newTimeEntry, setNewTimeEntry] = useState({
     userId: currentUserId,
     hours: "",
@@ -161,6 +153,7 @@ export function JobDetailView({
     setScheduledEndDate(initialJob.scheduled_end_date || "");
     setScheduledTime(initialJob.scheduled_time || "");
     setIsMultiDay(!!initialJob.scheduled_end_date);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialJob.id, initialJob.scheduled_date, initialJob.scheduled_end_date, initialJob.scheduled_time, initialJob.progress_percentage, initialMaterials.length, estimates.length, invoices.length]);
 
   // Real-time subscription for estimate updates
@@ -383,37 +376,38 @@ export function JobDetailView({
       supabase.removeChannel(channel);
     };
   }, [job.id, supabase]);
-  const [saving, setSaving] = useState(false);
-  const [newMaterial, setNewMaterial] = useState("");
-  const [showCommonMaterials, setShowCommonMaterials] = useState(false);
-  const notesTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [, setSaving] = useState(false);
+  const [, setNewMaterial] = useState("");
+  const [, setShowCommonMaterials] = useState(false);
+  const _notesTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   
   // Inline add forms
-  const [showAddEstimate, setShowAddEstimate] = useState(false);
-  const [showAddInvoice, setShowAddInvoice] = useState(false);
+  const [, setShowAddEstimate] = useState(false);
+  const [, setShowAddInvoice] = useState(false);
   const [estimateLineItems, setEstimateLineItems] = useState<Array<{ title: string; price: string }>>([{ title: "", price: "" }]);
   const [newInvoiceAmount, setNewInvoiceAmount] = useState("");
-  const [addingEstimate, setAddingEstimate] = useState(false);
-  const [addingInvoice, setAddingInvoice] = useState(false);
+  const [, setAddingEstimate] = useState(false);
+  const [, setAddingInvoice] = useState(false);
   const [messageTemplatesOpen, setMessageTemplatesOpen] = useState(false);
   const [selectedEstimate, setSelectedEstimate] = useState<EstimateWithLineItems | null>(null);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [showMaterialForm, setShowMaterialForm] = useState(false);
-  const [showShareDialog, setShowShareDialog] = useState(false);
+  const [, setShowShareDialog] = useState(false);
   const [showShareScheduleDialog, setShowShareScheduleDialog] = useState(false);
   const [showDuplicateDialog, setShowDuplicateDialog] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
-  const [showTemplateDialog, setShowTemplateDialog] = useState(false);
-  const [scheduleToken, setScheduleToken] = useState<string | null>((job as any).schedule_token || null);
-  const [loadingScheduleToken, setLoadingScheduleToken] = useState(false);
-  const [templateDialogMode, setTemplateDialogMode] = useState<"save" | "manage">("save");
+  const [, setShowTemplateDialog] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [scheduleToken, setScheduleToken] = useState<string | null>((job as Record<string, unknown>).schedule_token as string | null);
+  const [, setLoadingScheduleToken] = useState(false);
+  const [, setTemplateDialogMode] = useState<"save" | "manage">("save");
   const [showCopyDialog, setShowCopyDialog] = useState(false);
   const [copyDialogType, setCopyDialogType] = useState<"estimate" | "invoice" | "materials" | "reminder" | "schedule-confirmation">("estimate");
   const [materialType, setMaterialType] = useState<"paint" | "generic">("generic");
   const [editingCostId, setEditingCostId] = useState<string | null>(null);
   const [editingSchedule, setEditingSchedule] = useState(!job.scheduled_date);
   const [editingAssignment, setEditingAssignment] = useState(false);
-  const [editingTracking, setEditingTracking] = useState(false);
+  const [, setEditingTracking] = useState(false);
   const [editingNotes, setEditingNotes] = useState(false);
   const [editingMaterials, setEditingMaterials] = useState(false);
   const [editingPhotos, setEditingPhotos] = useState(false);
@@ -2286,7 +2280,7 @@ export function JobDetailView({
                                 </span>
                               </div>
                               <p className="text-xs text-muted-foreground">
-                                ⚠️ Materials only - doesn't include labor or overhead
+                                ⚠️ Materials only - doesn&apos;t include labor or overhead
                               </p>
                             </>
                           )}
@@ -2325,7 +2319,7 @@ export function JobDetailView({
                 ) : (
                   <div className="flex items-center gap-2">
                     <Label htmlFor="assignedUser" className="text-sm font-medium whitespace-nowrap shrink-0">
-                      Who's working on this?
+                      Who&apos;s working on this?
                     </Label>
                     <Select
                       id="assignedUser"
@@ -2781,7 +2775,7 @@ export function JobDetailView({
             {!scheduledDate || !scheduledTime ? (
               <div className="rounded-lg border bg-muted/50 p-4 text-center text-muted-foreground">
                 <Calendar className="mx-auto h-8 w-8 mb-2" />
-                <p>This job hasn't been scheduled yet.</p>
+                <p>This job hasn&apos;t been scheduled yet.</p>
                 <p className="text-sm mt-1">Add a scheduled date and time first.</p>
               </div>
             ) : !getScheduleLink() ? (
@@ -2865,7 +2859,7 @@ export function JobDetailView({
               <p className="text-sm font-medium text-warning">Will NOT be copied:</p>
               <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
                 <li>Schedule (will be unscheduled)</li>
-                <li>Status (will reset to "new")</li>
+                <li>Status (will reset to &quot;new&quot;)</li>
                 <li>Estimates & invoices</li>
               </ul>
             </div>

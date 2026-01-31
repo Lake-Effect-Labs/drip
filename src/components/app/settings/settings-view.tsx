@@ -73,8 +73,8 @@ export function SettingsView({
   const supabase = createClient();
 
   const [company, setCompany] = useState(initialCompany);
-  const [inviteLinks, setInviteLinks] = useState(initialLinks);
-  const [locations, setLocations] = useState(initialLocations);
+  const [, setInviteLinks] = useState(initialLinks);
+  const [, setLocations] = useState(initialLocations);
   const [origin, setOrigin] = useState<string>("");
 
   // Safely get origin after component mounts (client-side only)
@@ -227,6 +227,7 @@ export function SettingsView({
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async function handleCreateInviteLink() {
     try {
       const token = generateToken(24);
@@ -256,6 +257,7 @@ export function SettingsView({
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async function handleRevokeInvite(linkId: string) {
     const { error } = await supabase
       .from("invite_links")
@@ -294,6 +296,7 @@ export function SettingsView({
     addToast("User removed", "success");
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   function openLocationDialog(location?: PickupLocation) {
     if (location) {
       setEditingLocation(location);
@@ -362,6 +365,7 @@ export function SettingsView({
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async function handleDeleteLocation(locationId: string) {
     if (!confirm("Delete this location?")) return;
 
@@ -494,6 +498,8 @@ export function SettingsView({
     commissionPercent: number;
     totalReferrals: number;
     totalConversions: number;
+    activeSubscriberCount: number;
+    pendingPayout: number;
     isActive: boolean;
   } | null>(null);
   const [editingCode, setEditingCode] = useState(false);
@@ -1183,7 +1189,7 @@ export function SettingsView({
                         <h3 className="font-semibold text-lg">Your Stats</h3>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                         <div className="rounded-lg bg-muted/50 p-4 text-center">
                           <p className="text-3xl font-bold text-primary">
                             {affiliateCode.totalReferrals}
@@ -1193,11 +1199,27 @@ export function SettingsView({
                           </p>
                         </div>
                         <div className="rounded-lg bg-muted/50 p-4 text-center">
-                          <p className="text-3xl font-bold text-green-600">
+                          <p className="text-3xl font-bold text-blue-600">
                             {affiliateCode.totalConversions}
                           </p>
                           <p className="text-sm text-muted-foreground mt-1">
-                            Conversions
+                            Signups
+                          </p>
+                        </div>
+                        <div className="rounded-lg bg-muted/50 p-4 text-center">
+                          <p className="text-3xl font-bold text-green-600">
+                            {affiliateCode.activeSubscriberCount}
+                          </p>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            Active Subs
+                          </p>
+                        </div>
+                        <div className="rounded-lg bg-muted/50 p-4 text-center">
+                          <p className="text-3xl font-bold text-green-600">
+                            ${(affiliateCode.activeSubscriberCount * 5).toFixed(0)}
+                          </p>
+                          <p className="text-sm text-muted-foreground mt-1">
+                            Your Payout/mo
                           </p>
                         </div>
                       </div>

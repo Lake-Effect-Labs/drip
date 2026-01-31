@@ -101,7 +101,7 @@ export async function POST(request: Request) {
     await supabase
       .from("creator_codes")
       .update({
-        total_referrals: (creatorCode as any).total_referrals + 1,
+        total_referrals: (creatorCode.total_referrals ?? 0) + 1,
         updated_at: new Date().toISOString(),
       })
       .eq("id", creatorCode.id);
