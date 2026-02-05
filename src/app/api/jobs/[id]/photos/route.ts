@@ -22,6 +22,29 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Verify user belongs to a company
+    const { data: companyUser } = await supabase
+      .from("company_users")
+      .select("company_id")
+      .eq("user_id", user.id)
+      .single();
+
+    if (!companyUser) {
+      return NextResponse.json({ error: "No company found" }, { status: 404 });
+    }
+
+    // Verify job belongs to user's company
+    const { data: job } = await supabase
+      .from("jobs")
+      .select("id")
+      .eq("id", jobId)
+      .eq("company_id", companyUser.company_id)
+      .single();
+
+    if (!job) {
+      return NextResponse.json({ error: "Job not found" }, { status: 404 });
+    }
+
     // Get photos for the job
     const { data: photos, error } = await supabase
       .from("job_photos")

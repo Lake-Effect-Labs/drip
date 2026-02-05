@@ -2,8 +2,11 @@ import { NextResponse } from "next/server";
 import { getStripe } from "@/lib/stripe";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/server";
+import { rateLimit, getClientIp } from "@/lib/rate-limit";
 
 export async function POST(request: Request) {
+  const limited = rateLimit(getClientIp(request), 5, 60_000, "checkout");
+  if (limited) return limited;
   // Check Stripe configuration
   const priceId = process.env.STRIPE_PRICE_ID;
   if (!priceId) {

@@ -3,6 +3,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const mockAdminFrom = vi.fn();
 const mockAdminRpc = vi.fn();
 
+vi.mock("@/lib/rate-limit", () => ({
+  rateLimit: vi.fn().mockReturnValue(null),
+  getClientIp: vi.fn().mockReturnValue("test-ip"),
+}));
+
 vi.mock("@/lib/supabase/server", () => ({
   createAdminClient: vi.fn(() => ({
     from: (table: string) => mockAdminFrom(table),

@@ -16,6 +16,11 @@ vi.mock("@/lib/supabase/server", () => ({
   })),
 }));
 
+vi.mock("@/lib/rate-limit", () => ({
+  rateLimit: vi.fn().mockReturnValue(null),
+  getClientIp: vi.fn().mockReturnValue("test-ip"),
+}));
+
 vi.mock("@/lib/stripe", () => ({
   getStripe: vi.fn(() => ({
     customers: { create: mockStripeCustomersCreate },

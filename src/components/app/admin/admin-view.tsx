@@ -177,6 +177,14 @@ export function AdminView({ companies }: AdminViewProps) {
           </div>
         </div>
 
+        {/* Quick links */}
+        <div className="mb-4">
+          <a href="/app/admin/commissions" className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline">
+            <Gift className="h-4 w-4" />
+            Commission Payouts
+          </a>
+        </div>
+
         {/* Search */}
         <div className="flex items-center gap-2 mb-4">
           <Search className="h-4 w-4 text-muted-foreground" />

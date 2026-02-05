@@ -869,6 +869,22 @@ export function SettingsView({
               </p>
             </div>
 
+            <div className="rounded-lg border bg-card p-4 space-y-2">
+              <h3 className="font-semibold flex items-center gap-2">
+                <Edit3 className="h-4 w-4" />
+                Message Templates
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                Customize the SMS and email templates sent to your customers.
+              </p>
+              <a href="/app/settings/templates">
+                <Button variant="outline" size="sm">
+                  <ExternalLink className="mr-1.5 h-3 w-3" />
+                  Manage Templates
+                </Button>
+              </a>
+            </div>
+
             <Button onClick={handleSaveCompany} loading={savingCompany}>
               Save Company Settings
             </Button>

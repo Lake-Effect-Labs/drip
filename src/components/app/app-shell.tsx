@@ -13,6 +13,7 @@ import {
   UserCircle,
   Calendar,
   Shield,
+  Megaphone,
 } from "lucide-react";
 import { NotificationBell } from "@/components/app/notification-bell";
 
@@ -30,21 +31,24 @@ interface AppShellProps {
   };
   isOwner: boolean;
   isSuperAdmin?: boolean;
+  isAffiliate?: boolean;
 }
 
 // All nav items
 const allNavItems = [
-  { href: "/app/board", label: "Board", icon: LayoutGrid, ownerOnly: false, adminOnly: false },
-  { href: "/app/schedule", label: "Schedule", icon: Calendar, ownerOnly: false, adminOnly: false },
-  { href: "/app/customers", label: "Customers", icon: UserCircle, ownerOnly: false, adminOnly: false },
-  { href: "/app/settings", label: "Settings", icon: Settings, ownerOnly: true, adminOnly: false },
-  { href: "/app/admin", label: "Admin", icon: Shield, ownerOnly: false, adminOnly: true },
+  { href: "/app/board", label: "Board", icon: LayoutGrid, ownerOnly: false, adminOnly: false, affiliateOnly: false },
+  { href: "/app/schedule", label: "Schedule", icon: Calendar, ownerOnly: false, adminOnly: false, affiliateOnly: false },
+  { href: "/app/customers", label: "Customers", icon: UserCircle, ownerOnly: false, adminOnly: false, affiliateOnly: false },
+  { href: "/app/settings", label: "Settings", icon: Settings, ownerOnly: true, adminOnly: false, affiliateOnly: false },
+  { href: "/app/admin", label: "Admin", icon: Shield, ownerOnly: false, adminOnly: true, affiliateOnly: false },
+  { href: "/app/affiliate", label: "Affiliate", icon: Megaphone, ownerOnly: false, adminOnly: false, affiliateOnly: true },
 ];
 
-export function AppShell({ children, company, isOwner, isSuperAdmin = false }: AppShellProps) {
-  // Filter nav items based on ownership and admin status
+export function AppShell({ children, company, isOwner, isSuperAdmin = false, isAffiliate = false }: AppShellProps) {
+  // Filter nav items based on ownership, admin, and affiliate status
   const navItems = allNavItems.filter(item => {
     if (item.adminOnly) return isSuperAdmin;
+    if (item.affiliateOnly) return isAffiliate;
     if (item.ownerOnly) return isOwner;
     return true;
   });

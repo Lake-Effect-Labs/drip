@@ -44,12 +44,9 @@ await supabase.from("creator_codes").update({
 
 ---
 
-### Issue 5: Add rate limiting to auth and affiliate endpoints
+### ~~Issue 5: Add rate limiting to auth and affiliate endpoints~~ DONE
 **Labels:** `security`, `improvement`
-
-No API routes have rate limiting. Login, signup, and affiliate endpoints are vulnerable to brute force and abuse (code enumeration, artificial referral inflation).
-
-**Fix:** Add middleware-level rate limiting (e.g., `next-rate-limit` or Vercel Edge Config rate limiting).
+**Fix:** Created `src/lib/rate-limit.ts` with in-memory sliding-window rate limiter. Applied to affiliate GET (30/min), affiliate POST (10/min), and checkout POST (5/min). Auth happens client-side via Supabase SDK.
 
 ---
 
@@ -139,16 +136,9 @@ No API routes have rate limiting. Login, signup, and affiliate endpoints are vul
 
 ---
 
-### Issue 12: Message templates editing UI
+### ~~Issue 12: Message templates editing UI~~ DONE
 **Labels:** `feature`, `medium`
-
-**Why:** 5 default templates are created on company signup (`message_templates` table) but there's no UI to view or edit them. The templates support variables like `{{customer_name}}`, `{{job_date}}`, `{{amount}}`.
-
-**What to build:**
-- Templates management page in settings
-- Edit template text with variable insertion
-- Preview with sample data
-- Add custom templates
+**Fix:** Created `/api/message-templates` (GET/PUT/POST) and `/app/settings/templates` page. Edit existing templates, create custom ones, insert variables via click, preview with sample data. Linked from Settings > Company tab.
 
 ---
 
@@ -164,29 +154,15 @@ No API routes have rate limiting. Login, signup, and affiliate endpoints are vul
 
 ---
 
-### Issue 14: Affiliate creator dashboard
+### ~~Issue 14: Affiliate creator dashboard~~ DONE
 **Labels:** `feature`, `medium`, `affiliate`
-
-**Why:** `/api/affiliate/me` endpoint returns full stats (code, referrals, conversions, commission) but there's no UI for affiliates to view their performance. They have to ask an admin.
-
-**What to build:**
-- Dashboard page at `/app/affiliate` for users with `is_affiliate` flag
-- Show referral code, total referrals, conversions, commission earned
-- Shareable referral link
-- Monthly breakdown chart
+**Fix:** Created `/app/affiliate` page with stats cards (referrals, conversions, active subscribers, pending payout), shareable referral link with copy button, recent referrals list, and create-code flow. Sidebar nav item appears for users with `is_affiliate` flag.
 
 ---
 
-### Issue 15: Commission payout tracking workflow
+### ~~Issue 15: Commission payout tracking workflow~~ DONE
 **Labels:** `feature`, `medium`, `affiliate`
-
-**Why:** The `referrals` table has `commission_owed`, `commission_paid`, `commission_paid_at` columns but nothing in the codebase ever sets `commission_paid = true`. There's no way to track or process payouts.
-
-**What to build:**
-- Admin view of unpaid commissions grouped by affiliate
-- Bulk "mark as paid" action
-- Payment history per affiliate
-- Monthly payout report export
+**Fix:** Created `/api/admin/commissions` (GET lists unpaid/paid grouped by affiliate, POST bulk marks as paid). Admin page at `/app/admin/commissions` with summary cards, per-affiliate unpaid/paid breakdown, "Mark All Paid" button. Linked from main admin dashboard.
 
 ---
 
@@ -224,23 +200,12 @@ No API routes have rate limiting. Login, signup, and affiliate endpoints are vul
 
 ---
 
-### Issue 19: Add cross-company authorization tests
+### ~~Issue 19: Add cross-company authorization tests~~ DONE
 **Labels:** `testing`, `security`
-
-Current tests verify 403 for wrong company, but don't test:
-- User A trying to access User B's job photos via direct URL
-- User accessing estimate materials from another company's estimate
-- Company owner deleting a user from a different company
-- Session expiration mid-request
-- RLS bypass attempts on GET endpoints that only rely on Supabase RLS
+**Fix:** Added 10 tests across photos and estimate-materials endpoints verifying: auth required, no-company 404, cross-company job/estimate 404, company_id filter applied, authorized access returns data.
 
 ---
 
-### Issue 20: Add explicit company verification on RLS-dependent GET endpoints
+### ~~Issue 20: Add explicit company verification on RLS-dependent GET endpoints~~ DONE
 **Labels:** `security`, `improvement`
-
-Two GET endpoints rely purely on Supabase RLS for authorization without code-level company checks:
-- `GET /api/jobs/[id]/photos` (line 8-48)
-- `GET /api/estimate-materials/[id]` (line 10-71)
-
-While RLS correctly prevents cross-company access today, defense-in-depth dictates adding explicit `company_id` verification in the route handler as well.
+**Fix:** Added `company_users` lookup + `company_id` filter to both `GET /api/jobs/[id]/photos` and `GET /api/estimate-materials/[id]`.

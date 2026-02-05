@@ -73,6 +73,7 @@ export default async function AppLayout({
         .maybeSingle();
 
       const isSuperAdmin = profile?.is_super_admin ?? false;
+      const isAffiliate = profile?.is_affiliate ?? false;
 
       return (
         <AppShell
@@ -88,6 +89,7 @@ export default async function AppLayout({
           }}
           isOwner={isOwner}
           isSuperAdmin={isSuperAdmin}
+          isAffiliate={isAffiliate}
         >
           {children}
         </AppShell>
@@ -120,6 +122,7 @@ export default async function AppLayout({
     .maybeSingle();
 
   const isSuperAdmin = profile?.is_super_admin ?? false;
+  const isAffiliate = profile?.is_affiliate ?? false;
 
   return (
     <AppShell
@@ -135,6 +138,7 @@ export default async function AppLayout({
       }}
       isOwner={isOwner}
       isSuperAdmin={isSuperAdmin}
+      isAffiliate={isAffiliate}
     >
       {children}
     </AppShell>
