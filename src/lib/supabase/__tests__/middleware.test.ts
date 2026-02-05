@@ -13,17 +13,16 @@ vi.mock("@supabase/ssr", () => ({
 
 // Minimal mock for NextResponse and NextRequest
 const mockRedirect = vi.fn();
-const mockNextResponse = vi.fn();
 
 vi.mock("next/server", () => ({
   NextResponse: {
-    next: vi.fn().mockImplementation(({ request }: any) => ({
+    next: vi.fn().mockImplementation(({ request }: { request: unknown }) => ({
       cookies: {
         set: vi.fn(),
       },
       request,
     })),
-    redirect: vi.fn().mockImplementation((url: any) => {
+    redirect: vi.fn().mockImplementation((url: { pathname: string }) => {
       mockRedirect(url.pathname);
       return { type: "redirect", url: url.pathname };
     }),
@@ -41,7 +40,7 @@ function makeNextRequest(pathname: string) {
       pathname,
       clone: () => ({ ...url, pathname }),
     },
-  } as any;
+  };
 }
 
 describe("updateSession middleware", () => {
@@ -53,7 +52,7 @@ describe("updateSession middleware", () => {
     mockGetUser.mockResolvedValue({ data: { user: null } });
 
     const { updateSession } = await import("../middleware");
-    const result = await updateSession(makeNextRequest("/app/board"));
+    await updateSession(makeNextRequest("/app/board") as never);
 
     expect(mockRedirect).toHaveBeenCalledWith("/login");
   });
@@ -62,7 +61,7 @@ describe("updateSession middleware", () => {
     mockGetUser.mockResolvedValue({ data: { user: null } });
 
     const { updateSession } = await import("../middleware");
-    const result = await updateSession(makeNextRequest("/login"));
+    await updateSession(makeNextRequest("/login") as never);
 
     // Should not redirect - returns the supabaseResponse
     expect(mockRedirect).not.toHaveBeenCalled();
@@ -72,7 +71,7 @@ describe("updateSession middleware", () => {
     mockGetUser.mockResolvedValue({ data: { user: null } });
 
     const { updateSession } = await import("../middleware");
-    const result = await updateSession(makeNextRequest("/signup"));
+    await updateSession(makeNextRequest("/signup") as never);
 
     expect(mockRedirect).not.toHaveBeenCalled();
   });
@@ -83,7 +82,7 @@ describe("updateSession middleware", () => {
     });
 
     const { updateSession } = await import("../middleware");
-    const result = await updateSession(makeNextRequest("/app/board"));
+    await updateSession(makeNextRequest("/app/board") as never);
 
     expect(mockRedirect).not.toHaveBeenCalled();
   });
@@ -94,7 +93,7 @@ describe("updateSession middleware", () => {
     });
 
     const { updateSession } = await import("../middleware");
-    const result = await updateSession(makeNextRequest("/signup"));
+    await updateSession(makeNextRequest("/signup") as never);
 
     expect(mockRedirect).not.toHaveBeenCalled();
   });
@@ -105,7 +104,7 @@ describe("updateSession middleware", () => {
     });
 
     const { updateSession } = await import("../middleware");
-    const result = await updateSession(makeNextRequest("/login"));
+    await updateSession(makeNextRequest("/login") as never);
 
     // Per the code, login page allows authenticated users to stay
     expect(mockRedirect).not.toHaveBeenCalled();
@@ -117,7 +116,7 @@ describe("updateSession middleware", () => {
     });
 
     const { updateSession } = await import("../middleware");
-    const result = await updateSession(makeNextRequest("/join/abc123"));
+    await updateSession(makeNextRequest("/join/abc123") as never);
 
     expect(mockRedirect).not.toHaveBeenCalled();
   });
@@ -126,7 +125,7 @@ describe("updateSession middleware", () => {
     mockGetUser.mockResolvedValue({ data: { user: null } });
 
     const { updateSession } = await import("../middleware");
-    const result = await updateSession(makeNextRequest("/"));
+    await updateSession(makeNextRequest("/") as never);
 
     expect(mockRedirect).not.toHaveBeenCalled();
   });
@@ -135,7 +134,7 @@ describe("updateSession middleware", () => {
     mockGetUser.mockResolvedValue({ data: { user: null } });
 
     const { updateSession } = await import("../middleware");
-    const result = await updateSession(makeNextRequest("/app/settings"));
+    await updateSession(makeNextRequest("/app/settings") as never);
 
     expect(mockRedirect).toHaveBeenCalledWith("/login");
   });

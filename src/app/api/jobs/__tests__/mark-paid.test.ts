@@ -90,7 +90,6 @@ describe("POST /api/jobs/[id]/mark-paid", () => {
     const response = await POST(makeRequest({ paymentMethod: "cash" }), {
       params: Promise.resolve({ id: "job-1" }),
     });
-    const json = await response.json();
 
     expect(response.status).toBe(403);
   });

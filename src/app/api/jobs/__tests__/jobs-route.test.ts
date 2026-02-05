@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { NextResponse } from "next/server";
 
 // Mock the Supabase server module
 const mockAuthGetUser = vi.fn();

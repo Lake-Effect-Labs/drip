@@ -177,7 +177,6 @@ describe("POST /api/webhooks/stripe", () => {
 
     const { POST } = await import("../stripe/route");
     const response = await POST(makeRequest("raw-body"));
-    const json = await response.json();
 
     expect(response.status).toBe(200);
     expect(updatePayload).toEqual({
@@ -215,7 +214,6 @@ describe("POST /api/webhooks/stripe", () => {
 
     const { POST } = await import("../stripe/route");
     const response = await POST(makeRequest("raw-body"));
-    const json = await response.json();
 
     expect(response.status).toBe(200);
     expect(statusUpdated).toBe(true);
@@ -286,7 +284,6 @@ describe("POST /api/webhooks/stripe", () => {
 
     const { POST } = await import("../stripe/route");
     const response = await POST(makeRequest("raw-body"));
-    const json = await response.json();
 
     expect(response.status).toBe(200);
     expect(referralUpdated).toBe(true);

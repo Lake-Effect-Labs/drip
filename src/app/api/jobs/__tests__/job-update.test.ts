@@ -140,7 +140,7 @@ describe("PATCH /api/jobs/[id]", () => {
     });
 
     const { PATCH } = await import("../[id]/route");
-    const response = await PATCH(
+    await PATCH(
       makeRequest({
         title: "Updated",
         company_id: "malicious-id", // Should be filtered out

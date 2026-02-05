@@ -162,8 +162,6 @@ describe("POST /api/affiliate", () => {
   });
 
   it("creates new referral record with 30-day expiry", async () => {
-    let insertedData: any = null;
-
     mockAdminFrom.mockImplementation((table: string) => {
       if (table === "creator_codes") {
         const c: any = {
@@ -187,10 +185,7 @@ describe("POST /api/affiliate", () => {
           select: vi.fn().mockReturnThis(),
           eq: vi.fn().mockReturnThis(),
           maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
-          insert: vi.fn().mockImplementation((data: any) => {
-            insertedData = data;
-            return Promise.resolve({ error: null });
-          }),
+          insert: vi.fn().mockReturnValue(Promise.resolve({ error: null })),
           then: (cb: any) => Promise.resolve({ data: null, error: null }).then(cb),
         };
         return c;

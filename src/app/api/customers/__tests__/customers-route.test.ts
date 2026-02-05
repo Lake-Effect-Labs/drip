@@ -111,7 +111,6 @@ describe("POST /api/customers", () => {
         body: JSON.stringify({ company_id: "c1", name: "Test" }),
       })
     );
-    const json = await response.json();
 
     expect(response.status).toBe(401);
   });
@@ -157,7 +156,6 @@ describe("POST /api/customers", () => {
         body: JSON.stringify({ company_id: "c1", name: "Test Customer" }),
       })
     );
-    const json = await response.json();
 
     expect(response.status).toBe(403);
   });

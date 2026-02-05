@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { calculateTotalGallons, groupMaterialsByProduct } from "../estimate-materials";
 
 // We test the pure functions directly. The async functions that use createAdminClient

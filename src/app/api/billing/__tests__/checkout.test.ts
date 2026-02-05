@@ -72,7 +72,6 @@ describe("POST /api/billing/checkout", () => {
 
     const { POST } = await import("../checkout/route");
     const response = await POST(makeRequest());
-    const json = await response.json();
 
     expect(response.status).toBe(401);
   });
@@ -91,7 +90,6 @@ describe("POST /api/billing/checkout", () => {
 
     const { POST } = await import("../checkout/route");
     const response = await POST(makeRequest());
-    const json = await response.json();
 
     expect(response.status).toBe(404);
   });
@@ -184,7 +182,7 @@ describe("POST /api/billing/checkout", () => {
     });
 
     const { POST } = await import("../checkout/route");
-    const response = await POST(makeRequest());
+    await POST(makeRequest());
 
     expect(mockStripeCustomersCreate).toHaveBeenCalledWith({
       email: "a@b.com",
@@ -226,7 +224,7 @@ describe("POST /api/billing/checkout", () => {
     });
 
     const { POST } = await import("../checkout/route");
-    const response = await POST(
+    await POST(
       makeRequest({ referralCode: "PAINTPRO", visitorId: "v1" })
     );
 

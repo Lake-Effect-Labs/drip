@@ -43,7 +43,6 @@ describe("PUT /api/jobs/[id]/progress", () => {
     const response = await PUT(makeRequest({ progress_percentage: 50 }) as any, {
       params: Promise.resolve({ id: "job-1" }),
     });
-    const json = await response.json();
 
     expect(response.status).toBe(401);
   });
@@ -117,7 +116,6 @@ describe("PUT /api/jobs/[id]/progress", () => {
     const response = await PUT(makeRequest({ progress_percentage: "fifty" }) as any, {
       params: Promise.resolve({ id: "job-1" }),
     });
-    const json = await response.json();
 
     expect(response.status).toBe(400);
   });
@@ -141,7 +139,6 @@ describe("PUT /api/jobs/[id]/progress", () => {
     const response = await PUT(makeRequest({ progress_percentage: 50 }) as any, {
       params: Promise.resolve({ id: "job-1" }),
     });
-    const json = await response.json();
 
     expect(response.status).toBe(403);
   });
