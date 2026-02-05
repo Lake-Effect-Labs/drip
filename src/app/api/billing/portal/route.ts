@@ -54,9 +54,8 @@ export async function POST(request: Request) {
       );
     }
 
-    // Build return URL - use request origin as fallback
-    const origin = request.headers.get("origin") || request.headers.get("referer")?.split("/").slice(0, 3).join("/");
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || origin || "https://matte.biz";
+    // Build return URL - only use trusted sources
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://matte.biz";
 
     // Create billing portal session
     const session = await stripe.billingPortal.sessions.create({

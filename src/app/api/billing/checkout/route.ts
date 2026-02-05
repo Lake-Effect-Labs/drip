@@ -137,9 +137,8 @@ export async function POST(request: Request) {
       discounts = [{ coupon: couponId }];
     }
 
-    // Build success/cancel URLs - use request origin as fallback
-    const origin = request.headers.get("origin") || request.headers.get("referer")?.split("/").slice(0, 3).join("/");
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || origin || "https://matte.biz";
+    // Build success/cancel URLs - only use trusted sources
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://matte.biz";
 
     // Create checkout session
     const session = await stripe.checkout.sessions.create({

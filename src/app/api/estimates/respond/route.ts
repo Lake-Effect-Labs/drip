@@ -24,12 +24,37 @@ export async function POST(request: Request) {
 
     const adminSupabase = createAdminClient();
 
-    // Find the job by its unified_job_token
-    const { data: job } = await adminSupabase
+    // Find the job — token could be a unified_job_token OR an estimate public_token
+    let job: { id: string; company_id: string } | null = null;
+
+    // Try unified_job_token first
+    const { data: jobByToken } = await adminSupabase
       .from("jobs")
       .select("id, company_id")
       .eq("unified_job_token", token)
-      .single();
+      .maybeSingle();
+
+    if (jobByToken) {
+      job = jobByToken;
+    } else {
+      // Try estimate public_token — find the estimate, then get its job
+      const { data: estimateByToken } = await adminSupabase
+        .from("estimates")
+        .select("job_id")
+        .eq("public_token", token)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (estimateByToken?.job_id) {
+        const { data: jobFromEstimate } = await adminSupabase
+          .from("jobs")
+          .select("id, company_id")
+          .eq("id", estimateByToken.job_id)
+          .single();
+        job = jobFromEstimate;
+      }
+    }
 
     if (!job) {
       return NextResponse.json({ error: "Invalid token" }, { status: 404 });
@@ -90,12 +115,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: true, status: "accepted" });
     } else {
       // Update estimate to denied
+      // Truncate denial reason to prevent abuse
+      const safeDenialReason = typeof denialReason === "string"
+        ? denialReason.slice(0, 500)
+        : null;
+
       const { error: updateError } = await adminSupabase
         .from("estimates")
         .update({
           status: "denied",
           denied_at: now,
-          denial_reason: denialReason || null,
+          denial_reason: safeDenialReason,
           accepted_at: null,
         })
         .eq("id", estimate.id);
