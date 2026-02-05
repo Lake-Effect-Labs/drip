@@ -42,11 +42,6 @@ function chain(resolvedValue: any) {
 // Helper: mock webhook_events table for idempotency (not a duplicate)
 function webhookEventsChain() {
   return {
-    select: vi.fn().mockReturnValue({
-      eq: vi.fn().mockReturnValue({
-        maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
-      }),
-    }),
     insert: vi.fn().mockResolvedValue({ error: null }),
   };
 }
@@ -96,13 +91,8 @@ describe("POST /api/webhooks/stripe", () => {
     mockAdminFrom.mockImplementation((table: string) => {
       if (table === "webhook_events") {
         return {
-          select: vi.fn().mockReturnValue({
-            eq: vi.fn().mockReturnValue({
-              maybeSingle: vi.fn().mockResolvedValue({
-                data: { event_id: "evt_duplicate" },
-                error: null,
-              }),
-            }),
+          insert: vi.fn().mockResolvedValue({
+            error: { code: "23505", message: "duplicate key value violates unique constraint" },
           }),
         };
       }

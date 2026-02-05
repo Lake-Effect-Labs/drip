@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { InsertTables } from "@/types/database";
 import { recalculateEstimateTotals } from "@/lib/estimate-helpers";
+import { requireActiveSubscription } from "@/lib/subscription";
 
 /**
  * GET /api/estimate-materials/[id]
@@ -116,6 +117,9 @@ export async function POST(
         { status: 404 }
       );
     }
+
+    const subCheck = await requireActiveSubscription(estimate.company_id);
+    if (subCheck) return subCheck;
 
     // Prevent modifications to accepted or denied estimates
     if (estimate.status === "accepted") {

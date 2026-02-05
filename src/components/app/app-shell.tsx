@@ -32,6 +32,7 @@ interface AppShellProps {
   isOwner: boolean;
   isSuperAdmin?: boolean;
   isAffiliate?: boolean;
+  subscriptionExpired?: boolean;
 }
 
 // All nav items
@@ -44,7 +45,7 @@ const allNavItems = [
   { href: "/app/affiliate", label: "Affiliate", icon: Megaphone, ownerOnly: false, adminOnly: false, affiliateOnly: true },
 ];
 
-export function AppShell({ children, company, isOwner, isSuperAdmin = false, isAffiliate = false }: AppShellProps) {
+export function AppShell({ children, company, isOwner, isSuperAdmin = false, isAffiliate = false, subscriptionExpired = false }: AppShellProps) {
   // Filter nav items based on ownership, admin, and affiliate status
   const navItems = allNavItems.filter(item => {
     if (item.adminOnly) return isSuperAdmin;
@@ -144,7 +145,19 @@ export function AppShell({ children, company, isOwner, isSuperAdmin = false, isA
       <main className={cn(
         "min-h-screen pb-16 lg:pt-0 lg:pb-0 transition-all duration-300 w-full max-w-full overflow-x-hidden",
         sidebarCollapsed ? "lg:pl-16" : "lg:pl-64"
-      )}>{children}</main>
+      )}>
+        {subscriptionExpired && !pathname.startsWith("/app/upgrade") && !pathname.startsWith("/app/settings") && !pathname.startsWith("/app/admin") ? (
+          <div className="flex items-center justify-center min-h-[60vh] p-6">
+            <div className="max-w-md w-full text-center space-y-4">
+              <h2 className="text-2xl font-bold">Your trial has ended</h2>
+              <p className="text-muted-foreground">Subscribe to keep using Matte for your painting business.</p>
+              <a href="/app/upgrade" className="inline-flex items-center justify-center rounded-lg bg-primary text-primary-foreground px-6 py-3 font-medium hover:bg-primary/90 transition-colors">
+                View Plans
+              </a>
+            </div>
+          </div>
+        ) : children}
+      </main>
 
       {/* Mobile bottom nav */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 flex h-16 items-center justify-around border-t bg-background/95 backdrop-blur-sm safe-area-inset-bottom lg:hidden w-full max-w-full overflow-hidden">

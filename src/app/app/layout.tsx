@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { createClient, createAdminClient } from "@/lib/supabase/server";
 import { AppShell } from "@/components/app/app-shell";
+import { getSubscriptionStatus } from "@/lib/subscription";
 
 export default async function AppLayout({
   children,
@@ -74,6 +75,7 @@ export default async function AppLayout({
 
       const isSuperAdmin = profile?.is_super_admin ?? false;
       const isAffiliate = profile?.is_affiliate ?? false;
+      const sub = await getSubscriptionStatus(company.id);
 
       return (
         <AppShell
@@ -90,6 +92,7 @@ export default async function AppLayout({
           isOwner={isOwner}
           isSuperAdmin={isSuperAdmin}
           isAffiliate={isAffiliate}
+          subscriptionExpired={sub.isExpired}
         >
           {children}
         </AppShell>
@@ -124,6 +127,9 @@ export default async function AppLayout({
   const isSuperAdmin = profile?.is_super_admin ?? false;
   const isAffiliate = profile?.is_affiliate ?? false;
 
+  // Check subscription status — redirect expired trials to upgrade page
+  const sub = await getSubscriptionStatus(company.id);
+
   return (
     <AppShell
       user={{
@@ -139,6 +145,7 @@ export default async function AppLayout({
       isOwner={isOwner}
       isSuperAdmin={isSuperAdmin}
       isAffiliate={isAffiliate}
+      subscriptionExpired={sub.isExpired}
     >
       {children}
     </AppShell>

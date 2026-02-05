@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/server";
 import { createClient } from "@/lib/supabase/server";
+import { requireActiveSubscription } from "@/lib/subscription";
 
 // Get customers for the authenticated user's company
 export async function GET(_request: Request) {
@@ -107,6 +108,9 @@ export async function POST(request: Request) {
         { status: 403 }
       );
     }
+
+    const subCheck = await requireActiveSubscription(company_id);
+    if (subCheck) return subCheck;
 
     // Create customer (using admin client to bypass RLS)
     const { data: customer, error: customerError } = await adminSupabase

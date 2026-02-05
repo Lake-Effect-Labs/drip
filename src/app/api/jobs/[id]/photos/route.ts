@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { requireActiveSubscription } from "@/lib/subscription";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const ALLOWED_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic"];
@@ -98,6 +99,9 @@ export async function POST(
     if (!companyUser) {
       return NextResponse.json({ error: "No company found" }, { status: 404 });
     }
+
+    const subCheck = await requireActiveSubscription(companyUser.company_id);
+    if (subCheck) return subCheck;
 
     // Verify job exists and belongs to company
     const { data: job, error: jobError } = await supabase

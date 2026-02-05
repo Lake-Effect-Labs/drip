@@ -47,22 +47,21 @@ export async function POST(request: Request) {
 
   const supabase = createAdminClient();
 
-  // Idempotency check: skip if we've already processed this event
-  const { data: existingEvent } = await supabase
+  // Atomic idempotency: INSERT and catch PK conflict to avoid TOCTOU race
+  const { error: idempotencyError } = await supabase
     .from("webhook_events")
-    .select("event_id")
-    .eq("event_id", event.id)
-    .maybeSingle();
+    .insert({
+      event_id: event.id,
+      event_type: event.type,
+    });
 
-  if (existingEvent) {
-    return NextResponse.json({ received: true, duplicate: true });
+  if (idempotencyError) {
+    // PK conflict (code 23505) means we already processed this event
+    if (idempotencyError.code === "23505") {
+      return NextResponse.json({ received: true, duplicate: true });
+    }
+    console.error("Error recording webhook event:", idempotencyError);
   }
-
-  // Record this event as being processed
-  await supabase.from("webhook_events").insert({
-    event_id: event.id,
-    event_type: event.type,
-  });
 
   try {
     // Handle different event types

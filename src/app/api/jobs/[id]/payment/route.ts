@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/server";
 import { createClient } from "@/lib/supabase/server";
 import { generateToken } from "@/lib/utils";
 import { recalculateEstimateTotals } from "@/lib/estimate-helpers";
+import { requireActiveSubscription } from "@/lib/subscription";
 
 // Save estimate/payment (uses admin client to bypass RLS)
 export async function POST(
@@ -57,6 +58,9 @@ export async function POST(
         { status: 403 }
       );
     }
+
+    const subCheck = await requireActiveSubscription(job.company_id);
+    if (subCheck) return subCheck;
 
     // Update job payment state
     const { error: jobError } = await adminSupabase

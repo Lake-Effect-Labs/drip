@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/server";
 import { createClient } from "@/lib/supabase/server";
 import { generateToken } from "@/lib/utils";
+import { requireActiveSubscription } from "@/lib/subscription";
 
 // Create job (uses admin client to bypass RLS)
 export async function POST(request: Request) {
@@ -54,31 +55,9 @@ export async function POST(request: Request) {
       );
     }
 
-    // Check subscription status - trial users limited to 1 job
-    const { data: company } = await adminSupabase
-      .from("companies")
-      .select("subscription_status")
-      .eq("id", company_id)
-      .single();
-
-    if (company?.subscription_status === "trialing" || company?.subscription_status === "canceled") {
-      // Count existing jobs for this company
-      const { count } = await adminSupabase
-        .from("jobs")
-        .select("id", { count: "exact", head: true })
-        .eq("company_id", company_id);
-
-      if ((count || 0) >= 1) {
-        return NextResponse.json(
-          {
-            error: "Subscription required",
-            message: "You've used your free job. Subscribe to create more jobs.",
-            code: "SUBSCRIPTION_REQUIRED"
-          },
-          { status: 402 }
-        );
-      }
-    }
+    // Check subscription status (active subscription or non-expired trial required)
+    const subCheck = await requireActiveSubscription(company_id);
+    if (subCheck) return subCheck;
 
     // Generate unified job token for persistent public link
     const unifiedJobToken = generateToken(24);

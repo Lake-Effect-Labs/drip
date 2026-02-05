@@ -1104,6 +1104,54 @@ export interface Database {
         };
         Relationships: [];
       };
+      message_templates: {
+        Row: {
+          id: string;
+          company_id: string;
+          name: string;
+          body: string;
+          variables: string[];
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          company_id: string;
+          name: string;
+          body: string;
+          variables?: string[];
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          company_id?: string;
+          name?: string;
+          body?: string;
+          variables?: string[];
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+      webhook_events: {
+        Row: {
+          event_id: string;
+          event_type: string;
+          processed_at: string;
+        };
+        Insert: {
+          event_id: string;
+          event_type: string;
+          processed_at?: string;
+        };
+        Update: {
+          event_id?: string;
+          event_type?: string;
+          processed_at?: string;
+        };
+        Relationships: [];
+      };
       referrals: {
         Row: {
           id: string;
@@ -1154,6 +1202,18 @@ export interface Database {
       get_user_company_id: {
         Args: Record<string, never>;
         Returns: string | null;
+      };
+      increment_total_conversions: {
+        Args: {
+          code_id: string;
+        };
+        Returns: void;
+      };
+      increment_total_referrals: {
+        Args: {
+          code_id: string;
+        };
+        Returns: void;
       };
       create_company_with_owner: {
         Args: {

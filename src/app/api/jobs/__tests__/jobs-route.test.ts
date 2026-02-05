@@ -101,30 +101,21 @@ describe("POST /api/jobs", () => {
     expect(json.error).toContain("not a member");
   });
 
-  it("returns 402 when trial user has reached job limit", async () => {
+  it("returns 402 when trial has expired", async () => {
     mockAuthGetUser.mockResolvedValue({
       data: { user: { id: "user-1", email: "a@b.com" } },
     });
 
-    const callTracker: Record<string, number> = {};
-
     mockAdminFrom.mockImplementation((table: string) => {
-      callTracker[table] = (callTracker[table] || 0) + 1;
-
       if (table === "company_users") {
         return chain({ data: { company_id: "c1" }, error: null });
       }
       if (table === "companies") {
+        // Expired trial (trial_ends_at in the past)
         return chain({
-          data: { subscription_status: "trialing" },
+          data: { subscription_status: "trialing", trial_ends_at: "2020-01-01T00:00:00Z" },
           error: null,
         });
-      }
-      if (table === "jobs") {
-        // Simulate existing job count >= 1
-        const c = chain({ data: null, error: null, count: 1 });
-        c.select = vi.fn().mockReturnValue(c);
-        return c;
       }
       return chain({ data: null, error: null });
     });
@@ -135,7 +126,7 @@ describe("POST /api/jobs", () => {
     );
     const json = await response.json();
     expect(response.status).toBe(402);
-    expect(json.code).toBe("SUBSCRIPTION_REQUIRED");
+    expect(json.code).toBe("TRIAL_EXPIRED");
   });
 
   it("successfully creates a job for subscribed user", async () => {

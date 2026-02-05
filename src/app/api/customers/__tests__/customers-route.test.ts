@@ -177,6 +177,9 @@ describe("POST /api/customers", () => {
       if (table === "company_users") {
         return chain({ data: { company_id: "c1" }, error: null });
       }
+      if (table === "companies") {
+        return chain({ data: { subscription_status: "active" }, error: null });
+      }
       if (table === "customers") {
         return chain({ data: mockCustomer, error: null });
       }
