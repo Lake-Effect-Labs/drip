@@ -4,6 +4,7 @@ const mockAuthGetUser = vi.fn();
 const mockAdminFrom = vi.fn();
 const mockStripeCustomersCreate = vi.fn();
 const mockStripeCouponsCreate = vi.fn();
+const mockStripeCouponsRetrieve = vi.fn();
 const mockStripeCheckoutSessionsCreate = vi.fn();
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -18,7 +19,7 @@ vi.mock("@/lib/supabase/server", () => ({
 vi.mock("@/lib/stripe", () => ({
   getStripe: vi.fn(() => ({
     customers: { create: mockStripeCustomersCreate },
-    coupons: { create: mockStripeCouponsCreate },
+    coupons: { create: mockStripeCouponsCreate, retrieve: mockStripeCouponsRetrieve },
     checkout: { sessions: { create: mockStripeCheckoutSessionsCreate } },
   })),
 }));
@@ -218,7 +219,9 @@ describe("POST /api/billing/checkout", () => {
       return chain({ data: null, error: null });
     });
 
-    mockStripeCouponsCreate.mockResolvedValue({ id: "coupon_abc" });
+    // Simulate coupon not existing yet — retrieve throws, create succeeds
+    mockStripeCouponsRetrieve.mockRejectedValue(new Error("No such coupon"));
+    mockStripeCouponsCreate.mockResolvedValue({ id: "matte_referral_5off" });
     mockStripeCheckoutSessionsCreate.mockResolvedValue({
       url: "https://checkout.stripe.com/session/test",
     });
@@ -228,8 +231,10 @@ describe("POST /api/billing/checkout", () => {
       makeRequest({ referralCode: "PAINTPRO", visitorId: "v1" })
     );
 
+    expect(mockStripeCouponsRetrieve).toHaveBeenCalledWith("matte_referral_5off");
     expect(mockStripeCouponsCreate).toHaveBeenCalledWith(
       expect.objectContaining({
+        id: "matte_referral_5off",
         amount_off: 500,
         currency: "usd",
         duration: "once",

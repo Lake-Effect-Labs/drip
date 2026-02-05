@@ -47,6 +47,23 @@ export async function POST(request: Request) {
 
   const supabase = createAdminClient();
 
+  // Idempotency check: skip if we've already processed this event
+  const { data: existingEvent } = await supabase
+    .from("webhook_events")
+    .select("event_id")
+    .eq("event_id", event.id)
+    .maybeSingle();
+
+  if (existingEvent) {
+    return NextResponse.json({ received: true, duplicate: true });
+  }
+
+  // Record this event as being processed
+  await supabase.from("webhook_events").insert({
+    event_id: event.id,
+    event_type: event.type,
+  });
+
   try {
     // Handle different event types
     switch (event.type) {
@@ -106,14 +123,10 @@ export async function POST(request: Request) {
                 console.error("Error updating referral:", referralError);
               }
 
-              // Increment total_conversions on the creator code (replaces DB trigger)
-              await supabase
-                .from("creator_codes")
-                .update({
-                  total_conversions: (creatorCode as any).total_conversions + 1,
-                  updated_at: new Date().toISOString(),
-                })
-                .eq("id", creatorCodeId);
+              // Atomic increment of total_conversions (avoids race conditions)
+              await supabase.rpc("increment_total_conversions", {
+                code_id: creatorCodeId,
+              });
             }
           }
         }

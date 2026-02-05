@@ -1,10 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const mockAdminFrom = vi.fn();
+const mockAdminRpc = vi.fn();
 
 vi.mock("@/lib/supabase/server", () => ({
   createAdminClient: vi.fn(() => ({
     from: (table: string) => mockAdminFrom(table),
+    rpc: mockAdminRpc,
   })),
 }));
 
@@ -83,6 +85,7 @@ describe("GET /api/affiliate", () => {
 describe("POST /api/affiliate", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockAdminRpc.mockResolvedValue({ error: null });
   });
 
   it("returns 400 when code or visitorId is missing", async () => {

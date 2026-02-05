@@ -97,14 +97,10 @@ export async function POST(request: Request) {
       );
     }
 
-    // Increment total_referrals on the creator code (replaces DB trigger)
-    await supabase
-      .from("creator_codes")
-      .update({
-        total_referrals: (creatorCode.total_referrals ?? 0) + 1,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", creatorCode.id);
+    // Atomic increment of total_referrals (avoids race conditions)
+    await supabase.rpc("increment_total_referrals", {
+      code_id: creatorCode.id,
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

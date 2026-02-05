@@ -1,9 +1,10 @@
 # GitHub Issues for Matte Launch Readiness
 
-## Bugs & Code Issues
+## Bugs & Code Issues (FIXED)
 
-### Issue 1: Race condition on affiliate referral/conversion counters
+### ~~Issue 1: Race condition on affiliate referral/conversion counters~~ FIXED
 **Labels:** `bug`, `affiliate`
+**Fix:** Created atomic RPC functions (`increment_total_referrals`, `increment_total_conversions`) in migration 035. Updated affiliate route and webhook to use `supabase.rpc()` instead of read-then-write.
 
 The affiliate system increments `total_referrals` and `total_conversions` counters using a read-then-write pattern with no atomicity:
 
@@ -25,34 +26,21 @@ await supabase.from("creator_codes").update({
 
 ---
 
-### Issue 2: No idempotency check for Stripe webhook events
+### ~~Issue 2: No idempotency check for Stripe webhook events~~ FIXED
 **Labels:** `bug`, `billing`
-
-`src/app/api/webhooks/stripe/route.ts` processes every event without checking duplicates. Stripe retries webhooks up to 3 times.
-
-**Impact:** Subscription status overwrites, duplicate commission calculations, inflated counters.
-
-**Fix:** Track processed event IDs in a `webhook_events` table. Check before processing.
+**Fix:** Created `webhook_events` table in migration 036. Webhook handler now checks for duplicate `event.id` before processing and records every event.
 
 ---
 
-### Issue 3: Admin-created affiliate codes have 0% commission
+### ~~Issue 3: Admin-created affiliate codes have 0% commission~~ FIXED
 **Labels:** `bug`, `affiliate`
-
-`src/app/api/admin/toggle-affiliate/route.ts` line 103 hardcodes `commission_percent: 0`. The webhook calculates `commission_owed = price * 0 / 100 = $0`. Self-created codes via `/api/affiliate/me` correctly default to 20%.
-
-**Impact:** Admin-onboarded affiliates earn $0 commission on conversions.
-
-**Fix:** Set `commission_percent: 20` (or configurable) in the admin toggle endpoint.
+**Fix:** Admin toggle now reads from `AFFILIATE_COMMISSION_PERCENT` env var (default 20%), matching the self-serve flow.
 
 ---
 
-### Issue 4: New Stripe coupon created per checkout session
+### ~~Issue 4: New Stripe coupon created per checkout session~~ FIXED
 **Labels:** `improvement`, `billing`
-
-`src/app/api/billing/checkout/route.ts` line 116 creates a brand new `stripe.coupons.create()` call for every referral checkout. Over time this clutters Stripe with thousands of single-use coupon objects.
-
-**Fix:** Create one reusable coupon or use Stripe Promotion Codes.
+**Fix:** Checkout now uses a single reusable coupon (`matte_referral_5off`). Tries `STRIPE_REFERRAL_COUPON_ID` env var first, then retrieve-or-create with a stable ID.
 
 ---
 
@@ -67,8 +55,9 @@ No API routes have rate limiting. Login, signup, and affiliate endpoints are vul
 
 ## Missing Features - CRITICAL for $25/mo Launch
 
-### Issue 6: PDF estimate/proposal generation
+### ~~Issue 6: PDF estimate/proposal generation~~ PARTIALLY DONE
 **Labels:** `feature`, `critical`, `estimates`
+**Status:** "Save PDF" button added to estimate view. Opens public portal with `?print=true` and auto-triggers browser print dialog. Print CSS added. Remaining: email PDF directly to customer, digital signature.
 
 **Why:** The #1 reason painters buy software. Customers expect professional, branded, itemized PDF proposals they can review, sign, and keep. Currently estimates only exist in the web portal.
 
@@ -82,8 +71,9 @@ No API routes have rate limiting. Login, signup, and affiliate endpoints are vul
 
 ---
 
-### Issue 7: Automated follow-up reminders for unsent/unsigned estimates
+### ~~Issue 7: Automated follow-up reminders for unsent/unsigned estimates~~ PARTIALLY DONE
 **Labels:** `feature`, `critical`, `estimates`
+**Status:** In-app bell notification with follow-up reminders for stale estimates (sent > 2 days, no response). API route + UI component + dismiss functionality. Remaining: SMS/email automation, escalating reminder cadence (2/5/7 days).
 
 **Why:** The single biggest profit leak cited by painting contractors. Painters send estimates and forget to follow up. DripJobs charges $97/mo largely for their automated follow-up sequences.
 
@@ -228,16 +218,9 @@ No API routes have rate limiting. Login, signup, and affiliate endpoints are vul
 
 ## Test Coverage Improvements
 
-### Issue 18: Add missing affiliate system test cases
+### ~~Issue 18: Add missing affiliate system test cases~~ MOSTLY DONE
 **Labels:** `testing`, `affiliate`
-
-Current affiliate tests don't cover:
-- Expired referral handling (what happens when referral past `expires_at`?)
-- Duplicate visitor_id + same code (concurrent requests)
-- Invalid referral code in checkout (silently ignored, should it error?)
-- `/api/affiliate/me` endpoint (GET/POST/PUT — zero test coverage)
-- Commission calculation accuracy (verify `commission_owed = price * percent / 100`)
-- Webhook retry scenario (same event_id processed twice)
+**Status:** Added 17 tests for `/api/affiliate/me` (GET/POST/PUT), 2 edge case tests for affiliate route, webhook idempotency test for duplicate events. Remaining: expired referral handling, concurrent request testing.
 
 ---
 

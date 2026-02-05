@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const mockAdminFrom = vi.fn();
+const mockAdminRpc = vi.fn();
 const mockConstructEvent = vi.fn();
 
 vi.mock("@/lib/supabase/server", () => ({
   createAdminClient: vi.fn(() => ({
     from: (table: string) => mockAdminFrom(table),
+    rpc: mockAdminRpc,
   })),
 }));
 
@@ -28,11 +30,25 @@ function chain(resolvedValue: any) {
   const obj: any = {};
   obj.select = vi.fn().mockReturnValue(obj);
   obj.update = vi.fn().mockReturnValue(obj);
+  obj.insert = vi.fn().mockReturnValue(obj);
   obj.eq = vi.fn().mockReturnValue(obj);
   obj.is = vi.fn().mockReturnValue(obj);
+  obj.maybeSingle = vi.fn().mockResolvedValue(resolvedValue);
   obj.single = vi.fn().mockResolvedValue(resolvedValue);
   obj.then = (cb: any) => Promise.resolve(resolvedValue).then(cb);
   return obj;
+}
+
+// Helper: mock webhook_events table for idempotency (not a duplicate)
+function webhookEventsChain() {
+  return {
+    select: vi.fn().mockReturnValue({
+      eq: vi.fn().mockReturnValue({
+        maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+      }),
+    }),
+    insert: vi.fn().mockResolvedValue({ error: null }),
+  };
 }
 
 function makeRequest(body: string = "{}") {
@@ -50,6 +66,7 @@ describe("POST /api/webhooks/stripe", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubEnv("STRIPE_WEBHOOK_SECRET", "whsec_test123");
+    mockAdminRpc.mockResolvedValue({ error: null });
   });
 
   afterEach(() => {
@@ -69,10 +86,42 @@ describe("POST /api/webhooks/stripe", () => {
     expect(json.error).toBe("Invalid signature");
   });
 
+  it("skips duplicate events (idempotency)", async () => {
+    mockConstructEvent.mockReturnValue({
+      id: "evt_duplicate",
+      type: "checkout.session.completed",
+      data: { object: { metadata: { company_id: "c1" }, mode: "subscription", subscription: "sub_1" } },
+    });
+
+    mockAdminFrom.mockImplementation((table: string) => {
+      if (table === "webhook_events") {
+        return {
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              maybeSingle: vi.fn().mockResolvedValue({
+                data: { event_id: "evt_duplicate" },
+                error: null,
+              }),
+            }),
+          }),
+        };
+      }
+      return chain({ data: null, error: null });
+    });
+
+    const { POST } = await import("../stripe/route");
+    const response = await POST(makeRequest("raw-body"));
+    const json = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(json.duplicate).toBe(true);
+  });
+
   it("handles checkout.session.completed for subscription", async () => {
     let companyUpdated = false;
 
     mockConstructEvent.mockReturnValue({
+      id: "evt_sub_1",
       type: "checkout.session.completed",
       data: {
         object: {
@@ -90,6 +139,7 @@ describe("POST /api/webhooks/stripe", () => {
     });
 
     mockAdminFrom.mockImplementation((table: string) => {
+      if (table === "webhook_events") return webhookEventsChain();
       if (table === "companies") {
         return {
           update: vi.fn().mockImplementation(() => {
@@ -116,6 +166,7 @@ describe("POST /api/webhooks/stripe", () => {
     let jobUpdated = false;
 
     mockConstructEvent.mockReturnValue({
+      id: "evt_job_1",
       type: "checkout.session.completed",
       data: {
         object: {
@@ -127,6 +178,7 @@ describe("POST /api/webhooks/stripe", () => {
     });
 
     mockAdminFrom.mockImplementation((table: string) => {
+      if (table === "webhook_events") return webhookEventsChain();
       if (table === "jobs") {
         return {
           update: vi.fn().mockImplementation(() => {
@@ -153,6 +205,7 @@ describe("POST /api/webhooks/stripe", () => {
     let updatePayload: any = null;
 
     mockConstructEvent.mockReturnValue({
+      id: "evt_del_1",
       type: "customer.subscription.deleted",
       data: {
         object: {
@@ -162,6 +215,7 @@ describe("POST /api/webhooks/stripe", () => {
     });
 
     mockAdminFrom.mockImplementation((table: string) => {
+      if (table === "webhook_events") return webhookEventsChain();
       if (table === "companies") {
         return {
           update: vi.fn().mockImplementation((data: any) => {
@@ -189,6 +243,7 @@ describe("POST /api/webhooks/stripe", () => {
     let statusUpdated = false;
 
     mockConstructEvent.mockReturnValue({
+      id: "evt_fail_1",
       type: "invoice.payment_failed",
       data: {
         object: {
@@ -199,6 +254,7 @@ describe("POST /api/webhooks/stripe", () => {
     });
 
     mockAdminFrom.mockImplementation((table: string) => {
+      if (table === "webhook_events") return webhookEventsChain();
       if (table === "companies") {
         return {
           update: vi.fn().mockImplementation(() => {
@@ -219,11 +275,12 @@ describe("POST /api/webhooks/stripe", () => {
     expect(statusUpdated).toBe(true);
   });
 
-  it("handles checkout with affiliate conversion", async () => {
+  it("handles checkout with affiliate conversion using atomic RPC", async () => {
     let referralUpdated = false;
-    let conversionsIncremented = false;
+    let rpcCalled = false;
 
     mockConstructEvent.mockReturnValue({
+      id: "evt_aff_1",
       type: "checkout.session.completed",
       data: {
         object: {
@@ -240,7 +297,15 @@ describe("POST /api/webhooks/stripe", () => {
       },
     });
 
+    mockAdminRpc.mockImplementation((fnName: string) => {
+      if (fnName === "increment_total_conversions") {
+        rpcCalled = true;
+      }
+      return Promise.resolve({ error: null });
+    });
+
     mockAdminFrom.mockImplementation((table: string) => {
+      if (table === "webhook_events") return webhookEventsChain();
       if (table === "companies") {
         return {
           update: vi.fn().mockReturnValue({
@@ -252,12 +317,6 @@ describe("POST /api/webhooks/stripe", () => {
         const c: any = {
           select: vi.fn().mockReturnThis(),
           eq: vi.fn().mockReturnThis(),
-          update: vi.fn().mockImplementation(() => {
-            conversionsIncremented = true;
-            return {
-              eq: vi.fn().mockResolvedValue({ error: null }),
-            };
-          }),
           single: vi.fn().mockResolvedValue({
             data: { commission_percent: 20, total_conversions: 5 },
             error: null,
@@ -287,13 +346,19 @@ describe("POST /api/webhooks/stripe", () => {
 
     expect(response.status).toBe(200);
     expect(referralUpdated).toBe(true);
-    expect(conversionsIncremented).toBe(true);
+    expect(rpcCalled).toBe(true);
   });
 
   it("returns received: true for unknown event types", async () => {
     mockConstructEvent.mockReturnValue({
+      id: "evt_unknown_1",
       type: "some.unknown.event",
       data: { object: {} },
+    });
+
+    mockAdminFrom.mockImplementation((table: string) => {
+      if (table === "webhook_events") return webhookEventsChain();
+      return chain({ data: null, error: null });
     });
 
     const { POST } = await import("../stripe/route");

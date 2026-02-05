@@ -110,19 +110,28 @@ export async function POST(request: Request) {
         .eq("id", company.id);
     }
 
-    // Create coupon if there's a referral discount ($5 off first month)
+    // Apply referral discount ($5 off first month) using a reusable coupon
     let discounts: { coupon: string }[] = [];
     if (hasReferralDiscount) {
-      const coupon = await stripe.coupons.create({
-        amount_off: 500, // $5.00 in cents
-        currency: "usd",
-        duration: "once",
-        metadata: {
-          creator_code_id: creatorCodeId || "",
-          referral_code: referralCode || "",
-        },
-      });
-      discounts = [{ coupon: coupon.id }];
+      // Use env var for pre-created coupon, or find/create one with a stable ID
+      let couponId = process.env.STRIPE_REFERRAL_COUPON_ID;
+      if (!couponId) {
+        try {
+          const existing = await stripe.coupons.retrieve("matte_referral_5off");
+          couponId = existing.id;
+        } catch {
+          // Coupon doesn't exist yet — create it once
+          const coupon = await stripe.coupons.create({
+            id: "matte_referral_5off",
+            amount_off: 500,
+            currency: "usd",
+            duration: "once",
+            name: "Referral Discount - $5 Off First Month",
+          });
+          couponId = coupon.id;
+        }
+      }
+      discounts = [{ coupon: couponId }];
     }
 
     // Build success/cancel URLs - use request origin as fallback
