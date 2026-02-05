@@ -14,6 +14,7 @@ import {
   Calendar,
   Shield,
 } from "lucide-react";
+import { NotificationBell } from "@/components/app/notification-bell";
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -73,18 +74,28 @@ export function AppShell({ children, company, isOwner, isSuperAdmin = false }: A
                 <span className="text-lg font-bold truncate">{company.name}</span>
               )}
             </div>
-            <button
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="p-1.5 rounded-lg hover:bg-muted transition-colors shrink-0"
-              title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-            >
-              {sidebarCollapsed ? (
-                <ChevronRight className="h-4 w-4" />
-              ) : (
-                <ChevronLeft className="h-4 w-4" />
-              )}
-            </button>
+            <div className="flex items-center gap-1 shrink-0">
+              {!sidebarCollapsed && <NotificationBell />}
+              <button
+                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                className="p-1.5 rounded-lg hover:bg-muted transition-colors shrink-0"
+                title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              >
+                {sidebarCollapsed ? (
+                  <ChevronRight className="h-4 w-4" />
+                ) : (
+                  <ChevronLeft className="h-4 w-4" />
+                )}
+              </button>
+            </div>
           </div>
+
+          {/* Bell when sidebar collapsed */}
+          {sidebarCollapsed && (
+            <div className="flex justify-center py-2 border-b">
+              <NotificationBell />
+            </div>
+          )}
 
           {/* Nav */}
           <nav className="flex-1 space-y-1 p-4 overflow-y-auto">
@@ -122,6 +133,7 @@ export function AppShell({ children, company, isOwner, isSuperAdmin = false }: A
           </div>
           <span className="font-bold truncate">{company.name}</span>
         </div>
+        <NotificationBell />
       </header>
 
       {/* Main content */}

@@ -68,6 +68,15 @@ export function UnifiedPublicJobView({ job: initialJob }: UnifiedPublicJobViewPr
 
   const router = useRouter();
 
+  // Auto-trigger print dialog when opened with ?print=true (Save as PDF flow)
+  useEffect(() => {
+    if (searchParams?.get("print") === "true") {
+      // Small delay to ensure the page is fully rendered
+      const timer = setTimeout(() => window.print(), 500);
+      return () => clearTimeout(timer);
+    }
+  }, [searchParams]);
+
   // Real-time subscription for updates from painter
   useEffect(() => {
     const supabase = createBrowserClient(
