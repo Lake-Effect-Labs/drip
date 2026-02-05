@@ -94,13 +94,17 @@ export async function POST(request: Request) {
           ? `${code}${Math.floor(Math.random() * 999)}`
           : code;
 
+        // Get global affiliate percentages from env (match self-serve defaults)
+        const discountPercent = parseInt(process.env.AFFILIATE_DISCOUNT_PERCENT || "10", 10);
+        const commissionPercent = parseInt(process.env.AFFILIATE_COMMISSION_PERCENT || "20", 10);
+
         await adminSupabase.from("creator_codes").insert({
           code: finalCode,
           creator_name: targetProfile.full_name || targetProfile.email,
           creator_email: targetProfile.email,
           user_id: targetProfile.id,
-          discount_percent: 0, // We use flat $5 now, but keep column for backward compat
-          commission_percent: 0, // Manual payouts, no percentage
+          discount_percent: discountPercent,
+          commission_percent: commissionPercent,
         });
       } else {
         // Re-activate existing code if it was deactivated

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { InsertTables } from "@/types/database";
 import { recalculateEstimateTotals } from "@/lib/estimate-helpers";
+import { requireActiveSubscription } from "@/lib/subscription";
 
 /**
  * GET /api/estimate-materials/[id]
@@ -20,11 +21,26 @@ export async function GET(
 
     const { id: estimateId } = await params;
 
-    // Verify user has access to this estimate
+    // Verify user belongs to a company
+    const { data: companyUser } = await supabase
+      .from("company_users")
+      .select("company_id")
+      .eq("user_id", user.id)
+      .single();
+
+    if (!companyUser) {
+      return NextResponse.json(
+        { error: "No company found" },
+        { status: 404 }
+      );
+    }
+
+    // Verify user has access to this estimate (explicit company check)
     const { data: estimate, error: estimateError } = await supabase
       .from("estimates")
       .select("id, company_id")
       .eq("id", estimateId)
+      .eq("company_id", companyUser.company_id)
       .single();
 
     if (estimateError || !estimate) {
@@ -101,6 +117,9 @@ export async function POST(
         { status: 404 }
       );
     }
+
+    const subCheck = await requireActiveSubscription(estimate.company_id);
+    if (subCheck) return subCheck;
 
     // Prevent modifications to accepted or denied estimates
     if (estimate.status === "accepted") {

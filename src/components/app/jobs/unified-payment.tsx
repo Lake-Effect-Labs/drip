@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Trash2, Copy, Check, Share2, Pencil, ChevronDown, ChevronUp } from "lucide-react";
+import { Plus, Trash2, Copy, Check, Share2, Pencil, ChevronDown, ChevronUp, FileDown } from "lucide-react";
 import { formatCurrency, formatDate, copyToClipboard, generateToken, PAINT_SHEENS } from "@/lib/utils";
 
 // Product Lines by Brand
@@ -1478,6 +1478,25 @@ export function UnifiedPayment({
                       >
                         <Share2 className="mr-2 h-4 w-4" />
                         Share
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={async () => {
+                          await ensurePublicToken();
+                          const token = currentPublicToken || publicToken;
+                          if (token) {
+                            window.open(
+                              `${window.location.origin}/portal/${token}?print=true`,
+                              "_blank"
+                            );
+                          }
+                        }}
+                        className="flex-1 touch-target min-h-[44px]"
+                      >
+                        <FileDown className="mr-2 h-4 w-4" />
+                        Save PDF
                       </Button>
                       {isJobDone && (
                         <Button

@@ -40,10 +40,14 @@ interface UnifiedPublicJobViewProps {
   token: string;
 }
 
-// Token is available through props for potential future use (e.g., real-time updates)
-export function UnifiedPublicJobView({ job: initialJob }: UnifiedPublicJobViewProps) {
+export function UnifiedPublicJobView({ job: initialJob, token }: UnifiedPublicJobViewProps) {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [job] = useState(initialJob);
+  const [responding, setResponding] = useState(false);
+  const [showDenyDialog, setShowDenyDialog] = useState(false);
+  const [denialReason, setDenialReason] = useState("");
+  const [responseStatus, setResponseStatus] = useState<"accepted" | "denied" | null>(null);
 
   // Determine initial tab from URL query param
   const getInitialTab = () => {
@@ -66,7 +70,14 @@ export function UnifiedPublicJobView({ job: initialJob }: UnifiedPublicJobViewPr
   const afterPhotos = photos.filter(p => p.tag === "after");
   const progressPhotos = photos.filter(p => p.tag === "progress" || p.tag === "other" || !p.tag);
 
-  const router = useRouter();
+  // Auto-trigger print dialog when opened with ?print=true (Save as PDF flow)
+  useEffect(() => {
+    if (searchParams?.get("print") === "true") {
+      // Small delay to ensure the page is fully rendered
+      const timer = setTimeout(() => window.print(), 500);
+      return () => clearTimeout(timer);
+    }
+  }, [searchParams]);
 
   // Real-time subscription for updates from painter
   useEffect(() => {
@@ -126,6 +137,30 @@ export function UnifiedPublicJobView({ job: initialJob }: UnifiedPublicJobViewPr
       supabase.removeChannel(photoChannel);
     };
   }, [job.id, job.estimate?.id, router]);
+
+  const handleEstimateResponse = async (action: "accept" | "deny") => {
+    setResponding(true);
+    try {
+      const res = await fetch("/api/estimates/respond", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token,
+          action,
+          denialReason: action === "deny" ? denialReason : undefined,
+        }),
+      });
+      if (res.ok) {
+        setResponseStatus(action === "accept" ? "accepted" : "denied");
+        setShowDenyDialog(false);
+        router.refresh();
+      }
+    } catch {
+      // Silently fail — user can retry
+    } finally {
+      setResponding(false);
+    }
+  };
 
   // Determine job status
   const isJobDone = job.status === "done" || job.status === "paid" || job.status === "archive";
@@ -315,6 +350,77 @@ export function UnifiedPublicJobView({ job: initialJob }: UnifiedPublicJobViewPr
                       <span className="text-xl font-bold">{formatCurrency(totalAmount)}</span>
                     </div>
                   </div>
+
+                  {/* Accept/Deny buttons */}
+                  {job.estimate.status === "sent" && !responseStatus && (
+                    <div className="p-4 border-t space-y-3">
+                      {!showDenyDialog ? (
+                        <div className="flex gap-3">
+                          <button
+                            onClick={() => handleEstimateResponse("accept")}
+                            disabled={responding}
+                            className="flex-1 py-3 px-4 rounded-lg bg-green-600 text-white font-medium hover:bg-green-700 disabled:opacity-50 transition-colors"
+                          >
+                            {responding ? "Processing..." : "Accept Estimate"}
+                          </button>
+                          <button
+                            onClick={() => setShowDenyDialog(true)}
+                            disabled={responding}
+                            className="flex-1 py-3 px-4 rounded-lg border border-red-300 text-red-600 font-medium hover:bg-red-50 disabled:opacity-50 transition-colors"
+                          >
+                            Decline
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <p className="text-sm font-medium">Reason for declining (optional):</p>
+                          <textarea
+                            value={denialReason}
+                            onChange={(e) => setDenialReason(e.target.value)}
+                            placeholder="e.g. Price is too high, going with another company..."
+                            className="w-full rounded-lg border p-3 text-sm resize-none"
+                            rows={2}
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => handleEstimateResponse("deny")}
+                              disabled={responding}
+                              className="flex-1 py-2 px-4 rounded-lg bg-red-600 text-white font-medium hover:bg-red-700 disabled:opacity-50 transition-colors text-sm"
+                            >
+                              {responding ? "Processing..." : "Confirm Decline"}
+                            </button>
+                            <button
+                              onClick={() => { setShowDenyDialog(false); setDenialReason(""); }}
+                              className="py-2 px-4 rounded-lg border font-medium text-sm hover:bg-muted transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Status after response */}
+                  {(responseStatus || job.estimate.status === "accepted") && (
+                    <div className="p-4 border-t bg-green-50">
+                      <div className="flex items-center gap-2 text-green-700">
+                        <CheckCircle className="h-5 w-5" />
+                        <span className="font-medium">Estimate accepted</span>
+                      </div>
+                    </div>
+                  )}
+                  {(job.estimate.status === "denied" && !responseStatus) && (
+                    <div className="p-4 border-t bg-red-50">
+                      <div className="flex items-center gap-2 text-red-700">
+                        <X className="h-5 w-5" />
+                        <span className="font-medium">Estimate declined</span>
+                        {job.estimate.denial_reason && (
+                          <span className="text-sm text-red-600 ml-1">— {job.estimate.denial_reason}</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>

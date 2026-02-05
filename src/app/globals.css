@@ -550,6 +550,47 @@ body {
   animation: slideUp 0.3s ease-out;
 }
 
+/* Print styles for Save as PDF */
+@media print {
+  /* Hide navigation, headers, footers */
+  nav, header, aside, footer,
+  .no-print,
+  [data-radix-popper-content-wrapper] {
+    display: none !important;
+  }
+
+  /* Reset layout */
+  body {
+    background: white !important;
+    color: black !important;
+    font-size: 12pt;
+  }
+
+  main {
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* Clean card appearance */
+  .print-estimate {
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+  }
+
+  /* Keep colors in print */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Page setup */
+  @page {
+    margin: 0.75in;
+    size: letter;
+  }
+}
+
 /* Toast notifications */
 .toast-container {
   position: fixed;

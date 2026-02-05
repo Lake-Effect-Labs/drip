@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/server";
+import { rateLimit, getClientIp } from "@/lib/rate-limit";
 
 // GET - Validate a referral code
 export async function GET(request: Request) {
+  const limited = rateLimit(getClientIp(request), 30, 60_000, "affiliate-get");
+  if (limited) return limited;
+
   try {
     const { searchParams } = new URL(request.url);
     const code = searchParams.get("code");
@@ -41,6 +45,9 @@ export async function GET(request: Request) {
 
 // POST - Track a referral visit
 export async function POST(request: Request) {
+  const limited = rateLimit(getClientIp(request), 10, 60_000, "affiliate-post");
+  if (limited) return limited;
+
   try {
     const body = await request.json();
     const { code, visitorId } = body;
@@ -97,14 +104,10 @@ export async function POST(request: Request) {
       );
     }
 
-    // Increment total_referrals on the creator code (replaces DB trigger)
-    await supabase
-      .from("creator_codes")
-      .update({
-        total_referrals: (creatorCode.total_referrals ?? 0) + 1,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", creatorCode.id);
+    // Atomic increment of total_referrals (avoids race conditions)
+    await supabase.rpc("increment_total_referrals", {
+      code_id: creatorCode.id,
+    });
 
     return NextResponse.json({ success: true });
   } catch (error) {

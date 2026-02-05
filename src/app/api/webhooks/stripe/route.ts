@@ -47,6 +47,22 @@ export async function POST(request: Request) {
 
   const supabase = createAdminClient();
 
+  // Atomic idempotency: INSERT and catch PK conflict to avoid TOCTOU race
+  const { error: idempotencyError } = await supabase
+    .from("webhook_events")
+    .insert({
+      event_id: event.id,
+      event_type: event.type,
+    });
+
+  if (idempotencyError) {
+    // PK conflict (code 23505) means we already processed this event
+    if (idempotencyError.code === "23505") {
+      return NextResponse.json({ received: true, duplicate: true });
+    }
+    console.error("Error recording webhook event:", idempotencyError);
+  }
+
   try {
     // Handle different event types
     switch (event.type) {
@@ -106,14 +122,10 @@ export async function POST(request: Request) {
                 console.error("Error updating referral:", referralError);
               }
 
-              // Increment total_conversions on the creator code (replaces DB trigger)
-              await supabase
-                .from("creator_codes")
-                .update({
-                  total_conversions: (creatorCode as any).total_conversions + 1,
-                  updated_at: new Date().toISOString(),
-                })
-                .eq("id", creatorCodeId);
+              // Atomic increment of total_conversions (avoids race conditions)
+              await supabase.rpc("increment_total_conversions", {
+                code_id: creatorCodeId,
+              });
             }
           }
         }

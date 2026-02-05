@@ -13,7 +13,9 @@ import {
   UserCircle,
   Calendar,
   Shield,
+  Megaphone,
 } from "lucide-react";
+import { NotificationBell } from "@/components/app/notification-bell";
 
 interface AppShellProps {
   children: React.ReactNode;
@@ -29,21 +31,25 @@ interface AppShellProps {
   };
   isOwner: boolean;
   isSuperAdmin?: boolean;
+  isAffiliate?: boolean;
+  subscriptionExpired?: boolean;
 }
 
 // All nav items
 const allNavItems = [
-  { href: "/app/board", label: "Board", icon: LayoutGrid, ownerOnly: false, adminOnly: false },
-  { href: "/app/schedule", label: "Schedule", icon: Calendar, ownerOnly: false, adminOnly: false },
-  { href: "/app/customers", label: "Customers", icon: UserCircle, ownerOnly: false, adminOnly: false },
-  { href: "/app/settings", label: "Settings", icon: Settings, ownerOnly: true, adminOnly: false },
-  { href: "/app/admin", label: "Admin", icon: Shield, ownerOnly: false, adminOnly: true },
+  { href: "/app/board", label: "Board", icon: LayoutGrid, ownerOnly: false, adminOnly: false, affiliateOnly: false },
+  { href: "/app/schedule", label: "Schedule", icon: Calendar, ownerOnly: false, adminOnly: false, affiliateOnly: false },
+  { href: "/app/customers", label: "Customers", icon: UserCircle, ownerOnly: false, adminOnly: false, affiliateOnly: false },
+  { href: "/app/settings", label: "Settings", icon: Settings, ownerOnly: true, adminOnly: false, affiliateOnly: false },
+  { href: "/app/admin", label: "Admin", icon: Shield, ownerOnly: false, adminOnly: true, affiliateOnly: false },
+  { href: "/app/affiliate", label: "Affiliate", icon: Megaphone, ownerOnly: false, adminOnly: false, affiliateOnly: true },
 ];
 
-export function AppShell({ children, company, isOwner, isSuperAdmin = false }: AppShellProps) {
-  // Filter nav items based on ownership and admin status
+export function AppShell({ children, company, isOwner, isSuperAdmin = false, isAffiliate = false, subscriptionExpired = false }: AppShellProps) {
+  // Filter nav items based on ownership, admin, and affiliate status
   const navItems = allNavItems.filter(item => {
     if (item.adminOnly) return isSuperAdmin;
+    if (item.affiliateOnly) return isAffiliate;
     if (item.ownerOnly) return isOwner;
     return true;
   });
@@ -73,18 +79,28 @@ export function AppShell({ children, company, isOwner, isSuperAdmin = false }: A
                 <span className="text-lg font-bold truncate">{company.name}</span>
               )}
             </div>
-            <button
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="p-1.5 rounded-lg hover:bg-muted transition-colors shrink-0"
-              title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-            >
-              {sidebarCollapsed ? (
-                <ChevronRight className="h-4 w-4" />
-              ) : (
-                <ChevronLeft className="h-4 w-4" />
-              )}
-            </button>
+            <div className="flex items-center gap-1 shrink-0">
+              {!sidebarCollapsed && <NotificationBell />}
+              <button
+                onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+                className="p-1.5 rounded-lg hover:bg-muted transition-colors shrink-0"
+                title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              >
+                {sidebarCollapsed ? (
+                  <ChevronRight className="h-4 w-4" />
+                ) : (
+                  <ChevronLeft className="h-4 w-4" />
+                )}
+              </button>
+            </div>
           </div>
+
+          {/* Bell when sidebar collapsed */}
+          {sidebarCollapsed && (
+            <div className="flex justify-center py-2 border-b">
+              <NotificationBell />
+            </div>
+          )}
 
           {/* Nav */}
           <nav className="flex-1 space-y-1 p-4 overflow-y-auto">
@@ -122,13 +138,26 @@ export function AppShell({ children, company, isOwner, isSuperAdmin = false }: A
           </div>
           <span className="font-bold truncate">{company.name}</span>
         </div>
+        <NotificationBell />
       </header>
 
       {/* Main content */}
       <main className={cn(
         "min-h-screen pb-16 lg:pt-0 lg:pb-0 transition-all duration-300 w-full max-w-full overflow-x-hidden",
         sidebarCollapsed ? "lg:pl-16" : "lg:pl-64"
-      )}>{children}</main>
+      )}>
+        {subscriptionExpired && !pathname.startsWith("/app/upgrade") && !pathname.startsWith("/app/settings") && !pathname.startsWith("/app/admin") ? (
+          <div className="flex items-center justify-center min-h-[60vh] p-6">
+            <div className="max-w-md w-full text-center space-y-4">
+              <h2 className="text-2xl font-bold">Your trial has ended</h2>
+              <p className="text-muted-foreground">Subscribe to keep using Matte for your painting business.</p>
+              <a href="/app/upgrade" className="inline-flex items-center justify-center rounded-lg bg-primary text-primary-foreground px-6 py-3 font-medium hover:bg-primary/90 transition-colors">
+                View Plans
+              </a>
+            </div>
+          </div>
+        ) : children}
+      </main>
 
       {/* Mobile bottom nav */}
       <nav className="fixed bottom-0 left-0 right-0 z-40 flex h-16 items-center justify-around border-t bg-background/95 backdrop-blur-sm safe-area-inset-bottom lg:hidden w-full max-w-full overflow-hidden">

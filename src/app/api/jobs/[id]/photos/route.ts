@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { requireActiveSubscription } from "@/lib/subscription";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const ALLOWED_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp", "image/heic"];
@@ -20,6 +21,29 @@ export async function GET(
 
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Verify user belongs to a company
+    const { data: companyUser } = await supabase
+      .from("company_users")
+      .select("company_id")
+      .eq("user_id", user.id)
+      .single();
+
+    if (!companyUser) {
+      return NextResponse.json({ error: "No company found" }, { status: 404 });
+    }
+
+    // Verify job belongs to user's company
+    const { data: job } = await supabase
+      .from("jobs")
+      .select("id")
+      .eq("id", jobId)
+      .eq("company_id", companyUser.company_id)
+      .single();
+
+    if (!job) {
+      return NextResponse.json({ error: "Job not found" }, { status: 404 });
     }
 
     // Get photos for the job
@@ -75,6 +99,9 @@ export async function POST(
     if (!companyUser) {
       return NextResponse.json({ error: "No company found" }, { status: 404 });
     }
+
+    const subCheck = await requireActiveSubscription(companyUser.company_id);
+    if (subCheck) return subCheck;
 
     // Verify job exists and belongs to company
     const { data: job, error: jobError } = await supabase
