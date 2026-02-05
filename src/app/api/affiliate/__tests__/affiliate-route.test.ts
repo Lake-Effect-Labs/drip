@@ -206,4 +206,83 @@ describe("POST /api/affiliate", () => {
     expect(response.status).toBe(200);
     expect(json.success).toBe(true);
   });
+
+  it("returns 500 when referral insert fails", async () => {
+    mockAdminFrom.mockImplementation((table: string) => {
+      if (table === "creator_codes") {
+        const c: any = {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({
+            data: { id: "cc-1", total_referrals: 0 },
+            error: null,
+          }),
+          then: (cb: any) =>
+            Promise.resolve({
+              data: { id: "cc-1", total_referrals: 0 },
+              error: null,
+            }).then(cb),
+        };
+        return c;
+      }
+      if (table === "referrals") {
+        const c: any = {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+          insert: vi.fn().mockReturnValue(
+            Promise.resolve({ error: { message: "DB error" } })
+          ),
+          then: (cb: any) =>
+            Promise.resolve({ data: null, error: null }).then(cb),
+        };
+        return c;
+      }
+      return chain({ data: null, error: null });
+    });
+
+    const { POST } = await import("../route");
+    const response = await POST(
+      new Request("http://localhost:3001/api/affiliate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: "PAINTPRO", visitorId: "new-visitor" }),
+      })
+    );
+    const json = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(json.error).toBe("Failed to track referral");
+  });
+
+  it("performs case-insensitive code lookup", async () => {
+    let queriedCode: string | null = null;
+
+    mockAdminFrom.mockImplementation((table: string) => {
+      if (table === "creator_codes") {
+        const c: any = {};
+        c.select = vi.fn().mockReturnValue(c);
+        c.eq = vi.fn().mockImplementation((_col: string, val: string) => {
+          if (_col === "code") queriedCode = val;
+          return c;
+        });
+        c.single = vi.fn().mockResolvedValue({ data: null, error: null });
+        c.then = (cb: any) =>
+          Promise.resolve({ data: null, error: null }).then(cb);
+        return c;
+      }
+      return chain({ data: null, error: null });
+    });
+
+    const { POST } = await import("../route");
+    await POST(
+      new Request("http://localhost:3001/api/affiliate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: "lowercase", visitorId: "v1" }),
+      })
+    );
+
+    expect(queriedCode).toBe("LOWERCASE");
+  });
 });
