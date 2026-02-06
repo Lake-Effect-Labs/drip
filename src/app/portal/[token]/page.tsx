@@ -114,7 +114,7 @@ export default async function CustomerPortalPage({
         photos: photos || [],
       };
 
-      return <UnifiedPublicJobView job={jobWithDetails as any} token={token} />;
+      return <UnifiedPublicJobView job={jobWithDetails as any} />;
     }
   }
 
@@ -187,7 +187,7 @@ export default async function CustomerPortalPage({
       photos: photos || [],
     };
 
-    return <UnifiedPublicJobView job={jobWithDetails as any} token={token} />;
+    return <UnifiedPublicJobView job={jobWithDetails as any} />;
   }
 
   // If no estimate or job found, show not found
